@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "mc-sync-blender",
+	"version": "${version}",
+	"name": "MC Sync Blender",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/mc-sync-blender/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.mozi1924.mcsbl.MCSyncBlender"
+		],
+		"client": [
+			"com.mozi1924.mcsbl.client.MCSyncBlenderClient"
+		]
+	},
+	"mixins": [
+		"mc-sync-blender.mixins.json",
+		{
+			"config": "mc-sync-blender.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
