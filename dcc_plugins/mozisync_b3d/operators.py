@@ -1,4 +1,5 @@
 import bpy
+import time
 from .deps_installer import is_websockets_installed, install_websockets
 from .websocket_client import SyncClientThread
 
@@ -39,6 +40,10 @@ class MOZISYNC_OT_connect(bpy.types.Operator):
             def wrapper():
                 try:
                     func()
+                    # 强制刷新 window_manager 界面重绘
+                    for window in bpy.context.window_manager.windows:
+                        for area in window.screen.areas:
+                            area.tag_redraw()
                 except Exception as e:
                     print(f"[Mozisync] Timer update error: {e}")
                 return None
@@ -54,24 +59,55 @@ class MOZISYNC_OT_connect(bpy.types.Operator):
             def update():
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
+                props.max_x = min_x + size_x - 1
+                props.max_y = min_y + size_y - 1
+                props.max_z = min_z + size_z - 1
                 props.size_x, props.size_y, props.size_z = size_x, size_y, size_z
+                props.total_blocks = size_x * size_y * size_z
             run_in_main_thread(update)
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, total_blocks):
             def update():
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
+                props.max_x = min_x + size_x - 1
+                props.max_y = min_y + size_y - 1
+                props.max_z = min_z + size_z - 1
                 props.size_x, props.size_y, props.size_z = size_x, size_y, size_z
                 props.palette_count = len(palette)
                 props.total_blocks = total_blocks
                 props.update_counter += 1
+
+                # 更新 Palette 列表
+                props.palette_list.clear()
+                for p_item in palette:
+                    item = props.palette_list.add()
+                    item.state_str = p_item
+
                 props.last_update_info = f"Full Snapshot: {total_blocks} blocks, {len(palette)} palette states."
+
+                # 记录日志历史
+                item = props.delta_history.add()
+                item.timestamp = time.strftime("%H:%M:%S")
+                item.pos_str = f"Bounds: {size_x}x{size_y}x{size_z}"
+                item.block_state = f"Snapshot ({total_blocks} blocks, {len(palette)} states)"
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes):
             def update():
                 props.update_counter += 1
                 if changes:
+                    curr_time = time.strftime("%H:%M:%S")
+                    for abs_x, abs_y, abs_z, state in changes:
+                        item = props.delta_history.add()
+                        item.timestamp = curr_time
+                        item.pos_str = f"({abs_x}, {abs_y}, {abs_z})"
+                        item.block_state = state
+
+                    # 保持最多 30 条历史记录
+                    while len(props.delta_history) > 30:
+                        props.delta_history.remove(0)
+
                     abs_x, abs_y, abs_z, state = changes[-1]
                     props.last_update_info = f"Delta Update ({len(changes)} blocks):\n({abs_x},{abs_y},{abs_z}) -> {state}"
             run_in_main_thread(update)
@@ -117,4 +153,14 @@ class MOZISYNC_OT_refresh(bpy.types.Operator):
             self.report({'INFO'}, "Sent REFRESH request to MC Sync Server.")
         else:
             self.report({'WARNING'}, "Not connected to server.")
+        return {'FINISHED'}
+
+class MOZISYNC_OT_clear_history(bpy.types.Operator):
+    bl_idname = "mozisync.clear_history"
+    bl_label = "Clear History"
+    bl_description = "Clear live update history log"
+
+    def execute(self, context):
+        context.scene.mozisync.delta_history.clear()
+        self.report({'INFO'}, "Cleared update history log.")
         return {'FINISHED'}

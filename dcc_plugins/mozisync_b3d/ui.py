@@ -1,6 +1,21 @@
 import bpy
 from .deps_installer import is_websockets_installed
 
+class MOZISYNC_UL_palette_list(bpy.types.UIList):
+    """Palette 调色板 UI 列表"""
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.label(text=item.state_str, icon='CUBE')
+
+class MOZISYNC_UL_delta_list(bpy.types.UIList):
+    """Delta 变动历史 UI 列表"""
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row(align=True)
+            row.label(text=item.timestamp, icon='TIME')
+            row.label(text=item.pos_str, icon='EMPTY_AXIS')
+            row.label(text=item.block_state, icon='FILE_REFRESH')
+
 class MOZISYNC_PT_main_panel(bpy.types.Panel):
     bl_label = "MC Sync Blender (Mozisync B3D)"
     bl_idname = "MOZISYNC_PT_main_panel"
@@ -14,16 +29,12 @@ class MOZISYNC_PT_main_panel(bpy.types.Panel):
         props = scene.mozisync
 
         # 1. 依赖库检查与安装区
-        box_dep = layout.box()
-        box_dep.label(text="Dependency Status:", icon='PREFERENCES')
         if not is_websockets_installed():
+            box_dep = layout.box()
             box_dep.alert = True
             box_dep.label(text="Missing 'websockets' library!", icon='ERROR')
             box_dep.operator("mozisync.install_deps", icon='CONSOLE')
-        else:
-            box_dep.label(text="websockets library: Installed", icon='CHECKMARK')
-
-        layout.separator()
+            layout.separator()
 
         # 2. 通信设置与连接区
         box_conn = layout.box()
@@ -39,31 +50,49 @@ class MOZISYNC_PT_main_panel(bpy.types.Panel):
 
         # 状态指示
         status_row = box_conn.row()
-        status_row.label(text=f"Status: {props.connection_status}")
+        status_icon = 'CHECKMARK' if props.is_connected else 'CANCEL'
+        status_row.label(text=f"Status: {props.connection_status}", icon=status_icon)
 
         layout.separator()
 
-        # 3. 接收端可行性验证数据面板
+        # 3. 详细选区数据 Inspector 面板
         box_data = layout.box()
-        box_data.label(text="Receiver Feasibility Monitor", icon='INFO')
+        box_data.label(text="Selection Details", icon='SCENE_DATA')
 
         if props.has_selection:
-            box_data.label(text=f"Origin: ({props.min_x}, {props.min_y}, {props.min_z})")
-            box_data.label(text=f"Bounds: {props.size_x} x {props.size_y} x {props.size_z}")
-            box_data.label(text=f"Total Volume: {props.total_blocks} blocks")
-            box_data.label(text=f"Palette States: {props.palette_count}")
+            col = box_data.column(align=True)
+            col.label(text=f"Min Pos: ({props.min_x}, {props.min_y}, {props.min_z})", icon='NONE')
+            col.label(text=f"Max Pos: ({props.max_x}, {props.max_y}, {props.max_z})", icon='NONE')
+            col.label(text=f"Size: {props.size_x} x {props.size_y} x {props.size_z}", icon='NONE')
+            col.label(text=f"Volume: {props.total_blocks} blocks", icon='OUTLINER_OB_MESH')
+            col.label(text=f"Palette States: {props.palette_count} types", icon='OUTLINER_COLLECTION')
+
+            # 4. Palette 方块调色板表
+            box_pal = layout.box()
+            box_pal.label(text="Palette Block States", icon='CUBE')
+            box_pal.template_list(
+                "MOZISYNC_UL_palette_list", "",
+                props, "palette_list",
+                props, "palette_active_index",
+                rows=4
+            )
         else:
             box_data.label(text="No active selection in MC world", icon='ERROR')
 
         layout.separator()
 
-        # 4. 实时增量更新日志
+        # 5. 实时变动历史日志 UIList
         box_log = layout.box()
-        box_log.label(text="Live Update Log", icon='SORTTIME')
-        box_log.label(text=f"Updates Received: {props.update_counter}")
-        
-        # 换行显示更新摘要
-        col = box_log.column()
-        col.scale_y = 0.8
-        for line in props.last_update_info.split("\n"):
-            col.label(text=line)
+        header_row = box_log.row(align=True)
+        header_row.label(text=f"Live Updates ({props.update_counter})", icon='TIME')
+        header_row.operator("mozisync.clear_history", icon='TRASH', text="")
+
+        box_log.template_list(
+            "MOZISYNC_UL_delta_list", "",
+            props, "delta_history",
+            props, "delta_active_index",
+            rows=6
+        )
+
+        if props.last_update_info:
+            box_log.label(text=f"Latest: {props.last_update_info}")

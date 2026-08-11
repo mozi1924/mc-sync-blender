@@ -33,5 +33,11 @@ def register():
 
 def unregister():
     if hasattr(bpy.types.Scene, "mozisync"):
-        del bpy.types.Scene.mozisync
-    auto_load.unregister()
+        try:
+            del bpy.types.Scene.mozisync
+        except Exception:
+            pass
+    try:
+        auto_load.unregister()
+    except Exception:
+        pass
