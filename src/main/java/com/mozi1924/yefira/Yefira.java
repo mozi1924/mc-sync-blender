@@ -19,10 +19,10 @@ public class Yefira implements ModInitializer {
 	public void onInitialize() {
 		LOGGER.info("Initializing Yefira Mod...");
 
-		// 注册游戏内选区指令 /mcsync
+		// 注册游戏内选区指令 /yefira
 		com.mozi1924.yefira.command.SelectionCommand.register();
 
-		// 注册快捷选区交互工具 (手持木斧)
+		// 注册快捷选区交互工具 (手持金镐)
 		com.mozi1924.yefira.event.BlockInteractionHandler.register();
 
 		// 监听服务器生命周期

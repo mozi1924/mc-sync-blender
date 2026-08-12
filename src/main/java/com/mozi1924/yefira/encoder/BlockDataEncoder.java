@@ -196,7 +196,41 @@ public class BlockDataEncoder {
         return baos.toByteArray();
     }
 
-    public record BlockChangeEntry(BlockPos pos, BlockState state) {}
+    public static class BlockChangeEntry {
+        private final BlockPos pos;
+        private final BlockState state;
+
+        public BlockChangeEntry(BlockPos pos, BlockState state) {
+            this.pos = pos;
+            this.state = state;
+        }
+
+        public BlockPos pos() {
+            return pos;
+        }
+
+        public BlockState state() {
+            return state;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BlockChangeEntry that = (BlockChangeEntry) o;
+            return Objects.equals(pos, that.pos) && Objects.equals(state, that.state);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(pos, state);
+        }
+
+        @Override
+        public String toString() {
+            return "BlockChangeEntry[" + "pos=" + pos + ", " + "state=" + state + ']';
+        }
+    }
 
     private static void writeHeader(DataOutputStream out, byte packetType) throws IOException {
         out.write(MAGIC);

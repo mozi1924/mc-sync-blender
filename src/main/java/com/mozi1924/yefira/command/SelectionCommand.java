@@ -21,7 +21,7 @@ public class SelectionCommand {
     }
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("mcsync")
+        dispatcher.register(Commands.literal("yefira")
             .then(Commands.literal("pos1")
                 .executes(SelectionCommand::setPos1Current)
                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
@@ -43,14 +43,14 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         BlockPos pos = BlockPos.containing(source.getPosition());
         SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[MC-Sync] Set Pos1 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos1 to " + pos.toShortString()), true);
         return 1;
     }
 
     private static int setPos1Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[MC-Sync] Set Pos1 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos1 to " + pos.toShortString()), true);
         return 1;
     }
 
@@ -58,21 +58,21 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         BlockPos pos = BlockPos.containing(source.getPosition());
         SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[MC-Sync] Set Pos2 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos2 to " + pos.toShortString()), true);
         return 1;
     }
 
     private static int setPos2Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[MC-Sync] Set Pos2 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos2 to " + pos.toShortString()), true);
         return 1;
     }
 
     private static int clearSelection(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().clearSelection();
-        source.sendSuccess(() -> Component.literal("§e[MC-Sync] Selection cleared."), true);
+        source.sendSuccess(() -> Component.literal("§e[Yefira] Selection cleared."), true);
         return 1;
     }
 
@@ -81,9 +81,9 @@ public class SelectionCommand {
         SelectionManager mgr = SelectionManager.getInstance();
         if (mgr.hasSelection() && mgr.getCurrentLevel() != null) {
             WebSocketServerManager.getInstance().broadcastSnapshot(mgr.getCurrentLevel(), mgr.getCurrentSelection());
-            source.sendSuccess(() -> Component.literal("§a[MC-Sync] Full snapshot re-broadcasted."), true);
+            source.sendSuccess(() -> Component.literal("§a[Yefira] Full snapshot re-broadcasted."), true);
         } else {
-            source.sendFailure(Component.literal("§c[MC-Sync] No active selection to refresh."));
+            source.sendFailure(Component.literal("§c[Yefira] No active selection to refresh."));
         }
         return 1;
     }
@@ -93,12 +93,12 @@ public class SelectionCommand {
         SelectionManager mgr = SelectionManager.getInstance();
         if (mgr.hasSelection()) {
             SelectionBox box = mgr.getCurrentSelection();
-            source.sendSuccess(() -> Component.literal("§b[MC-Sync] Active Selection:\n" +
+            source.sendSuccess(() -> Component.literal("§b[Yefira] Active Selection:\n" +
                     " - Min: " + box.getMin().toShortString() + "\n" +
                     " - Max: " + box.getMax().toShortString() + "\n" +
                     " - Size: " + box.getSizeX() + "x" + box.getSizeY() + "x" + box.getSizeZ() + " (" + box.getVolume() + " blocks)"), false);
         } else {
-            source.sendSuccess(() -> Component.literal("§e[MC-Sync] No active selection."), false);
+            source.sendSuccess(() -> Component.literal("§e[Yefira] No active selection."), false);
         }
         return 1;
     }
