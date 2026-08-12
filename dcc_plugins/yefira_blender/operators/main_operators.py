@@ -1,8 +1,9 @@
 import bpy
 import time
-from .deps_installer import is_websockets_installed, install_websockets
-from .websocket_client import SyncClientThread
-from .point_cloud import voxel_storage, update_blender_point_cloud
+from ..core.deps_installer import is_websockets_installed, install_websockets
+from ..network.websocket_client import SyncClientThread
+from ..core.storage import voxel_storage
+from ..nodes.geo_nodes import update_blender_point_cloud
 
 _client_thread = None
 _last_seq_id = 0

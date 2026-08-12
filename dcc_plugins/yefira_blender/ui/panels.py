@@ -1,5 +1,5 @@
 import bpy
-from .deps_installer import is_websockets_installed
+from ..core.deps_installer import is_websockets_installed
 
 class YEFIRA_UL_palette_list(bpy.types.UIList):
     """Palette 调色板 UI 列表"""

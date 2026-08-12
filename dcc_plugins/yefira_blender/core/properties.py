@@ -80,4 +80,3 @@ class YefiraSceneProperties(bpy.types.PropertyGroup):
         name="Validation Status",
         default="Pending validation..."
     )
-

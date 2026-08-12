@@ -23,7 +23,7 @@ bl_info = {
 
 import bpy
 from . import auto_load
-from .properties import YefiraSceneProperties
+from .core.properties import YefiraSceneProperties
 
 auto_load.init()
 
