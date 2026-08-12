@@ -10,4 +10,4 @@ pluginManagement {
 }
 
 // Should match your modid
-rootProject.name = 'mc-sync-blender'
+rootProject.name = 'yefira'

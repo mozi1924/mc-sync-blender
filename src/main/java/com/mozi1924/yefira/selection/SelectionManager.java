@@ -1,6 +1,6 @@
-package com.mozi1924.mcsbl.selection;
+package com.mozi1924.yefira.selection;
 
-import com.mozi1924.mcsbl.MCSyncBlender;
+import com.mozi1924.yefira.Yefira;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -59,13 +59,13 @@ public class SelectionManager {
         for (SelectionChangeListener listener : listeners) {
             listener.onSelectionCleared();
         }
-        MCSyncBlender.LOGGER.info("Selection cleared.");
+        Yefira.LOGGER.info("Selection cleared.");
     }
 
     private void updateSelection() {
         if (pos1 != null && pos2 != null) {
             this.currentSelection = new SelectionBox(pos1, pos2);
-            MCSyncBlender.LOGGER.info("Selection updated: Min{} Max{} (Volume: {})",
+            Yefira.LOGGER.info("Selection updated: Min{} Max{} (Volume: {})",
                     currentSelection.getMin().toShortString(),
                     currentSelection.getMax().toShortString(),
                     currentSelection.getVolume());

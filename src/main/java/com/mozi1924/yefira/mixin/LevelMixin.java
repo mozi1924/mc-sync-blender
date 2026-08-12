@@ -1,9 +1,9 @@
-package com.mozi1924.mcsbl.mixin;
+package com.mozi1924.yefira.mixin;
 
-import com.mozi1924.mcsbl.encoder.BlockDataEncoder;
-import com.mozi1924.mcsbl.network.WebSocketServerManager;
-import com.mozi1924.mcsbl.selection.SelectionBox;
-import com.mozi1924.mcsbl.selection.SelectionManager;
+import com.mozi1924.yefira.encoder.BlockDataEncoder;
+import com.mozi1924.yefira.network.WebSocketServerManager;
+import com.mozi1924.yefira.selection.SelectionBox;
+import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;

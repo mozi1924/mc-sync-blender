@@ -1,8 +1,8 @@
 {
 	"required": true,
-	"package": "com.mozi1924.mcsbl.mixin",
+	"package": "com.mozi1924.yefira.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"refmap": "mc-sync-blender-refmap.json",
+	"refmap": "yefira-refmap.json",
 	"mixins": [
 		"LevelMixin"
 	],

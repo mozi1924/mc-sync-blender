@@ -1,6 +1,6 @@
-package com.mozi1924.mcsbl.encoder;
+package com.mozi1924.yefira.encoder;
 
-import com.mozi1924.mcsbl.selection.SelectionBox;
+import com.mozi1924.yefira.selection.SelectionBox;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.Level;

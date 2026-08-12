@@ -1,8 +1,8 @@
 {
 	"schemaVersion": 1,
-	"id": "mc-sync-blender",
+	"id": "yefira",
 	"version": "${version}",
-	"name": "MC Sync Blender",
+	"name": "Yefira",
 	"description": "This is an example description! Tell everyone what your mod is about!",
 	"authors": [
 		"Me!"
@@ -12,20 +12,20 @@
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
 	"license": "CC0-1.0",
-	"icon": "assets/mc-sync-blender/icon.png",
+	"icon": "assets/yefira/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"com.mozi1924.mcsbl.MCSyncBlender"
+			"com.mozi1924.yefira.Yefira"
 		],
 		"client": [
-			"com.mozi1924.mcsbl.client.MCSyncBlenderClient"
+			"com.mozi1924.yefira.client.YefiraClient"
 		]
 	},
 	"mixins": [
-		"mc-sync-blender.mixins.json",
+		"yefira.mixins.json",
 		{
-			"config": "mc-sync-blender.client.mixins.json",
+			"config": "yefira.client.mixins.json",
 			"environment": "client"
 		}
 	],

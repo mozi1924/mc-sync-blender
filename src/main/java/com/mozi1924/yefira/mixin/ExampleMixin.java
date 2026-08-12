@@ -1,4 +1,4 @@
-package com.mozi1924.mcsbl.mixin;
+package com.mozi1924.yefira.mixin;
 
 import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;

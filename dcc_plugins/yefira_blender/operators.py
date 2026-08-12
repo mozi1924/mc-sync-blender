@@ -5,8 +5,8 @@ from .websocket_client import SyncClientThread
 
 _client_thread = None
 
-class MOZISYNC_OT_install_deps(bpy.types.Operator):
-    bl_idname = "mozisync.install_deps"
+class YEFIRA_OT_install_deps(bpy.types.Operator):
+    bl_idname = "yefira.install_deps"
     bl_label = "Install WebSocket Dependency"
     bl_description = "Install 'websockets' module into Blender's Python environment via pip"
 
@@ -19,14 +19,14 @@ class MOZISYNC_OT_install_deps(bpy.types.Operator):
             self.report({'ERROR'}, "Failed to install 'websockets'. Check console for details.")
         return {'FINISHED'}
 
-class MOZISYNC_OT_connect(bpy.types.Operator):
-    bl_idname = "mozisync.connect"
+class YEFIRA_OT_connect(bpy.types.Operator):
+    bl_idname = "yefira.connect"
     bl_label = "Connect"
-    bl_description = "Connect to MC Sync WebSocket Server"
+    bl_description = "Connect to Yefira WebSocket Server"
 
     def execute(self, context):
         global _client_thread
-        props = context.scene.mozisync
+        props = context.scene.yefira
 
         if not is_websockets_installed():
             self.report({'WARNING'}, "Please install 'websockets' dependency first!")
@@ -45,7 +45,7 @@ class MOZISYNC_OT_connect(bpy.types.Operator):
                         for area in window.screen.areas:
                             area.tag_redraw()
                 except Exception as e:
-                    print(f"[Mozisync] Timer update error: {e}")
+                    print(f"[Yefira] Timer update error: {e}")
                 return None
             bpy.app.timers.register(wrapper)
 
@@ -123,14 +123,14 @@ class MOZISYNC_OT_connect(bpy.types.Operator):
         self.report({'INFO'}, f"Connecting to {props.url}...")
         return {'FINISHED'}
 
-class MOZISYNC_OT_disconnect(bpy.types.Operator):
-    bl_idname = "mozisync.disconnect"
+class YEFIRA_OT_disconnect(bpy.types.Operator):
+    bl_idname = "yefira.disconnect"
     bl_label = "Disconnect"
-    bl_description = "Disconnect from MC Sync WebSocket Server"
+    bl_description = "Disconnect from Yefira WebSocket Server"
 
     def execute(self, context):
         global _client_thread
-        props = context.scene.mozisync
+        props = context.scene.yefira
 
         if _client_thread:
             _client_thread.stop()
@@ -138,11 +138,11 @@ class MOZISYNC_OT_disconnect(bpy.types.Operator):
 
         props.connection_status = "DISCONNECTED"
         props.is_connected = False
-        self.report({'INFO'}, "Disconnected from MC Sync server.")
+        self.report({'INFO'}, "Disconnected from Yefira server.")
         return {'FINISHED'}
 
-class MOZISYNC_OT_refresh(bpy.types.Operator):
-    bl_idname = "mozisync.refresh"
+class YEFIRA_OT_refresh(bpy.types.Operator):
+    bl_idname = "yefira.refresh"
     bl_label = "Refresh Snapshot"
     bl_description = "Request server to send a fresh full snapshot"
 
@@ -150,17 +150,17 @@ class MOZISYNC_OT_refresh(bpy.types.Operator):
         global _client_thread
         if _client_thread and _client_thread.is_alive():
             _client_thread.send_text("REFRESH")
-            self.report({'INFO'}, "Sent REFRESH request to MC Sync Server.")
+            self.report({'INFO'}, "Sent REFRESH request to Yefira Server.")
         else:
             self.report({'WARNING'}, "Not connected to server.")
         return {'FINISHED'}
 
-class MOZISYNC_OT_clear_history(bpy.types.Operator):
-    bl_idname = "mozisync.clear_history"
+class YEFIRA_OT_clear_history(bpy.types.Operator):
+    bl_idname = "yefira.clear_history"
     bl_label = "Clear History"
     bl_description = "Clear live update history log"
 
     def execute(self, context):
-        context.scene.mozisync.delta_history.clear()
+        context.scene.yefira.delta_history.clear()
         self.report({'INFO'}, "Cleared update history log.")
         return {'FINISHED'}

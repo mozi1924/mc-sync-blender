@@ -1,4 +1,4 @@
-package com.mozi1924.mcsbl.selection;
+package com.mozi1924.yefira.selection;
 
 import net.minecraft.core.BlockPos;
 

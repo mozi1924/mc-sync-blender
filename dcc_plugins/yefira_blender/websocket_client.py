@@ -4,7 +4,7 @@ import threading
 import logging
 import time
 
-logger = logging.getLogger("Mozisync")
+logger = logging.getLogger("Yefira")
 
 class SyncClientThread(threading.Thread):
     def __init__(self, url: str, on_status_change, on_selection_info, on_full_snapshot, on_delta_update):
@@ -32,14 +32,14 @@ class SyncClientThread(threading.Thread):
             return
 
         self.on_status_change("CONNECTING...")
-        logger.info(f"Connecting to MC Sync WebSocket: {self.url}")
+        logger.info(f"Connecting to Yefira WebSocket: {self.url}")
 
         try:
             async with websockets.connect(self.url) as websocket:
                 self.websocket = websocket
                 self.is_connected = True
                 self.on_status_change("CONNECTED")
-                logger.info("Connected to MC Sync WebSocket Server successfully!")
+                logger.info("Connected to Yefira WebSocket Server successfully!")
 
                 while self.running and self.is_connected:
                     try:

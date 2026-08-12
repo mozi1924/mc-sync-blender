@@ -2,7 +2,7 @@ import sys
 import subprocess
 import logging
 
-logger = logging.getLogger("Mozisync")
+logger = logging.getLogger("Yefira")
 
 def is_websockets_installed() -> bool:
     try:

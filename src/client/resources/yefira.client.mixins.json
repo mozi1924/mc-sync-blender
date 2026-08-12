@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "com.mozi1924.mcsbl.client.mixin",
+	"package": "com.mozi1924.yefira.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"ExampleClientMixin"

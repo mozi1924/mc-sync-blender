@@ -1,13 +1,13 @@
 import bpy
 from .deps_installer import is_websockets_installed
 
-class MOZISYNC_UL_palette_list(bpy.types.UIList):
+class YEFIRA_UL_palette_list(bpy.types.UIList):
     """Palette 调色板 UI 列表"""
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             layout.label(text=item.state_str, icon='CUBE')
 
-class MOZISYNC_UL_delta_list(bpy.types.UIList):
+class YEFIRA_UL_delta_list(bpy.types.UIList):
     """Delta 变动历史 UI 列表"""
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
@@ -16,24 +16,24 @@ class MOZISYNC_UL_delta_list(bpy.types.UIList):
             row.label(text=item.pos_str, icon='EMPTY_AXIS')
             row.label(text=item.block_state, icon='FILE_REFRESH')
 
-class MOZISYNC_PT_main_panel(bpy.types.Panel):
-    bl_label = "MC Sync Blender (Mozisync B3D)"
-    bl_idname = "MOZISYNC_PT_main_panel"
+class YEFIRA_PT_main_panel(bpy.types.Panel):
+    bl_label = "Yefira B3D"
+    bl_idname = "YEFIRA_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "MC Sync"
+    bl_category = "Yefira"
 
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        props = scene.mozisync
+        props = scene.yefira
 
         # 1. 依赖库检查与安装区
         if not is_websockets_installed():
             box_dep = layout.box()
             box_dep.alert = True
             box_dep.label(text="Missing 'websockets' library!", icon='ERROR')
-            box_dep.operator("mozisync.install_deps", icon='CONSOLE')
+            box_dep.operator("yefira.install_deps", icon='CONSOLE')
             layout.separator()
 
         # 2. 通信设置与连接区
@@ -43,10 +43,10 @@ class MOZISYNC_PT_main_panel(bpy.types.Panel):
 
         row = box_conn.row(align=True)
         if not props.is_connected:
-            row.operator("mozisync.connect", icon='PLAY', text="Connect")
+            row.operator("yefira.connect", icon='PLAY', text="Connect")
         else:
-            row.operator("mozisync.disconnect", icon='PAUSE', text="Disconnect")
-            row.operator("mozisync.refresh", icon='FILE_REFRESH', text="Refresh")
+            row.operator("yefira.disconnect", icon='PAUSE', text="Disconnect")
+            row.operator("yefira.refresh", icon='FILE_REFRESH', text="Refresh")
 
         # 状态指示
         status_row = box_conn.row()
@@ -71,7 +71,7 @@ class MOZISYNC_PT_main_panel(bpy.types.Panel):
             box_pal = layout.box()
             box_pal.label(text="Palette Block States", icon='CUBE')
             box_pal.template_list(
-                "MOZISYNC_UL_palette_list", "",
+                "YEFIRA_UL_palette_list", "",
                 props, "palette_list",
                 props, "palette_active_index",
                 rows=4
@@ -85,10 +85,10 @@ class MOZISYNC_PT_main_panel(bpy.types.Panel):
         box_log = layout.box()
         header_row = box_log.row(align=True)
         header_row.label(text=f"Live Updates ({props.update_counter})", icon='TIME')
-        header_row.operator("mozisync.clear_history", icon='TRASH', text="")
+        header_row.operator("yefira.clear_history", icon='TRASH', text="")
 
         box_log.template_list(
-            "MOZISYNC_UL_delta_list", "",
+            "YEFIRA_UL_delta_list", "",
             props, "delta_history",
             props, "delta_active_index",
             rows=6

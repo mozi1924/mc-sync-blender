@@ -12,29 +12,29 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 bl_info = {
-    "name": "Mozisync B3D (MC Sync Blender)",
+    "name": "Yefira B3D",
     "author": "Mozi Team",
     "description": "Minecraft to Blender Selection & Incremental Binary WebSocket Receiver Plugin",
     "blender": (4, 2, 0),
     "version": (1, 0, 0),
-    "location": "View3D > Sidebar > MC Sync",
+    "location": "View3D > Sidebar > Yefira",
     "category": "Import-Export",
 }
 
 import bpy
 from . import auto_load
-from .properties import MozisyncSceneProperties
+from .properties import YefiraSceneProperties
 
 auto_load.init()
 
 def register():
     auto_load.register()
-    bpy.types.Scene.mozisync = bpy.props.PointerProperty(type=MozisyncSceneProperties)
+    bpy.types.Scene.yefira = bpy.props.PointerProperty(type=YefiraSceneProperties)
 
 def unregister():
-    if hasattr(bpy.types.Scene, "mozisync"):
+    if hasattr(bpy.types.Scene, "yefira"):
         try:
-            del bpy.types.Scene.mozisync
+            del bpy.types.Scene.yefira
         except Exception:
             pass
     try:

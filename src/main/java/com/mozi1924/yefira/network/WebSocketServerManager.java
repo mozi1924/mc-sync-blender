@@ -1,9 +1,9 @@
-package com.mozi1924.mcsbl.network;
+package com.mozi1924.yefira.network;
 
-import com.mozi1924.mcsbl.MCSyncBlender;
-import com.mozi1924.mcsbl.encoder.BlockDataEncoder;
-import com.mozi1924.mcsbl.selection.SelectionBox;
-import com.mozi1924.mcsbl.selection.SelectionManager;
+import com.mozi1924.yefira.Yefira;
+import com.mozi1924.yefira.encoder.BlockDataEncoder;
+import com.mozi1924.yefira.selection.SelectionBox;
+import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.world.level.Level;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -43,9 +43,9 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         try {
             this.start();
             SelectionManager.getInstance().addListener(this);
-            MCSyncBlender.LOGGER.info("WebSocket Server started on port: {}", getPort());
+            Yefira.LOGGER.info("WebSocket Server started on port: {}", getPort());
         } catch (Exception e) {
-            MCSyncBlender.LOGGER.error("Failed to start WebSocket Server", e);
+            Yefira.LOGGER.error("Failed to start WebSocket Server", e);
         }
     }
 
@@ -53,16 +53,16 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         try {
             SelectionManager.getInstance().removeListener(this);
             this.stop(1000);
-            MCSyncBlender.LOGGER.info("WebSocket Server stopped.");
+            Yefira.LOGGER.info("WebSocket Server stopped.");
         } catch (Exception e) {
-            MCSyncBlender.LOGGER.error("Error stopping WebSocket Server", e);
+            Yefira.LOGGER.error("Error stopping WebSocket Server", e);
         }
     }
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         clients.add(conn);
-        MCSyncBlender.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
+        Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
 
         // 新连接建立时，自动推送当前选区与全量快照
         SelectionManager selectionManager = SelectionManager.getInstance();
@@ -74,7 +74,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         clients.remove(conn);
-        MCSyncBlender.LOGGER.info("DCC client disconnected: {}", conn.getRemoteSocketAddress());
+        Yefira.LOGGER.info("DCC client disconnected: {}", conn.getRemoteSocketAddress());
     }
 
     @Override
@@ -97,12 +97,12 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
     @Override
     public void onError(WebSocket conn, Exception ex) {
-        MCSyncBlender.LOGGER.error("WebSocket error on connection: {}", conn != null ? conn.getRemoteSocketAddress() : "global", ex);
+        Yefira.LOGGER.error("WebSocket error on connection: {}", conn != null ? conn.getRemoteSocketAddress() : "global", ex);
     }
 
     @Override
     public void onStart() {
-        MCSyncBlender.LOGGER.info("WebSocket Server successfully initialized.");
+        Yefira.LOGGER.info("WebSocket Server successfully initialized.");
     }
 
     // --- SelectionChangeListener 接口实现 ---
@@ -110,7 +110,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     @Override
     public void onSelectionChanged(Level level, SelectionBox selection) {
         if (clients.isEmpty()) return;
-        MCSyncBlender.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
+        Yefira.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
         broadcastSnapshot(level, selection);
     }
 
@@ -129,7 +129,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
             byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
             conn.send(snapshotBytes);
         } catch (Exception e) {
-            MCSyncBlender.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
+            Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
         }
     }
 
@@ -146,7 +146,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
                 }
             }
         } catch (Exception e) {
-            MCSyncBlender.LOGGER.error("Error broadcasting snapshot", e);
+            Yefira.LOGGER.error("Error broadcasting snapshot", e);
         }
     }
 
@@ -160,7 +160,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
                 }
             }
         } catch (Exception e) {
-            MCSyncBlender.LOGGER.error("Error broadcasting delta update", e);
+            Yefira.LOGGER.error("Error broadcasting delta update", e);
         }
     }
 }

@@ -1,8 +1,8 @@
-package com.mozi1924.mcsbl.command;
+package com.mozi1924.yefira.command;
 
-import com.mozi1924.mcsbl.network.WebSocketServerManager;
-import com.mozi1924.mcsbl.selection.SelectionBox;
-import com.mozi1924.mcsbl.selection.SelectionManager;
+import com.mozi1924.yefira.network.WebSocketServerManager;
+import com.mozi1924.yefira.selection.SelectionBox;
+import com.mozi1924.yefira.selection.SelectionManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;

@@ -1,6 +1,6 @@
-package com.mozi1924.mcsbl.event;
+package com.mozi1924.yefira.event;
 
-import com.mozi1924.mcsbl.selection.SelectionManager;
+import com.mozi1924.yefira.selection.SelectionManager;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.core.BlockPos;

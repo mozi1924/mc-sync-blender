@@ -11,7 +11,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"mc-sync-blender" {
+		"yefira" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}

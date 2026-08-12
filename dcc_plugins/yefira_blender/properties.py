@@ -1,18 +1,18 @@
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, CollectionProperty, PointerProperty
 
-class MozisyncPaletteItem(bpy.types.PropertyGroup):
+class YefiraPaletteItem(bpy.types.PropertyGroup):
     state_str: StringProperty(name="BlockState")
 
-class MozisyncDeltaItem(bpy.types.PropertyGroup):
+class YefiraDeltaItem(bpy.types.PropertyGroup):
     timestamp: StringProperty(name="Time")
     pos_str: StringProperty(name="Position")
     block_state: StringProperty(name="BlockState")
 
-class MozisyncSceneProperties(bpy.types.PropertyGroup):
+class YefiraSceneProperties(bpy.types.PropertyGroup):
     url: StringProperty(
         name="Server URL",
-        description="WebSocket address of MC-Sync mod server",
+        description="WebSocket address of Yefira mod server",
         default="ws://localhost:8765"
     )
 
@@ -48,11 +48,11 @@ class MozisyncSceneProperties(bpy.types.PropertyGroup):
     palette_count: IntProperty(default=0)
 
     # Palette 调色板项列表
-    palette_list: CollectionProperty(type=MozisyncPaletteItem)
+    palette_list: CollectionProperty(type=YefiraPaletteItem)
     palette_active_index: IntProperty(default=0)
 
     # 实时变动历史列表
-    delta_history: CollectionProperty(type=MozisyncDeltaItem)
+    delta_history: CollectionProperty(type=YefiraDeltaItem)
     delta_active_index: IntProperty(default=0)
 
     # 最新变动摘要
