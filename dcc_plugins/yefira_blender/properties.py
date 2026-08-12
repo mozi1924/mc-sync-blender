@@ -61,3 +61,23 @@ class YefiraSceneProperties(bpy.types.PropertyGroup):
         default="No updates received yet."
     )
     update_counter: IntProperty(default=0)
+
+    # 点云与校验属性
+    filter_air: BoolProperty(
+        name="Filter Air",
+        description="Exclude air blocks from Point Cloud vertices",
+        default=True
+    )
+    enable_geo_nodes: BoolProperty(
+        name="Voxel Cube Render",
+        description="Render points as voxel cubes using Geometry Nodes",
+        default=True
+    )
+    point_count: IntProperty(default=0, name="Point Count")
+    sync_verified: BoolProperty(default=False, name="Sync Verified")
+    mismatch_count: IntProperty(default=0, name="Mismatch Count")
+    validation_info: StringProperty(
+        name="Validation Status",
+        default="Pending validation..."
+    )
+

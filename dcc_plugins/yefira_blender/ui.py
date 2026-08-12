@@ -55,7 +55,29 @@ class YEFIRA_PT_main_panel(bpy.types.Panel):
 
         layout.separator()
 
-        # 3. 详细选区数据 Inspector 面板
+        # 3. 点云与校验同步控制面板
+        box_pc = layout.box()
+        box_pc.label(text="Point Cloud & Sync Validation", icon='POINTCLOUD_DATA')
+        if props.has_selection:
+            col_pc = box_pc.column(align=True)
+            col_pc.label(text=f"Active Points: {props.point_count} pts", icon='POINTCLOUD_POINT')
+            
+            col_pc.label(text="Transform: Free (User Move/Rotate/Scale)", icon='OBJECT_ORIGIN')
+
+            col_pc.prop(props, "filter_air", text="Filter Air Blocks")
+            col_pc.prop(props, "enable_geo_nodes", text="Voxel Cube Render")
+
+            val_box = box_pc.box()
+            val_icon = 'CHECKMARK' if props.sync_verified else 'ERROR'
+            val_box.label(text=f"Sync: {props.validation_info}", icon=val_icon)
+
+            box_pc.operator("yefira.rebuild_point_cloud", icon='FILE_REFRESH', text="Rebuild Point Cloud")
+        else:
+            box_pc.label(text="No selection active", icon='INFO')
+
+        layout.separator()
+
+        # 4. 详细选区数据 Inspector 面板
         box_data = layout.box()
         box_data.label(text="Selection Details", icon='SCENE_DATA')
 
@@ -67,7 +89,6 @@ class YEFIRA_PT_main_panel(bpy.types.Panel):
             col.label(text=f"Volume: {props.total_blocks} blocks", icon='OUTLINER_OB_MESH')
             col.label(text=f"Palette States: {props.palette_count} types", icon='OUTLINER_COLLECTION')
 
-            # 4. Palette 方块调色板表
             box_pal = layout.box()
             box_pal.label(text="Palette Block States", icon='CUBE')
             box_pal.template_list(

@@ -2,10 +2,10 @@ import bpy
 import time
 from .deps_installer import is_websockets_installed, install_websockets
 from .websocket_client import SyncClientThread
+from .point_cloud import voxel_storage, update_blender_point_cloud
 
 _client_thread = None
 _last_seq_id = 0
-_section_crc_map = {}
 
 class YEFIRA_OT_install_deps(bpy.types.Operator):
     bl_idname = "yefira.install_deps"
@@ -27,7 +27,7 @@ class YEFIRA_OT_connect(bpy.types.Operator):
     bl_description = "Connect to Yefira WebSocket Server"
 
     def execute(self, context):
-        global _client_thread, _last_seq_id, _section_crc_map
+        global _client_thread, _last_seq_id
         props = context.scene.yefira
 
         if not is_websockets_installed():
@@ -42,7 +42,6 @@ class YEFIRA_OT_connect(bpy.types.Operator):
             def wrapper():
                 try:
                     func()
-                    # 强制刷新 window_manager 界面重绘
                     for window in bpy.context.window_manager.windows:
                         for area in window.screen.areas:
                             area.tag_redraw()
@@ -68,7 +67,7 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 props.total_blocks = size_x * size_y * size_z
             run_in_main_thread(update)
 
-        def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, total_blocks):
+        def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
@@ -77,22 +76,30 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 props.max_z = min_z + size_z - 1
                 props.size_x, props.size_y, props.size_z = size_x, size_y, size_z
                 props.palette_count = len(palette)
+                total_blocks = size_x * size_y * size_z
                 props.total_blocks = total_blocks
                 props.update_counter += 1
 
-                # 更新 Palette 列表
+                # 1. 更新 VoxelStorage 内存存储
+                voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
+
+                # 2. 构建/更新 Blender 中的点云 Mesh 及其自定义属性
+                obj = update_blender_point_cloud(bpy.context, voxel_storage, props.filter_air, props.enable_geo_nodes)
+                props.point_count = len(obj.data.vertices) if obj else 0
+
+                # 更新 Palette UI 列表
                 props.palette_list.clear()
                 for p_item in palette:
                     item = props.palette_list.add()
                     item.state_str = p_item
 
-                props.last_update_info = f"Full Snapshot: {total_blocks} blocks, {len(palette)} palette states."
+                props.last_update_info = f"Full Snapshot: {total_blocks} blocks ({props.point_count} points)."
 
                 # 记录日志历史
                 item = props.delta_history.add()
                 item.timestamp = time.strftime("%H:%M:%S")
                 item.pos_str = f"Bounds: {size_x}x{size_y}x{size_z}"
-                item.block_state = f"Snapshot ({total_blocks} blocks, {len(palette)} states)"
+                item.block_state = f"Snapshot ({total_blocks} blocks, {props.point_count} pts)"
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
@@ -100,7 +107,6 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 global _last_seq_id
                 props.update_counter += 1
 
-                # SeqID 校验
                 if _last_seq_id > 0 and seq_id > _last_seq_id + 1:
                     print(f"[Yefira] SeqID gap detected! Expected {_last_seq_id + 1}, got {seq_id}. Requesting full sync...")
                     if _client_thread:
@@ -109,6 +115,11 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 _last_seq_id = seq_id
 
                 if changes:
+                    # 更新 VoxelStorage 增量数据
+                    voxel_storage.apply_delta_update(changes)
+                    obj = update_blender_point_cloud(bpy.context, voxel_storage, props.filter_air, props.enable_geo_nodes)
+                    props.point_count = len(obj.data.vertices) if obj else 0
+
                     curr_time = time.strftime("%H:%M:%S")
                     for abs_x, abs_y, abs_z, state in changes:
                         item = props.delta_history.add()
@@ -116,46 +127,48 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                         item.pos_str = f"({abs_x}, {abs_y}, {abs_z})"
                         item.block_state = f"[Seq #{seq_id}] {state}"
 
-                    # 保持最多 30 条历史记录
                     while len(props.delta_history) > 30:
                         props.delta_history.remove(0)
 
                     abs_x, abs_y, abs_z, state = changes[-1]
-                    props.last_update_info = f"Delta Update [Seq #{seq_id}] ({len(changes)} blocks):\n({abs_x},{abs_y},{abs_z}) -> {state}"
+                    props.last_update_info = f"Delta [Seq #{seq_id}] ({len(changes)} blocks):\n({abs_x},{abs_y},{abs_z}) -> {state}"
             run_in_main_thread(update)
 
         def on_section_manifest(current_seq_id, sections):
             def update():
-                global _last_seq_id, _section_crc_map
+                global _last_seq_id
                 _last_seq_id = current_seq_id
 
-                mismatched = []
-                for sec_x, sec_y, sec_z, crc32 in sections:
-                    key = (sec_x, sec_y, sec_z)
-                    if key not in _section_crc_map or _section_crc_map[key] != crc32:
-                        mismatched.append(key)
+                mismatched = voxel_storage.validate_manifest(sections)
+                props.sync_verified = (len(mismatched) == 0)
+                props.mismatch_count = len(mismatched)
 
                 item = props.delta_history.add()
                 item.timestamp = time.strftime("%H:%M:%S")
                 item.pos_str = f"Manifest: {len(sections)} Sections"
 
                 if mismatched:
+                    props.validation_info = f"Mismatch: {len(mismatched)} / {len(sections)} sections"
                     item.block_state = f"Validation mismatch for {len(mismatched)} sections, requesting section sync..."
                     if _client_thread:
                         _client_thread.send_req_section_sync(mismatched)
                 else:
+                    props.validation_info = f"100% Synced ({len(sections)} sections verified)"
                     item.block_state = f"All {len(sections)} sections validated (CRC32 OK)."
 
             run_in_main_thread(update)
 
-        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, total_blocks):
+        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
-                global _section_crc_map
                 props.update_counter += 1
+                voxel_storage.set_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
+                obj = update_blender_point_cloud(bpy.context, voxel_storage, props.filter_air, props.enable_geo_nodes)
+                props.point_count = len(obj.data.vertices) if obj else 0
+
                 item = props.delta_history.add()
                 item.timestamp = time.strftime("%H:%M:%S")
                 item.pos_str = f"Section ({sec_x},{sec_y},{sec_z})"
-                item.block_state = f"Section Sync ({total_blocks} blocks, {len(palette)} states)"
+                item.block_state = f"Section Sync ({props.point_count} pts)"
             run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
@@ -201,6 +214,21 @@ class YEFIRA_OT_refresh(bpy.types.Operator):
             self.report({'INFO'}, "Sent REFRESH request to Yefira Server.")
         else:
             self.report({'WARNING'}, "Not connected to server.")
+        return {'FINISHED'}
+
+class YEFIRA_OT_rebuild_point_cloud(bpy.types.Operator):
+    bl_idname = "yefira.rebuild_point_cloud"
+    bl_label = "Rebuild Point Cloud"
+    bl_description = "Force rebuild Blender Point Cloud mesh and custom attributes from local voxel storage"
+
+    def execute(self, context):
+        props = context.scene.yefira
+        obj = update_blender_point_cloud(context, voxel_storage, props.filter_air, props.enable_geo_nodes)
+        if obj:
+            props.point_count = len(obj.data.vertices)
+            self.report({'INFO'}, f"Successfully rebuilt Point Cloud: {props.point_count} points.")
+        else:
+            self.report({'WARNING'}, "No voxel data available to rebuild point cloud.")
         return {'FINISHED'}
 
 class YEFIRA_OT_clear_history(bpy.types.Operator):

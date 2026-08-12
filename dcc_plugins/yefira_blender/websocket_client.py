@@ -97,7 +97,13 @@ class SyncClientThread(threading.Thread):
             offset += 1
 
             total_blocks = size_x * size_y * size_z
-            self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, total_blocks)
+            grid_indices_raw = data[offset:]
+            if index_bytes_per_block == 1:
+                grid_indices = list(grid_indices_raw[:total_blocks])
+            else:
+                grid_indices = list(struct.unpack(f'<{total_blocks}H', grid_indices_raw[:total_blocks * 2]))
+
+            self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
         elif packet_type == 0x03:  # Delta Update (with SeqID)
             seq_id = struct.unpack('<I', data[offset:offset+4])[0]
@@ -131,7 +137,7 @@ class SyncClientThread(threading.Thread):
 
             sections = []
             for _ in range(section_count):
-                sec_x, sec_y, sec_z, crc32 = struct.unpack('<iiii', data[offset:offset+16])
+                sec_x, sec_y, sec_z, crc32 = struct.unpack('<iiiI', data[offset:offset+16])
                 offset += 16
                 sections.append((sec_x, sec_y, sec_z, crc32))
 
@@ -160,8 +166,14 @@ class SyncClientThread(threading.Thread):
             offset += 1
 
             total_blocks = size_x * size_y * size_z
+            grid_indices_raw = data[offset:]
+            if index_bytes_per_block == 1:
+                grid_indices = list(grid_indices_raw[:total_blocks])
+            else:
+                grid_indices = list(struct.unpack(f'<{total_blocks}H', grid_indices_raw[:total_blocks * 2]))
+
             if self.on_section_snapshot:
-                self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, total_blocks)
+                self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
 
     def stop(self):
         self.running = False
