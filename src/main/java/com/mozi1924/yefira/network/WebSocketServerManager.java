@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class WebSocketServerManager extends WebSocketServer implements SelectionManager.SelectionChangeListener {
 
@@ -59,12 +60,14 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         }
     }
 
+    private final AtomicLong globalSeqId = new AtomicLong(1);
+
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         clients.add(conn);
         Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
 
-        // 新连接建立时，自动推送当前选区与全量快照
+        // 新连接建立时，自动推送当前选区与全量快照及区块 Manifest
         SelectionManager selectionManager = SelectionManager.getInstance();
         if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
             sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
@@ -92,7 +95,45 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
     @Override
     public void onMessage(WebSocket conn, ByteBuffer message) {
-        // 可扩充处理来自客户端的反向数据流
+        if (message == null || message.remaining() < 4) return;
+
+        message.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        byte b0 = message.get();
+        byte b1 = message.get();
+
+        if (b0 != BlockDataEncoder.MAGIC[0] || b1 != BlockDataEncoder.MAGIC[1]) {
+            return;
+        }
+
+        byte version = message.get();
+        byte packetType = message.get();
+
+        SelectionManager selectionManager = SelectionManager.getInstance();
+        if (!selectionManager.hasSelection() || selectionManager.getCurrentLevel() == null) {
+            return;
+        }
+
+        Level level = selectionManager.getCurrentLevel();
+        SelectionBox selection = selectionManager.getCurrentSelection();
+
+        if (packetType == BlockDataEncoder.PACKET_C2S_REQ_FULL_SYNC) {
+            Yefira.LOGGER.info("Client {} requested FULL SYNC.", conn.getRemoteSocketAddress());
+            sendSnapshotToClient(conn, level, selection);
+        } else if (packetType == BlockDataEncoder.PACKET_C2S_REQ_SECTION_SYNC) {
+            if (message.remaining() < 2) return;
+            int count = message.getShort() & 0xFFFF;
+            Yefira.LOGGER.info("Client {} requested section sync for {} sections.", conn.getRemoteSocketAddress(), count);
+
+            for (int i = 0; i < count; i++) {
+                if (message.remaining() < 12) break;
+                int secX = message.getInt();
+                int secY = message.getInt();
+                int secZ = message.getInt();
+                BlockDataEncoder.SectionPos secPos = new BlockDataEncoder.SectionPos(secX, secY, secZ);
+                byte[] sectionSnapshot = BlockDataEncoder.encodeSectionSnapshot(level, selection, secPos);
+                conn.send(sectionSnapshot);
+            }
+        }
     }
 
     @Override
@@ -128,6 +169,15 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
             byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
             conn.send(snapshotBytes);
+
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, globalSeqId.get());
+            conn.send(manifestBytes);
+
+            List<BlockDataEncoder.SectionPos> sections = BlockDataEncoder.getCoveredSections(selection);
+            for (BlockDataEncoder.SectionPos sec : sections) {
+                byte[] secBytes = BlockDataEncoder.encodeSectionSnapshot(level, selection, sec);
+                conn.send(secBytes);
+            }
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
         }
@@ -138,11 +188,19 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         try {
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, globalSeqId.get());
+
+            List<BlockDataEncoder.SectionPos> sections = BlockDataEncoder.getCoveredSections(selection);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
                     client.send(snapshotBytes);
+                    client.send(manifestBytes);
+                    for (BlockDataEncoder.SectionPos sec : sections) {
+                        byte[] secBytes = BlockDataEncoder.encodeSectionSnapshot(level, selection, sec);
+                        client.send(secBytes);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -153,7 +211,8 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     public void broadcastDeltaUpdate(SelectionBox selection, List<BlockDataEncoder.BlockChangeEntry> changes) {
         if (clients.isEmpty() || changes.isEmpty()) return;
         try {
-            byte[] deltaBytes = BlockDataEncoder.encodeDeltaUpdate(selection, changes);
+            long seqId = globalSeqId.incrementAndGet();
+            byte[] deltaBytes = BlockDataEncoder.encodeDeltaUpdate(selection, changes, seqId);
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(deltaBytes);

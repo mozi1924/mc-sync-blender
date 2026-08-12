@@ -27,6 +27,13 @@ public class Yefira implements ModInitializer {
 
 		// 监听服务器生命周期
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			java.nio.file.Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
+			java.nio.file.Path storagePath = com.mozi1924.yefira.selection.SelectionStorageManager.getWorldStoragePath(worldDir);
+			net.minecraft.server.level.ServerLevel level = server.overworld();
+			boolean loaded = com.mozi1924.yefira.selection.SelectionManager.getInstance().loadSavedSelection(storagePath, level);
+			if (loaded) {
+				LOGGER.info("Loaded saved selection for world: {}", worldDir.getFileName());
+			}
 			com.mozi1924.yefira.network.WebSocketServerManager.getInstance().startServer();
 		});
 

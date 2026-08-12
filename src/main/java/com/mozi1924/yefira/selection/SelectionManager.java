@@ -20,6 +20,7 @@ public class SelectionManager {
     private ResourceKey<Level> dimension;
     private SelectionBox currentSelection;
     private Level currentLevel;
+    private java.nio.file.Path activeStoragePath;
 
     private final List<SelectionChangeListener> listeners = new CopyOnWriteArrayList<>();
 
@@ -34,6 +35,32 @@ public class SelectionManager {
 
     public void removeListener(SelectionChangeListener listener) {
         listeners.remove(listener);
+    }
+
+    public synchronized void setActiveStoragePath(java.nio.file.Path storagePath) {
+        this.activeStoragePath = storagePath;
+    }
+
+    public synchronized java.nio.file.Path getActiveStoragePath() {
+        return activeStoragePath;
+    }
+
+    public synchronized boolean loadSavedSelection(java.nio.file.Path storagePath, Level level) {
+        this.activeStoragePath = storagePath;
+        SelectionStorageManager.SelectionData data = SelectionStorageManager.loadFromPath(storagePath);
+        if (data != null) {
+            this.currentLevel = level;
+            this.dimension = data.dimension();
+            this.pos1 = data.pos1();
+            this.pos2 = data.pos2();
+            this.currentSelection = new SelectionBox(pos1, pos2);
+            for (SelectionChangeListener listener : listeners) {
+                listener.onSelectionChanged(currentLevel, currentSelection);
+            }
+            Yefira.LOGGER.info("Loaded saved selection from {}", storagePath);
+            return true;
+        }
+        return false;
     }
 
     public synchronized void setPos1(Level level, BlockPos pos) {
@@ -56,6 +83,9 @@ public class SelectionManager {
         this.currentSelection = null;
         this.currentLevel = null;
         this.dimension = null;
+        if (activeStoragePath != null) {
+            SelectionStorageManager.deleteStorageFile(activeStoragePath);
+        }
         for (SelectionChangeListener listener : listeners) {
             listener.onSelectionCleared();
         }
@@ -69,6 +99,9 @@ public class SelectionManager {
                     currentSelection.getMin().toShortString(),
                     currentSelection.getMax().toShortString(),
                     currentSelection.getVolume());
+            if (activeStoragePath != null) {
+                SelectionStorageManager.saveToPath(activeStoragePath, pos1, pos2, dimension);
+            }
             for (SelectionChangeListener listener : listeners) {
                 listener.onSelectionChanged(currentLevel, currentSelection);
             }

@@ -17,11 +17,13 @@ import net.minecraft.world.phys.BlockHitResult;
 public class BlockInteractionHandler {
 
     public static void register() {
-        // 左键打破/点击方块设置 Pos1 (手持金镐)
+        // 左键攻击/点击方块设置 Pos1 并拦截破坏方块 (手持金镐)
         AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
-            if (!level.isClientSide() && isHoldingSelectionTool(player, hand)) {
-                SelectionManager.getInstance().setPos1(level, pos);
-                player.sendSystemMessage(Component.literal("§a[Yefira] First position set to " + pos.toShortString()));
+            if (isHoldingSelectionTool(player, hand)) {
+                if (!level.isClientSide()) {
+                    SelectionManager.getInstance().setPos1(level, pos);
+                    player.sendSystemMessage(Component.literal("§a[Yefira] First position set to " + pos.toShortString()));
+                }
                 return InteractionResult.SUCCESS;
             }
             return InteractionResult.PASS;
@@ -29,10 +31,12 @@ public class BlockInteractionHandler {
 
         // 右键交互方块设置 Pos2 (手持金镐)
         UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> {
-            if (!level.isClientSide() && hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
-                BlockPos pos = hitResult.getBlockPos();
-                SelectionManager.getInstance().setPos2(level, pos);
-                player.sendSystemMessage(Component.literal("§a[Yefira] Second position set to " + pos.toShortString()));
+            if (hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
+                if (!level.isClientSide()) {
+                    BlockPos pos = hitResult.getBlockPos();
+                    SelectionManager.getInstance().setPos2(level, pos);
+                    player.sendSystemMessage(Component.literal("§a[Yefira] Second position set to " + pos.toShortString()));
+                }
                 return InteractionResult.SUCCESS;
             }
             return InteractionResult.PASS;

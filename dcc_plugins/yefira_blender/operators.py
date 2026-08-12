@@ -4,6 +4,8 @@ from .deps_installer import is_websockets_installed, install_websockets
 from .websocket_client import SyncClientThread
 
 _client_thread = None
+_last_seq_id = 0
+_section_crc_map = {}
 
 class YEFIRA_OT_install_deps(bpy.types.Operator):
     bl_idname = "yefira.install_deps"
@@ -25,7 +27,7 @@ class YEFIRA_OT_connect(bpy.types.Operator):
     bl_description = "Connect to Yefira WebSocket Server"
 
     def execute(self, context):
-        global _client_thread
+        global _client_thread, _last_seq_id, _section_crc_map
         props = context.scene.yefira
 
         if not is_websockets_installed():
@@ -93,23 +95,67 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 item.block_state = f"Snapshot ({total_blocks} blocks, {len(palette)} states)"
             run_in_main_thread(update)
 
-        def on_delta_update(min_x, min_y, min_z, changes):
+        def on_delta_update(min_x, min_y, min_z, changes, seq_id):
             def update():
+                global _last_seq_id
                 props.update_counter += 1
+
+                # SeqID 校验
+                if _last_seq_id > 0 and seq_id > _last_seq_id + 1:
+                    print(f"[Yefira] SeqID gap detected! Expected {_last_seq_id + 1}, got {seq_id}. Requesting full sync...")
+                    if _client_thread:
+                        _client_thread.send_req_full_sync()
+
+                _last_seq_id = seq_id
+
                 if changes:
                     curr_time = time.strftime("%H:%M:%S")
                     for abs_x, abs_y, abs_z, state in changes:
                         item = props.delta_history.add()
                         item.timestamp = curr_time
                         item.pos_str = f"({abs_x}, {abs_y}, {abs_z})"
-                        item.block_state = state
+                        item.block_state = f"[Seq #{seq_id}] {state}"
 
                     # 保持最多 30 条历史记录
                     while len(props.delta_history) > 30:
                         props.delta_history.remove(0)
 
                     abs_x, abs_y, abs_z, state = changes[-1]
-                    props.last_update_info = f"Delta Update ({len(changes)} blocks):\n({abs_x},{abs_y},{abs_z}) -> {state}"
+                    props.last_update_info = f"Delta Update [Seq #{seq_id}] ({len(changes)} blocks):\n({abs_x},{abs_y},{abs_z}) -> {state}"
+            run_in_main_thread(update)
+
+        def on_section_manifest(current_seq_id, sections):
+            def update():
+                global _last_seq_id, _section_crc_map
+                _last_seq_id = current_seq_id
+
+                mismatched = []
+                for sec_x, sec_y, sec_z, crc32 in sections:
+                    key = (sec_x, sec_y, sec_z)
+                    if key not in _section_crc_map or _section_crc_map[key] != crc32:
+                        mismatched.append(key)
+
+                item = props.delta_history.add()
+                item.timestamp = time.strftime("%H:%M:%S")
+                item.pos_str = f"Manifest: {len(sections)} Sections"
+
+                if mismatched:
+                    item.block_state = f"Validation mismatch for {len(mismatched)} sections, requesting section sync..."
+                    if _client_thread:
+                        _client_thread.send_req_section_sync(mismatched)
+                else:
+                    item.block_state = f"All {len(sections)} sections validated (CRC32 OK)."
+
+            run_in_main_thread(update)
+
+        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, total_blocks):
+            def update():
+                global _section_crc_map
+                props.update_counter += 1
+                item = props.delta_history.add()
+                item.timestamp = time.strftime("%H:%M:%S")
+                item.pos_str = f"Section ({sec_x},{sec_y},{sec_z})"
+                item.block_state = f"Section Sync ({total_blocks} blocks, {len(palette)} states)"
             run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
@@ -117,7 +163,9 @@ class YEFIRA_OT_connect(bpy.types.Operator):
             on_status_change,
             on_selection_info,
             on_full_snapshot,
-            on_delta_update
+            on_delta_update,
+            on_section_manifest,
+            on_section_snapshot
         )
         _client_thread.start()
         self.report({'INFO'}, f"Connecting to {props.url}...")

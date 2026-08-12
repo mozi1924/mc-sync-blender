@@ -7,13 +7,15 @@ import time
 logger = logging.getLogger("Yefira")
 
 class SyncClientThread(threading.Thread):
-    def __init__(self, url: str, on_status_change, on_selection_info, on_full_snapshot, on_delta_update):
+    def __init__(self, url: str, on_status_change, on_selection_info, on_full_snapshot, on_delta_update, on_section_manifest=None, on_section_snapshot=None):
         super().__init__(daemon=True)
         self.url = url
         self.on_status_change = on_status_change
         self.on_selection_info = on_selection_info
         self.on_full_snapshot = on_full_snapshot
         self.on_delta_update = on_delta_update
+        self.on_section_manifest = on_section_manifest
+        self.on_section_snapshot = on_section_snapshot
         self.running = True
         self.is_connected = False
         self.websocket = None
@@ -97,7 +99,10 @@ class SyncClientThread(threading.Thread):
             total_blocks = size_x * size_y * size_z
             self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, total_blocks)
 
-        elif packet_type == 0x03:  # Delta Update
+        elif packet_type == 0x03:  # Delta Update (with SeqID)
+            seq_id = struct.unpack('<I', data[offset:offset+4])[0]
+            offset += 4
+
             min_x, min_y, min_z = struct.unpack('<iii', data[offset:offset+12])
             offset += 12
 
@@ -115,7 +120,48 @@ class SyncClientThread(threading.Thread):
                 abs_x, abs_y, abs_z = min_x + rel_x, min_y + rel_y, min_z + rel_z
                 changes.append((abs_x, abs_y, abs_z, state_str))
 
-            self.on_delta_update(min_x, min_y, min_z, changes)
+            self.on_delta_update(min_x, min_y, min_z, changes, seq_id)
+
+        elif packet_type == 0x05:  # Section Manifest
+            current_seq_id = struct.unpack('<I', data[offset:offset+4])[0]
+            offset += 4
+
+            section_count = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+
+            sections = []
+            for _ in range(section_count):
+                sec_x, sec_y, sec_z, crc32 = struct.unpack('<iiii', data[offset:offset+16])
+                offset += 16
+                sections.append((sec_x, sec_y, sec_z, crc32))
+
+            if self.on_section_manifest:
+                self.on_section_manifest(current_seq_id, sections)
+
+        elif packet_type == 0x06:  # Section Snapshot
+            sec_x, sec_y, sec_z = struct.unpack('<iii', data[offset:offset+12])
+            offset += 12
+
+            start_x, start_y, start_z, size_x, size_y, size_z = struct.unpack('<iiiiii', data[offset:offset+24])
+            offset += 24
+
+            palette_count = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+
+            palette = []
+            for _ in range(palette_count):
+                str_len = struct.unpack('<H', data[offset:offset+2])[0]
+                offset += 2
+                item_str = data[offset:offset+str_len].decode('utf-8')
+                offset += str_len
+                palette.append(item_str)
+
+            index_bytes_per_block = data[offset]
+            offset += 1
+
+            total_blocks = size_x * size_y * size_z
+            if self.on_section_snapshot:
+                self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, total_blocks)
 
     def stop(self):
         self.running = False
@@ -132,3 +178,21 @@ class SyncClientThread(threading.Thread):
                 asyncio.run_coroutine_threadsafe(self.websocket.send(text), self.loop)
             except Exception as e:
                 logger.error(f"Error sending text over websocket: {e}")
+
+    def send_bytes(self, data: bytes):
+        if self.loop and self.websocket and self.is_connected:
+            try:
+                asyncio.run_coroutine_threadsafe(self.websocket.send(data), self.loop)
+            except Exception as e:
+                logger.error(f"Error sending bytes over websocket: {e}")
+
+    def send_req_full_sync(self):
+        data = struct.pack('<2sBB', b'MC', 0x02, 0x80)
+        self.send_bytes(data)
+
+    def send_req_section_sync(self, sections: list):
+        hdr = struct.pack('<2sBBH', b'MC', 0x02, 0x81, len(sections))
+        body = bytearray()
+        for sec_x, sec_y, sec_z in sections:
+            body.extend(struct.pack('<iii', sec_x, sec_y, sec_z))
+        self.send_bytes(hdr + bytes(body))

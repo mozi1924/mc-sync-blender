@@ -18,11 +18,17 @@ import java.util.*;
 public class BlockDataEncoder {
 
     public static final byte[] MAGIC = new byte[]{(byte) 0x4D, (byte) 0x43}; // 'M', 'C'
-    public static final byte PROTOCOL_VERSION = 0x01;
+    public static final byte PROTOCOL_VERSION = 0x02;
 
     public static final byte PACKET_SELECTION_INFO = 0x01;
     public static final byte PACKET_FULL_SNAPSHOT = 0x02;
     public static final byte PACKET_DELTA_UPDATE = 0x03;
+    public static final byte PACKET_SECTION_MANIFEST = 0x05;
+    public static final byte PACKET_SECTION_SNAPSHOT = 0x06;
+
+    // C2S Request Packet Types
+    public static final byte PACKET_C2S_REQ_FULL_SYNC = (byte) 0x80;
+    public static final byte PACKET_C2S_REQ_SECTION_SYNC = (byte) 0x81;
 
     /**
      * 将 BlockState 序列化为规范字符串标识，例如 "minecraft:oak_log[axis=y,facing=north]"
@@ -158,12 +164,15 @@ public class BlockDataEncoder {
     }
 
     /**
-     * 编码 0x03 Delta Update 增量更新字节数据包
+     * 编码 0x03 Delta Update 增量更新字节数据包 (带 SeqID)
      */
-    public static byte[] encodeDeltaUpdate(SelectionBox selection, List<BlockChangeEntry> changes) {
+    public static byte[] encodeDeltaUpdate(SelectionBox selection, List<BlockChangeEntry> changes, long seqId) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(baos)) {
             writeHeader(out, PACKET_DELTA_UPDATE);
+
+            // Sequence ID (uint32 LE)
+            writeIntLE(out, (int) seqId);
 
             // Bounds min pos (for reference)
             writeIntLE(out, selection.getMin().getX());
@@ -194,6 +203,203 @@ public class BlockDataEncoder {
         }
 
         return baos.toByteArray();
+    }
+
+    /**
+     * 编码 0x05 Section Manifest 校验清单数据包
+     */
+    public static byte[] encodeSectionManifest(Level level, SelectionBox selection, long currentSeqId) {
+        List<SectionPos> sections = getCoveredSections(selection);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(baos)) {
+            writeHeader(out, PACKET_SECTION_MANIFEST);
+
+            // Current Sequence ID (uint32 LE)
+            writeIntLE(out, (int) currentSeqId);
+
+            // Count of sections
+            writeShortLE(out, sections.size());
+
+            for (SectionPos sec : sections) {
+                writeIntLE(out, sec.x);
+                writeIntLE(out, sec.y);
+                writeIntLE(out, sec.z);
+
+                long crc32 = calculateSectionCRC32(level, selection, sec);
+                writeIntLE(out, (int) crc32);
+            }
+            out.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return baos.toByteArray();
+    }
+
+    /**
+     * 编码 0x06 Section Snapshot 单区块快照数据包
+     */
+    public static byte[] encodeSectionSnapshot(Level level, SelectionBox selection, SectionPos secPos) {
+        int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
+        int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
+
+        int startY = Math.max(selection.getMin().getY(), secPos.y << 4);
+        int endY = Math.min(selection.getMax().getY(), (secPos.y << 4) + 15);
+
+        int startZ = Math.max(selection.getMin().getZ(), secPos.z << 4);
+        int endZ = Math.min(selection.getMax().getZ(), (secPos.z << 4) + 15);
+
+        int sizeX = Math.max(0, endX - startX + 1);
+        int sizeY = Math.max(0, endY - startY + 1);
+        int sizeZ = Math.max(0, endZ - startZ + 1);
+
+        List<String> palette = new ArrayList<>();
+        Map<String, Integer> paletteMap = new HashMap<>();
+
+        int totalBlocks = sizeX * sizeY * sizeZ;
+        int[] gridIndices = new int[totalBlocks];
+
+        int index = 0;
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+
+        for (int x = 0; x < sizeX; x++) {
+            for (int y = 0; y < sizeY; y++) {
+                for (int z = 0; z < sizeZ; z++) {
+                    mutablePos.set(startX + x, startY + y, startZ + z);
+                    BlockState state = level.getBlockState(mutablePos);
+                    String stateStr = serializeBlockState(state);
+
+                    int paletteIdx = paletteMap.computeIfAbsent(stateStr, k -> {
+                        int newIdx = palette.size();
+                        palette.add(k);
+                        return newIdx;
+                    });
+
+                    gridIndices[index++] = paletteIdx;
+                }
+            }
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(baos)) {
+            writeHeader(out, PACKET_SECTION_SNAPSHOT);
+
+            // Section coordinates
+            writeIntLE(out, secPos.x);
+            writeIntLE(out, secPos.y);
+            writeIntLE(out, secPos.z);
+
+            // Bounds min pos
+            writeIntLE(out, startX);
+            writeIntLE(out, startY);
+            writeIntLE(out, startZ);
+
+            // Bounds sizes
+            writeIntLE(out, sizeX);
+            writeIntLE(out, sizeY);
+            writeIntLE(out, sizeZ);
+
+            // Palette Count
+            writeShortLE(out, palette.size());
+            for (String item : palette) {
+                byte[] bytes = item.getBytes(StandardCharsets.UTF_8);
+                writeShortLE(out, bytes.length);
+                out.write(bytes);
+            }
+
+            // Grid Indices
+            boolean isBytePalette = palette.size() <= 256;
+            out.writeByte(isBytePalette ? 1 : 2);
+
+            for (int idx : gridIndices) {
+                if (isBytePalette) {
+                    out.writeByte(idx & 0xFF);
+                } else {
+                    writeShortLE(out, idx);
+                }
+            }
+            out.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return baos.toByteArray();
+    }
+
+    public static class SectionPos {
+        public final int x;
+        public final int y;
+        public final int z;
+
+        public SectionPos(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            SectionPos that = (SectionPos) o;
+            return x == that.x && y == that.y && z == that.z;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(x, y, z);
+        }
+
+        @Override
+        public String toString() {
+            return "SectionPos[" + x + ", " + y + ", " + z + "]";
+        }
+    }
+
+    public static List<SectionPos> getCoveredSections(SelectionBox selection) {
+        BlockPos min = selection.getMin();
+        BlockPos max = selection.getMax();
+
+        int minSecX = min.getX() >> 4;
+        int maxSecX = max.getX() >> 4;
+        int minSecY = min.getY() >> 4;
+        int maxSecY = max.getY() >> 4;
+        int minSecZ = min.getZ() >> 4;
+        int maxSecZ = max.getZ() >> 4;
+
+        List<SectionPos> list = new ArrayList<>();
+        for (int sx = minSecX; sx <= maxSecX; sx++) {
+            for (int sy = minSecY; sy <= maxSecY; sy++) {
+                for (int sz = minSecZ; sz <= maxSecZ; sz++) {
+                    list.add(new SectionPos(sx, sy, sz));
+                }
+            }
+        }
+        return list;
+    }
+
+    public static long calculateSectionCRC32(Level level, SelectionBox selection, SectionPos secPos) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
+        int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
+
+        int startY = Math.max(selection.getMin().getY(), secPos.y << 4);
+        int endY = Math.min(selection.getMax().getY(), (secPos.y << 4) + 15);
+
+        int startZ = Math.max(selection.getMin().getZ(), secPos.z << 4);
+        int endZ = Math.min(selection.getMax().getZ(), (secPos.z << 4) + 15);
+
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+        for (int x = startX; x <= endX; x++) {
+            for (int y = startY; y <= endY; y++) {
+                for (int z = startZ; z <= endZ; z++) {
+                    mutablePos.set(x, y, z);
+                    BlockState state = level.getBlockState(mutablePos);
+                    String stateStr = serializeBlockState(state);
+                    crc.update(stateStr.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        }
+        return crc.getValue();
     }
 
     public static class BlockChangeEntry {
