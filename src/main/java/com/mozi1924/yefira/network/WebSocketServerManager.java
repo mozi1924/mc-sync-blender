@@ -4,6 +4,7 @@ import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.encoder.BlockDataEncoder;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -12,7 +13,9 @@ import org.java_websocket.server.WebSocketServer;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,6 +26,11 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     private static int PORT = 8765;
 
     private final Set<WebSocket> clients = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    // Block edits frequently arrive as a burst (fill, paste, WorldEdit-like
+    // operations).  Accumulate the last state for each coordinate and emit
+    // at most one delta packet per server tick.
+    private final Map<BlockPos, BlockDataEncoder.BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
+    private SelectionBox pendingDeltaSelection;
 
     public static synchronized WebSocketServerManager getInstance() {
         if (INSTANCE == null) {
@@ -67,7 +75,9 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         clients.add(conn);
         Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
 
-        // 新连接建立时，自动推送当前选区与全量快照及区块 Manifest
+        // New clients receive one authoritative full snapshot plus its
+        // manifest.  Section snapshots are repair payloads only and are sent
+        // on an explicit client request after a manifest mismatch.
         SelectionManager selectionManager = SelectionManager.getInstance();
         if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
             sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
@@ -151,12 +161,14 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     @Override
     public void onSelectionChanged(Level level, SelectionBox selection) {
         if (clients.isEmpty()) return;
+        clearPendingDeltaChanges();
         Yefira.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
         broadcastSnapshot(level, selection);
     }
 
     @Override
     public void onSelectionCleared() {
+        clearPendingDeltaChanges();
         // 可发送选区清空标志包，目前直接忽略或发送空数据
     }
 
@@ -164,20 +176,15 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
     private void sendSnapshotToClient(WebSocket conn, Level level, SelectionBox selection) {
         try {
+            long snapshotSeqId = globalSeqId.incrementAndGet();
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             conn.send(infoBytes);
 
             byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
             conn.send(snapshotBytes);
 
-            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, globalSeqId.get());
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
             conn.send(manifestBytes);
-
-            List<BlockDataEncoder.SectionPos> sections = BlockDataEncoder.getCoveredSections(selection);
-            for (BlockDataEncoder.SectionPos sec : sections) {
-                byte[] secBytes = BlockDataEncoder.encodeSectionSnapshot(level, selection, sec);
-                conn.send(secBytes);
-            }
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
         }
@@ -186,21 +193,16 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     public void broadcastSnapshot(Level level, SelectionBox selection) {
         if (clients.isEmpty()) return;
         try {
+            long snapshotSeqId = globalSeqId.incrementAndGet();
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
-            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, globalSeqId.get());
-
-            List<BlockDataEncoder.SectionPos> sections = BlockDataEncoder.getCoveredSections(selection);
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
                     client.send(snapshotBytes);
                     client.send(manifestBytes);
-                    for (BlockDataEncoder.SectionPos sec : sections) {
-                        byte[] secBytes = BlockDataEncoder.encodeSectionSnapshot(level, selection, sec);
-                        client.send(secBytes);
-                    }
                 }
             }
         } catch (Exception e) {
@@ -221,5 +223,45 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         } catch (Exception e) {
             Yefira.LOGGER.error("Error broadcasting delta update", e);
         }
+    }
+
+    /** Queue an edit for the next server tick, coalescing repeated writes. */
+    public void queueDeltaUpdate(SelectionBox selection, BlockDataEncoder.BlockChangeEntry change) {
+        if (clients.isEmpty()) return;
+        synchronized (pendingDeltaChanges) {
+            if (pendingDeltaSelection != null && !sameBounds(pendingDeltaSelection, selection)) {
+                pendingDeltaChanges.clear();
+            }
+            pendingDeltaSelection = selection;
+            pendingDeltaChanges.put(change.pos().immutable(), change);
+        }
+    }
+
+    /** Called from END_SERVER_TICK to make edit traffic bounded and ordered. */
+    public void flushQueuedDeltaUpdates() {
+        synchronized (pendingDeltaChanges) {
+            if (pendingDeltaChanges.isEmpty() || pendingDeltaSelection == null) return;
+            SelectionBox selection = pendingDeltaSelection;
+            List<BlockDataEncoder.BlockChangeEntry> changes = List.copyOf(pendingDeltaChanges.values());
+            pendingDeltaChanges.clear();
+            pendingDeltaSelection = null;
+            // Keep this send ordered with selection changes: if a selection
+            // changes concurrently, it either clears this batch before the
+            // send, or waits and sends its replacement snapshot afterwards.
+            // A client can therefore never receive an old-selection delta
+            // after the replacement full snapshot.
+            broadcastDeltaUpdate(selection, changes);
+        }
+    }
+
+    private void clearPendingDeltaChanges() {
+        synchronized (pendingDeltaChanges) {
+            pendingDeltaChanges.clear();
+            pendingDeltaSelection = null;
+        }
+    }
+
+    private static boolean sameBounds(SelectionBox a, SelectionBox b) {
+        return a.getMin().equals(b.getMin()) && a.getMax().equals(b.getMax());
     }
 }

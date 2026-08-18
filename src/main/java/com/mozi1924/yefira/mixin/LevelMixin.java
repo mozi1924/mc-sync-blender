@@ -12,8 +12,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.Collections;
-
 @Mixin(Level.class)
 public abstract class LevelMixin {
 
@@ -50,7 +48,7 @@ public abstract class LevelMixin {
                         selection.contains(pos)) {
 
                         BlockDataEncoder.BlockChangeEntry change = new BlockDataEncoder.BlockChangeEntry(pos.immutable(), state);
-                        WebSocketServerManager.getInstance().broadcastDeltaUpdate(selection, Collections.singletonList(change));
+                        WebSocketServerManager.getInstance().queueDeltaUpdate(selection, change);
                     }
                 }
             }

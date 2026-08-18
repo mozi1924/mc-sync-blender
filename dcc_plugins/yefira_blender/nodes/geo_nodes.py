@@ -19,6 +19,11 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
+# Changing this is an explicit migration.  Point-cloud updates must never
+# rebuild the node graph: doing so invalidates evaluation work and makes live
+# sync depend on Blender's transient node/point ordering.
+WORLD_TREE_SCHEMA_VERSION = 2
+WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
 def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.types.Collection = None) -> Optional[bpy.types.Modifier]:
@@ -41,14 +46,21 @@ def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.ty
     if not mod:
         mod = world_obj.modifiers.new(name=WORLD_MODIFIER_NAME, type='NODES')
 
-    # Recreate or update node group
-    if WORLD_TREE_NAME in bpy.data.node_groups:
-        gn_tree = bpy.data.node_groups[WORLD_TREE_NAME]
+    # Create the graph once, then retain it for all live point updates.  The
+    # schema marker provides a controlled one-time migration for files made by
+    # older versions of the add-on.
+    gn_tree = bpy.data.node_groups.get(WORLD_TREE_NAME)
+    if gn_tree and gn_tree.get(WORLD_TREE_SCHEMA_PROPERTY) == WORLD_TREE_SCHEMA_VERSION:
+        _update_interface_sockets(gn_tree, atlas_params)
+        _update_tree_bindings(gn_tree, template_col, mat)
+    elif gn_tree:
         gn_tree.nodes.clear()
         _update_interface_sockets(gn_tree, atlas_params)
         _build_tree_nodes_and_links(gn_tree, template_col, mat, atlas_params)
+        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
     else:
         gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, mat, atlas_params)
+        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
 
     mod.node_group = gn_tree
 
@@ -59,6 +71,19 @@ def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.ty
     _set_modifier_socket_value(mod, "Tiles Per Row", float(atlas_params["tiles_per_row"]))
 
     return mod
+
+
+def _update_tree_bindings(
+    tree: bpy.types.GeometryNodeTree,
+    template_col: bpy.types.Collection,
+    mat: bpy.types.Material,
+) -> None:
+    """Refresh external data-block references without rebuilding nodes."""
+    for node in tree.nodes:
+        if node.bl_idname == 'GeometryNodeSetMaterial' and 'Material' in node.inputs:
+            node.inputs['Material'].default_value = mat
+        elif node.bl_idname == 'GeometryNodeCollectionInfo' and 'Collection' in node.inputs:
+            node.inputs['Collection'].default_value = template_col
 
 
 def _update_interface_sockets(tree: bpy.types.GeometryNodeTree, atlas_params: dict[str, Any]):

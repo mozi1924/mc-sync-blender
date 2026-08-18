@@ -30,6 +30,8 @@ if HAS_BPY:
         setup_world_geometry_nodes,
         WORLD_TREE_NAME,
         WORLD_MODIFIER_NAME,
+        WORLD_TREE_SCHEMA_PROPERTY,
+        WORLD_TREE_SCHEMA_VERSION,
     )
 
 
@@ -85,9 +87,19 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         self.assertEqual(mod.name, WORLD_MODIFIER_NAME)
         self.assertIsNotNone(mod.node_group)
         self.assertEqual(mod.node_group.name, WORLD_TREE_NAME)
+        self.assertEqual(gn_tree_schema := mod.node_group.get(WORLD_TREE_SCHEMA_PROPERTY), WORLD_TREE_SCHEMA_VERSION)
+
+        # A live point update invokes setup again.  It must preserve the
+        # generated graph rather than clear/recreate it (which used to cause
+        # visible stalls and transient addressing changes).
+        original_tree = mod.node_group
+        original_node_count = len(original_tree.nodes)
+        second_mod = setup_world_geometry_nodes(obj)
+        self.assertIs(second_mod.node_group, original_tree)
+        self.assertEqual(len(second_mod.node_group.nodes), original_node_count)
 
         # 4. Verify Node Group contains UV calculation nodes
-        gn_tree = mod.node_group
+        gn_tree = second_mod.node_group
         node_types = [n.type for n in gn_tree.nodes]
         self.assertTrue("MESH_PRIMITIVE_CUBE" in node_types or "MESH_CUBE" in node_types)
         self.assertIn("INSTANCE_ON_POINTS", node_types)

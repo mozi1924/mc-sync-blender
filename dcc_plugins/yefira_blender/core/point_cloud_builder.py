@@ -8,7 +8,7 @@ from __future__ import annotations
 import bpy
 import logging
 from typing import NamedTuple, Optional
-from .storage import VoxelStorage
+from .storage import VoxelStorage, block_key
 from .block_classifier import parse_and_classify, BlockTypeEnum, ParsedBlock
 from .template_catalog import get_or_create_template_collection, get_template_index_map
 
@@ -61,6 +61,7 @@ def update_world_point_cloud(
     # Attribute Data Lists
     vertices = []
     block_states = []
+    block_keys = []
     block_types = []
     instance_indices = []
     rotations = []
@@ -97,7 +98,10 @@ def update_world_point_cloud(
         vz = (abs_y - min_y) + 0.5
 
         vertices.append((vx, vy, vz))
-        block_states.append(parsed.full_state.encode('utf-8'))
+        block_states.append(parsed.full_state)
+        # Do not use a point index as a block address.  This value survives
+        # point-cloud rebuilds and is the canonical DCC-facing identity.
+        block_keys.append(block_key(abs_x, abs_y, abs_z))
         block_types.append(parsed.block_type)
 
         # Template Index for Collection Info Pick Instance
@@ -185,6 +189,7 @@ def update_world_point_cloud(
         _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)
         _write_float_attribute(mesh, "mtk_uv_rotation", [0.0] * num_pts)
         _write_string_attribute(mesh, "block_state", block_states)
+        _write_string_attribute(mesh, "mc_block_key", block_keys)
 
     return PointCloudBuildResult(
         world_obj=obj,
@@ -236,11 +241,14 @@ def _write_float_color_attribute(mesh: bpy.types.Mesh, name: str, colors: list[t
     attr.data.foreach_set('color', flat)
 
 
-def _write_string_attribute(mesh: bpy.types.Mesh, name: str, strings: list[bytes]):
+def _write_string_attribute(mesh: bpy.types.Mesh, name: str, strings: list[str | bytes]):
     attr = mesh.attributes.get(name)
     if not attr or attr.data_type != 'STRING' or attr.domain != 'POINT' or len(attr.data) != len(strings):
         if attr:
             mesh.attributes.remove(attr)
         attr = mesh.attributes.new(name=name, type='STRING', domain='POINT')
     for i, s in enumerate(strings):
-        attr.data[i].value = s
+        # Blender's RNA string-attribute API uses UTF-8 bytes even though the
+        # logical value is text.  Normalise here so block states and stable
+        # ``mc_block_key`` values have one safe writer.
+        attr.data[i].value = s if isinstance(s, bytes) else s.encode('utf-8')

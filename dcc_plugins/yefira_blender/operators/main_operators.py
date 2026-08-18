@@ -9,6 +9,13 @@ from ..materials.atlas_integration import extract_atlas_parameters
 
 _client_thread = None
 _last_seq_id = 0
+_rebuild_timer_registered = False
+
+# Deltas received inside this window are applied to VoxelStorage immediately
+# on Blender's main thread, but evaluated as one point-cloud update.  This
+# prevents a fast edit/fill operation from rebuilding the complete mesh and
+# Geometry Nodes graph once per changed block.
+REBUILD_DEBOUNCE_SECONDS = 0.075
 
 def trigger_point_cloud_update(context: bpy.types.Context):
     """Update Yefira_World point cloud and configure Geometry Nodes engine."""
@@ -32,6 +39,31 @@ def trigger_point_cloud_update(context: bpy.types.Context):
     props.cubes_count = res.cubes_count
     props.props_count = res.props_count
     props.fluids_count = res.fluids_count
+
+
+def schedule_point_cloud_update() -> None:
+    """Coalesce live updates into a single main-thread point-cloud rebuild."""
+    global _rebuild_timer_registered
+    if _rebuild_timer_registered:
+        return
+
+    _rebuild_timer_registered = True
+
+    def flush():
+        global _rebuild_timer_registered
+        try:
+            # Timers run on Blender's main thread.  Always read the current
+            # context here rather than retaining a potentially invalid area
+            # context from the websocket callback.
+            if voxel_storage.size_x and voxel_storage.size_y and voxel_storage.size_z:
+                trigger_point_cloud_update(bpy.context)
+        except Exception as e:
+            print(f"[Yefira] Deferred point-cloud update error: {e}")
+        finally:
+            _rebuild_timer_registered = False
+        return None
+
+    bpy.app.timers.register(flush, first_interval=REBUILD_DEBOUNCE_SECONDS)
 
 
 class YEFIRA_OT_install_deps(bpy.types.Operator):
@@ -112,6 +144,10 @@ class YEFIRA_OT_connect(bpy.types.Operator):
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
+                global _last_seq_id
+                # The manifest immediately following this full replacement
+                # establishes its sequence baseline.
+                _last_seq_id = 0
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
                 props.max_x = min_x + size_x - 1
@@ -126,8 +162,10 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 # 1. Update VoxelStorage
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
-                # 2. Update Point Cloud and trigger Geometry Nodes
-                trigger_point_cloud_update(bpy.context)
+                # Point-cloud evaluation is debounced so an immediately
+                # following manifest or repair packet cannot cause a second
+                # full rebuild.
+                schedule_point_cloud_update()
 
                 # Update Palette UI list
                 props.palette_list.clear()
@@ -135,16 +173,13 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                     item = props.palette_list.add()
                     item.state_str = p_item
 
-                props.last_update_info = (
-                    f"Full Snapshot: {total_blocks} blocks -> {props.point_count} active points. "
-                    f"({props.cubes_count} cubes, {props.props_count} props, {props.fluids_count} fluids)"
-                )
+                props.last_update_info = f"Full Snapshot queued: {total_blocks} blocks (generation {voxel_storage.generation})"
 
                 # Log delta history
                 item = props.delta_history.add()
                 item.timestamp = time.strftime("%H:%M:%S")
                 item.pos_str = f"Bounds: {size_x}x{size_y}x{size_z}"
-                item.block_state = f"Snapshot ({total_blocks} blks, {props.point_count} pts)"
+                item.block_state = f"Snapshot ({total_blocks} blks; render queued)"
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
@@ -156,13 +191,25 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                     print(f"[Yefira] SeqID gap detected! Expected {_last_seq_id + 1}, got {seq_id}. Requesting full sync...")
                     if _client_thread:
                         _client_thread.send_req_full_sync()
+                    # Do not render a known-incomplete state while the
+                    # authoritative replacement snapshot is in flight.
+                    return
+
+                if _last_seq_id > 0 and seq_id <= _last_seq_id:
+                    print(f"[Yefira] Ignoring stale Delta SeqID {seq_id} (current {_last_seq_id}).")
+                    return
 
                 _last_seq_id = seq_id
 
                 if changes:
-                    # Apply delta changes to VoxelStorage
-                    voxel_storage.apply_delta_update(changes)
-                    trigger_point_cloud_update(bpy.context)
+                    # Storage verifies the packet's absolute selection origin
+                    # before mutation, so a delayed previous-selection delta
+                    # cannot be addressed by a transient point index.
+                    if not voxel_storage.apply_delta_update(min_x, min_y, min_z, changes):
+                        if _client_thread:
+                            _client_thread.send_req_full_sync()
+                        return
+                    schedule_point_cloud_update()
 
                     curr_time = time.strftime("%H:%M:%S")
                     for abs_x, abs_y, abs_z, state in changes:
@@ -186,6 +233,7 @@ class YEFIRA_OT_connect(bpy.types.Operator):
                 mismatched = voxel_storage.validate_manifest(sections)
                 props.sync_verified = (len(mismatched) == 0)
                 props.mismatch_count = len(mismatched)
+                props.validation_info = "Verified" if props.sync_verified else f"Repairing {len(mismatched)} section(s)"
 
                 item = props.delta_history.add()
                 item.timestamp = time.strftime("%H:%M:%S")
@@ -199,9 +247,9 @@ class YEFIRA_OT_connect(bpy.types.Operator):
 
         def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
-                voxel_storage.set_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
-                trigger_point_cloud_update(bpy.context)
-                props.last_update_info = f"Section ({sec_x}, {sec_y}, {sec_z}) synced successfully."
+                if voxel_storage.set_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
+                    schedule_point_cloud_update()
+                    props.last_update_info = f"Section ({sec_x}, {sec_y}, {sec_z}) repaired (render queued)."
             run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
