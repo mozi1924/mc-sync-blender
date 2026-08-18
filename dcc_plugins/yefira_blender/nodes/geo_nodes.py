@@ -11,6 +11,7 @@ from typing import Any, Optional
 from ..materials.atlas_integration import (
     get_or_create_atlas_material,
     extract_atlas_parameters,
+    find_bound_atlas_material,
     setup_material_slots_for_object,
 )
 from ..core.template_catalog import get_or_create_template_collection, TEMPLATE_COLLECTION_NAME
@@ -22,7 +23,7 @@ WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
 # Changing this is an explicit migration.  Point-cloud updates must never
 # rebuild the node graph: doing so invalidates evaluation work and makes live
 # sync depend on Blender's transient node/point ordering.
-WORLD_TREE_SCHEMA_VERSION = 2
+WORLD_TREE_SCHEMA_VERSION = 6
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -37,7 +38,10 @@ def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.ty
     if not template_col:
         template_col = get_or_create_template_collection(bpy.context)
 
-    mat = get_or_create_atlas_material()
+    # Prefer the material slots already applied to this world.  Falling back
+    # to a global data-block search here used to overwrite a valid replacement
+    # with the first unrelated atlas chunk Blender happened to enumerate.
+    mat = find_bound_atlas_material(world_obj) or get_or_create_atlas_material()
     setup_material_slots_for_object(world_obj, mat)
 
     atlas_params = extract_atlas_parameters(mat)
@@ -51,11 +55,12 @@ def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.ty
     # older versions of the add-on.
     gn_tree = bpy.data.node_groups.get(WORLD_TREE_NAME)
     if gn_tree and gn_tree.get(WORLD_TREE_SCHEMA_PROPERTY) == WORLD_TREE_SCHEMA_VERSION:
-        _update_interface_sockets(gn_tree, atlas_params)
         _update_tree_bindings(gn_tree, template_col, mat)
     elif gn_tree:
         gn_tree.nodes.clear()
-        _update_interface_sockets(gn_tree, atlas_params)
+        _remove_legacy_atlas_inputs(gn_tree)
+        _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+        _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
         _build_tree_nodes_and_links(gn_tree, template_col, mat, atlas_params)
         gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
     else:
@@ -63,12 +68,6 @@ def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.ty
         gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
 
     mod.node_group = gn_tree
-
-    # Configure modifier socket inputs if available
-    _set_modifier_socket_value(mod, "Atlas Width", atlas_params["width"])
-    _set_modifier_socket_value(mod, "Atlas Height", atlas_params["height"])
-    _set_modifier_socket_value(mod, "Tile Size", atlas_params["tile_size"])
-    _set_modifier_socket_value(mod, "Tiles Per Row", float(atlas_params["tiles_per_row"]))
 
     return mod
 
@@ -86,30 +85,15 @@ def _update_tree_bindings(
             node.inputs['Collection'].default_value = template_col
 
 
-def _update_interface_sockets(tree: bpy.types.GeometryNodeTree, atlas_params: dict[str, Any]):
-    """Update socket default values on node tree interface."""
-    for item in tree.interface.items_tree:
-        if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
-            if item.name == "Atlas Width":
-                item.default_value = atlas_params["width"]
-            elif item.name == "Atlas Height":
-                item.default_value = atlas_params["height"]
-            elif item.name == "Tile Size":
-                item.default_value = atlas_params["tile_size"]
-            elif item.name == "Tiles Per Row":
-                item.default_value = float(atlas_params["tiles_per_row"])
-
-
-def _set_modifier_socket_value(mod: bpy.types.Modifier, socket_name: str, value: float):
-    """Safely set a modifier input socket value by name or identifier."""
-    if not mod or not mod.node_group:
-        return
-    for item in mod.node_group.interface.items_tree:
-        if item.item_type == 'SOCKET' and item.in_out == 'INPUT' and item.name == socket_name:
-            try:
-                mod[item.identifier] = value
-            except Exception:
-                pass
+def _remove_legacy_atlas_inputs(tree: bpy.types.GeometryNodeTree) -> None:
+    """Remove former user-facing atlas controls during the v5 migration."""
+    for item in list(tree.interface.items_tree):
+        if (
+            item.item_type == 'SOCKET'
+            and item.in_out == 'INPUT'
+            and item.name in {"Atlas Width", "Atlas Height", "Tile Size", "Tiles Per Row"}
+        ):
+            tree.interface.remove(item)
 
 
 def _create_world_geometry_node_tree(
@@ -120,10 +104,6 @@ def _create_world_geometry_node_tree(
 ) -> bpy.types.GeometryNodeTree:
     gn_tree = bpy.data.node_groups.new(name=tree_name, type='GeometryNodeTree')
     _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
-    _ensure_socket(gn_tree, "Atlas Width", in_out='INPUT', socket_type='NodeSocketFloat', default_value=atlas_params["width"], min_value=1.0)
-    _ensure_socket(gn_tree, "Atlas Height", in_out='INPUT', socket_type='NodeSocketFloat', default_value=atlas_params["height"], min_value=1.0)
-    _ensure_socket(gn_tree, "Tile Size", in_out='INPUT', socket_type='NodeSocketFloat', default_value=atlas_params["tile_size"], min_value=1.0)
-    _ensure_socket(gn_tree, "Tiles Per Row", in_out='INPUT', socket_type='NodeSocketFloat', default_value=float(atlas_params["tiles_per_row"]), min_value=1.0)
     _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
     _build_tree_nodes_and_links(gn_tree, template_col, mat, atlas_params)
     return gn_tree
@@ -366,6 +346,35 @@ def _build_tree_nodes_and_links(
         last_cube_geo = st_face.outputs['Geometry']
         inst_store_x += 180
 
+    # Preserve MoziToolKit's per-face atlas identity through instancing.
+    # Tile coordinates alone are ambiguous when an atlas spans chunks.
+    for attr_name in (
+        "mtk_chunk_top", "mtk_chunk_bottom", "mtk_chunk_east", "mtk_chunk_west", "mtk_chunk_south", "mtk_chunk_north",
+        "mtk_texture_top", "mtk_texture_bottom", "mtk_texture_east", "mtk_texture_west", "mtk_texture_south", "mtk_texture_north",
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'INT'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'INT'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_cube_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_cube_geo = store.outputs['Geometry']
+
+    for attr_name in ("mtk_atlas_width", "mtk_atlas_height", "mtk_tile_size", "mtk_tiles_per_row"):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'FLOAT'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_cube_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_cube_geo = store.outputs['Geometry']
+
     # --- BRANCH B: Collection Props ---
     iop_prop = nodes.new('GeometryNodeInstanceOnPoints')
     iop_prop.inputs['Pick Instance'].default_value = True
@@ -401,6 +410,33 @@ def _build_tree_nodes_and_links(
         links.new(r_face_p.outputs['Attribute'], st_face_p.inputs['Value'])
         last_prop_geo = st_face_p.outputs['Geometry']
         prop_store_x += 180
+
+    for attr_name in (
+        "mtk_chunk_top", "mtk_chunk_bottom", "mtk_chunk_east", "mtk_chunk_west", "mtk_chunk_south", "mtk_chunk_north",
+        "mtk_texture_top", "mtk_texture_bottom", "mtk_texture_east", "mtk_texture_west", "mtk_texture_south", "mtk_texture_north",
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'INT'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'INT'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_prop_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_prop_geo = store.outputs['Geometry']
+
+    for attr_name in ("mtk_atlas_width", "mtk_atlas_height", "mtk_tile_size", "mtk_tiles_per_row"):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'FLOAT'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_prop_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_prop_geo = store.outputs['Geometry']
 
     # --- JOIN BRANCHES ---
     join_node = nodes.new('GeometryNodeJoinGeometry')
@@ -530,17 +566,34 @@ def _build_tree_nodes_and_links(
     links.new(mix_tile5.outputs[1], sep_target_tile.inputs['Vector'])
 
     # --- ATLAS UV TRANSFORMATION ---
+    # Atlas dimensions are data, not artist controls.  MoziToolKit/Yefira
+    # writes these named geometry attributes for every point before evaluation.
+    attr_tile_size = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_tile_size.data_type = 'FLOAT'
+    attr_tile_size.inputs['Name'].default_value = "mtk_tile_size"
+    attr_tile_size.location = (1240, 560)
+
+    attr_atlas_height = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_atlas_height.data_type = 'FLOAT'
+    attr_atlas_height.inputs['Name'].default_value = "mtk_atlas_height"
+    attr_atlas_height.location = (1240, 440)
+
+    attr_tiles_per_row = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_tiles_per_row.data_type = 'FLOAT'
+    attr_tiles_per_row.inputs['Name'].default_value = "mtk_tiles_per_row"
+    attr_tiles_per_row.location = (1240, 680)
+
     step_u = nodes.new('ShaderNodeMath')
     step_u.operation = 'DIVIDE'
     step_u.location = (1460, 500)
-    links.new(group_in.outputs['Tile Size'], step_u.inputs[0])
-    links.new(group_in.outputs['Atlas Width'], step_u.inputs[1])
+    step_u.inputs[0].default_value = 1.0
+    links.new(attr_tiles_per_row.outputs['Attribute'], step_u.inputs[1])
 
     step_v = nodes.new('ShaderNodeMath')
     step_v.operation = 'DIVIDE'
     step_v.location = (1460, 380)
-    links.new(group_in.outputs['Tile Size'], step_v.inputs[0])
-    links.new(group_in.outputs['Atlas Height'], step_v.inputs[1])
+    links.new(attr_tile_size.outputs['Attribute'], step_v.inputs[0])
+    links.new(attr_atlas_height.outputs['Attribute'], step_v.inputs[1])
 
     read_local_uv = nodes.new('GeometryNodeInputNamedAttribute')
     read_local_uv.data_type = 'FLOAT_VECTOR'
@@ -622,9 +675,56 @@ def _build_tree_nodes_and_links(
     store_rot.location = (2700, 50)
     links.new(store_tiling.outputs['Geometry'], store_rot.inputs['Geometry'])
 
+    def selected_face_int_attribute(prefix: str, label: str):
+        """Resolve one of six point attributes to a realized FACE attribute."""
+        readers = {}
+        for face in ("top", "bottom", "east", "west", "south", "north"):
+            reader = nodes.new('GeometryNodeInputNamedAttribute')
+            reader.data_type = 'INT'
+            reader.inputs['Name'].default_value = f"{prefix}_{face}"
+            readers[face] = reader
+
+        def mix(compare, false_socket, true_socket):
+            node = nodes.new('ShaderNodeMix')
+            node.data_type = 'FLOAT'
+            links.new(compare.outputs['Result'], node.inputs[0])
+            links.new(false_socket, node.inputs[2])
+            links.new(true_socket, node.inputs[3])
+            return node.outputs[0]
+
+        value = mix(cmp_north_r, readers['south'].outputs['Attribute'], readers['north'].outputs['Attribute'])
+        value = mix(cmp_east_r, value, readers['east'].outputs['Attribute'])
+        value = mix(cmp_west_r, value, readers['west'].outputs['Attribute'])
+        value = mix(cmp_bottom_r, value, readers['bottom'].outputs['Attribute'])
+        value = mix(cmp_top_r, value, readers['top'].outputs['Attribute'])
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'INT'
+        store.domain = 'FACE'
+        store.inputs['Name'].default_value = label
+        links.new(value, store.inputs['Value'])
+        return store
+
+    store_chunk_id = selected_face_int_attribute("mtk_chunk", "mtk_atlas_chunk_id")
+    store_texture_id = selected_face_int_attribute("mtk_texture", "mtk_atlas_texture_id")
+    links.new(store_rot.outputs['Geometry'], store_chunk_id.inputs['Geometry'])
+    links.new(store_chunk_id.outputs['Geometry'], store_texture_id.inputs['Geometry'])
+
+    # MoziToolKit emits one material per atlas chunk.  Resolve the material
+    # number first, then apply the bound atlas material as the final geometry
+    # operation.  In Blender's evaluator the reverse order can leave the
+    # realized mesh with an unresolved material field (white viewport mesh).
+    chunk_attr = nodes.new('GeometryNodeInputNamedAttribute')
+    chunk_attr.data_type = 'INT'
+    chunk_attr.inputs['Name'].default_value = "mtk_atlas_chunk_id"
+    chunk_attr.location = (2850, -120)
+    set_mat_index = nodes.new('GeometryNodeSetMaterialIndex')
+    set_mat_index.location = (2900, 50)
+    links.new(store_texture_id.outputs['Geometry'], set_mat_index.inputs['Geometry'])
+    links.new(chunk_attr.outputs['Attribute'], set_mat_index.inputs['Material Index'])
+
     # --- SET MATERIAL ---
     set_mat = nodes.new('GeometryNodeSetMaterial')
     set_mat.inputs['Material'].default_value = mat
-    set_mat.location = (2850, 50)
-    links.new(store_rot.outputs['Geometry'], set_mat.inputs['Geometry'])
+    set_mat.location = (3050, 50)
+    links.new(set_mat_index.outputs['Geometry'], set_mat.inputs['Geometry'])
     links.new(set_mat.outputs['Geometry'], group_out.inputs['Geometry'])

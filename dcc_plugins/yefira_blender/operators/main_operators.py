@@ -5,7 +5,7 @@ from ..network.websocket_client import SyncClientThread
 from ..core.storage import voxel_storage
 from ..core.point_cloud_builder import update_world_point_cloud
 from ..nodes.geo_nodes import setup_world_geometry_nodes
-from ..materials.atlas_integration import extract_atlas_parameters
+from ..materials.atlas_integration import extract_atlas_parameters, find_bound_atlas_material
 
 _client_thread = None
 _last_seq_id = 0
@@ -20,7 +20,8 @@ REBUILD_DEBOUNCE_SECONDS = 0.075
 def trigger_point_cloud_update(context: bpy.types.Context):
     """Update Yefira_World point cloud and configure Geometry Nodes engine."""
     props = context.scene.yefira
-    atlas_params = extract_atlas_parameters()
+    existing_world = bpy.data.objects.get("Yefira_World")
+    atlas_params = extract_atlas_parameters(find_bound_atlas_material(existing_world))
     atlas_mapping_dict = atlas_params.get("material_id_map", {})
     block_face_lut = atlas_params.get("block_face_lut", {})
 
@@ -30,6 +31,12 @@ def trigger_point_cloud_update(context: bpy.types.Context):
         filter_air=props.filter_air,
         atlas_mapping_dict=atlas_mapping_dict,
         block_face_lut=block_face_lut,
+        block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
+        block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
+        atlas_width=atlas_params["width"],
+        atlas_height=atlas_params["height"],
+        tile_size=atlas_params["tile_size"],
+        tiles_per_row=atlas_params["tiles_per_row"],
     )
 
     if res.world_obj:

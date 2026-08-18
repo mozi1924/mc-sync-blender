@@ -55,6 +55,30 @@ def find_active_atlas_material() -> Optional[bpy.types.Material]:
     return None
 
 
+def find_bound_atlas_material(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Material]:
+    """Return the Atlas material deliberately assigned to a Yefira object.
+
+    ``bpy.data.materials`` is global and iteration order is not a material
+    selection policy.  Looking there during every live update could replace a
+    freshly applied MoziToolKit atlas with an unrelated chunk from another
+    scene/object.  Slot zero is the primary chunk and the authoritative
+    source for this world object's dimensions.
+    """
+    if not obj or not getattr(obj, "data", None):
+        return None
+    for mat in obj.data.materials:
+        if not mat:
+            continue
+        if (
+            "mtk:atlas_mapping" in mat
+            or "mtk_atlas_mapping" in mat
+            or "mtk:atlas_chunk_id" in mat
+            or "mtk_atlas_chunk_id" in mat
+        ):
+            return mat
+    return None
+
+
 def parse_atlas_mapping(mat: Optional[bpy.types.Material]) -> Optional[dict]:
     """Extract and parse atlas mapping JSON from a material or its node tree."""
     if not mat:
@@ -145,6 +169,56 @@ def build_block_face_lut(mapping: Optional[dict]) -> tuple[dict[str, list[tuple[
     return face_lut, material_id_map
 
 
+def build_block_face_atlas_ids(mapping: Optional[dict]) -> tuple[dict[str, list[int]], dict[str, list[int]]]:
+    """Return per-face atlas chunk and texture IDs using MoziToolKit's mapping.
+
+    A tile coordinate is only meaningful within one atlas chunk.  Keeping the
+    two IDs alongside the tile LUT lets Geometry Nodes choose the right
+    material after it realizes a cube face.
+    """
+    chunk_lut: dict[str, list[int]] = {}
+    texture_lut: dict[str, list[int]] = {}
+    if not mapping:
+        return chunk_lut, texture_lut
+
+    def add_aliases(name: str, chunks: list[int], textures: list[int]) -> None:
+        chunk_lut[name] = chunks
+        texture_lut[name] = textures
+        if ":" in name:
+            short_name = name.split(":", 1)[1]
+            chunk_lut[short_name] = chunks
+            texture_lut[short_name] = textures
+            if short_name.startswith("block/"):
+                short_name = short_name[6:]
+                chunk_lut[short_name] = chunks
+                texture_lut[short_name] = textures
+
+    for material in mapping.get("materials", []):
+        name = material.get("name", "")
+        if not name:
+            continue
+        chunks, textures = [], []
+        for face_name in FACE_ORDER:
+            location = material.get("faces", {}).get(face_name) or {}
+            chunks.append(int(location.get("chunk_id", 0)))
+            textures.append(int(location.get("texture_id", 0)))
+        add_aliases(name, chunks, textures)
+
+    for texture_key, location in mapping.get("textures", {}).items():
+        if not isinstance(location, dict):
+            continue
+        stem = texture_key.split(":", 1)[-1]
+        if stem.startswith("block/"):
+            stem = stem[6:]
+        chunks = [int(location.get("chunk_id", 0))] * 6
+        textures = [int(location.get("texture_id", 0))] * 6
+        if stem not in chunk_lut:
+            add_aliases(stem, chunks, textures)
+            add_aliases(texture_key, chunks, textures)
+
+    return chunk_lut, texture_lut
+
+
 def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
     """
     Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, and LUTs.
@@ -160,6 +234,8 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "tiles_per_row": 64,
         "mapping": None,
         "block_face_lut": {},
+        "block_face_chunk_lut": {},
+        "block_face_texture_lut": {},
         "material_id_map": {},
     }
 
@@ -194,7 +270,10 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
                 res["tiles_per_row"] = int(chunk["tiles_per_row"])
 
         face_lut, mat_id_map = build_block_face_lut(mapping)
+        face_chunk_lut, face_texture_lut = build_block_face_atlas_ids(mapping)
         res["block_face_lut"] = face_lut
+        res["block_face_chunk_lut"] = face_chunk_lut
+        res["block_face_texture_lut"] = face_texture_lut
         res["material_id_map"] = mat_id_map
 
     return res

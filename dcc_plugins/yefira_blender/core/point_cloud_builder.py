@@ -29,6 +29,12 @@ def update_world_point_cloud(
     filter_air: bool = True,
     atlas_mapping_dict: Optional[dict[str, Any]] = None,
     block_face_lut: Optional[dict[str, list[tuple[int, int]]]] = None,
+    block_face_chunk_lut: Optional[dict[str, list[int]]] = None,
+    block_face_texture_lut: Optional[dict[str, list[int]]] = None,
+    atlas_width: float = 1024.0,
+    atlas_height: float = 1024.0,
+    tile_size: float = 16.0,
+    tiles_per_row: int = 64,
 ) -> PointCloudBuildResult:
     """
     Constructs or updates the Yefira_World mesh object from storage voxels in Blender C++.
@@ -78,6 +84,8 @@ def update_world_point_cloud(
     tile_bottom = []
     tile_south = []
     tile_north = []
+    face_chunks = [[] for _ in range(6)]
+    face_textures = [[] for _ in range(6)]
 
     palette_mat_cache = {}
     cubes_count = 0
@@ -156,6 +164,12 @@ def update_world_point_cloud(
         tile_south.append((float(s_col), float(s_row), 0.0))
         tile_north.append((float(n_col), float(n_row), 0.0))
 
+        chunk_ids = _lookup_face_values(block_face_chunk_lut, parsed, 0)
+        texture_ids = _lookup_face_values(block_face_texture_lut, parsed, mat_id)
+        for face_index in range(6):
+            face_chunks[face_index].append(chunk_ids[face_index])
+            face_textures[face_index].append(texture_ids[face_index])
+
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:
             cubes_count += 1
@@ -175,6 +189,13 @@ def update_world_point_cloud(
         _write_int_attribute(mesh, "block_type", block_types)
         _write_int_attribute(mesh, "instance_index", instance_indices)
         _write_int_attribute(mesh, "mtk_material_id", material_ids)
+        # Atlas metadata is emitted as geometry attributes rather than
+        # Geometry Nodes modifier inputs.  This makes a material replacement
+        # deterministic and removes user-adjustable sync state.
+        _write_float_attribute(mesh, "mtk_atlas_width", [float(atlas_width)] * num_pts)
+        _write_float_attribute(mesh, "mtk_atlas_height", [float(atlas_height)] * num_pts)
+        _write_float_attribute(mesh, "mtk_tile_size", [float(tile_size)] * num_pts)
+        _write_float_attribute(mesh, "mtk_tiles_per_row", [float(tiles_per_row)] * num_pts)
         _write_float_vector_attribute(mesh, "instance_rotation", rotations)
         _write_float_vector_attribute(mesh, "instance_offset", offsets)
         _write_float_vector_attribute(mesh, "mc_pos", mc_positions)
@@ -184,6 +205,10 @@ def update_world_point_cloud(
         _write_float_vector_attribute(mesh, "mtk_tile_bottom", tile_bottom)
         _write_float_vector_attribute(mesh, "mtk_tile_south", tile_south)
         _write_float_vector_attribute(mesh, "mtk_tile_north", tile_north)
+        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_chunks):
+            _write_int_attribute(mesh, f"mtk_chunk_{name}", values)
+        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_textures):
+            _write_int_attribute(mesh, f"mtk_texture_{name}", values)
         _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
         _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
         _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)
@@ -198,6 +223,15 @@ def update_world_point_cloud(
         props_count=props_count,
         fluids_count=fluids_count,
     )
+
+
+def _lookup_face_values(lut, parsed: ParsedBlock, default: int) -> list[int]:
+    values = None
+    if lut:
+        values = lut.get(parsed.name) or lut.get(parsed.block_id) or lut.get(f"minecraft:{parsed.name}")
+    if not values or len(values) < 6:
+        return [default] * 6
+    return [int(value) for value in values[:6]]
 
 
 def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):
