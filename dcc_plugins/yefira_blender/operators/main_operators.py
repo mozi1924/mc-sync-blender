@@ -5,6 +5,7 @@ from ..network.websocket_client import SyncClientThread
 from ..core.storage import voxel_storage
 from ..core.point_cloud_builder import update_world_point_cloud
 from ..nodes.geo_nodes import setup_world_geometry_nodes
+from ..materials.atlas_integration import extract_atlas_parameters
 
 _client_thread = None
 _last_seq_id = 0
@@ -12,10 +13,16 @@ _last_seq_id = 0
 def trigger_point_cloud_update(context: bpy.types.Context):
     """Update Yefira_World point cloud and configure Geometry Nodes engine."""
     props = context.scene.yefira
+    atlas_params = extract_atlas_parameters()
+    atlas_mapping_dict = atlas_params.get("material_id_map", {})
+    block_face_lut = atlas_params.get("block_face_lut", {})
+
     res = update_world_point_cloud(
         context,
         voxel_storage,
         filter_air=props.filter_air,
+        atlas_mapping_dict=atlas_mapping_dict,
+        block_face_lut=block_face_lut,
     )
 
     if res.world_obj:

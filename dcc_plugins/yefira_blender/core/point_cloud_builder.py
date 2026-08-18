@@ -27,11 +27,12 @@ def update_world_point_cloud(
     context: bpy.types.Context,
     storage: VoxelStorage,
     filter_air: bool = True,
-    atlas_mapping_dict: dict[str, int] = None,
+    atlas_mapping_dict: Optional[dict[str, Any]] = None,
+    block_face_lut: Optional[dict[str, list[tuple[int, int]]]] = None,
 ) -> PointCloudBuildResult:
     """
-    Builds or updates the single Point Cloud Mesh object 'Yefira_World'.
-    Writes structured attributes consumed directly by the Geometry Nodes tree.
+    Constructs or updates the Yefira_World mesh object from storage voxels in Blender C++.
+    Writes structured attributes including 6-face Atlas tile coordinates.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return PointCloudBuildResult(None, 0, 0, 0, 0)
@@ -69,6 +70,14 @@ def update_world_point_cloud(
     tint_datas = []
     mc_positions = []
 
+    # 6-face Atlas tile coordinates (col, row, 0.0)
+    tile_east = []
+    tile_west = []
+    tile_top = []
+    tile_bottom = []
+    tile_south = []
+    tile_north = []
+
     palette_mat_cache = {}
     cubes_count = 0
     props_count = 0
@@ -104,11 +113,44 @@ def update_world_point_cloud(
         # Material ID resolution (Atlas mapping or palette hash)
         if atlas_mapping_dict and parsed.name in atlas_mapping_dict:
             mat_id = atlas_mapping_dict[parsed.name]
+        elif atlas_mapping_dict and parsed.block_id in atlas_mapping_dict:
+            mat_id = atlas_mapping_dict[parsed.block_id]
+        elif atlas_mapping_dict and f"minecraft:{parsed.name}" in atlas_mapping_dict:
+            mat_id = atlas_mapping_dict[f"minecraft:{parsed.name}"]
         else:
             if parsed.name not in palette_mat_cache:
                 palette_mat_cache[parsed.name] = len(palette_mat_cache)
             mat_id = palette_mat_cache[parsed.name]
         material_ids.append(mat_id)
+
+        # 6-Face Tile Coordinates Lookup from Face LUT
+        coords = None
+        if block_face_lut:
+            coords = (
+                block_face_lut.get(parsed.name)
+                or block_face_lut.get(parsed.block_id)
+                or block_face_lut.get(f"minecraft:{parsed.name}")
+            )
+
+        if coords and len(coords) >= 6:
+            # Face Order: +X (East), -X (West), +Y (Top), -Y (Bottom), +Z (South), -Z (North)
+            e_col, e_row = coords[0]
+            w_col, w_row = coords[1]
+            t_col, t_row = coords[2]
+            b_col, b_row = coords[3]
+            s_col, s_row = coords[4]
+            n_col, n_row = coords[5]
+        else:
+            # Fallback based on mat_id if no face_lut
+            e_col = w_col = t_col = b_col = s_col = n_col = (mat_id % 256)
+            e_row = w_row = t_row = b_row = s_row = n_row = (mat_id // 256)
+
+        tile_east.append((float(e_col), float(e_row), 0.0))
+        tile_west.append((float(w_col), float(w_row), 0.0))
+        tile_top.append((float(t_col), float(t_row), 0.0))
+        tile_bottom.append((float(b_col), float(b_row), 0.0))
+        tile_south.append((float(s_col), float(s_row), 0.0))
+        tile_north.append((float(n_col), float(n_row), 0.0))
 
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:
@@ -132,6 +174,12 @@ def update_world_point_cloud(
         _write_float_vector_attribute(mesh, "instance_rotation", rotations)
         _write_float_vector_attribute(mesh, "instance_offset", offsets)
         _write_float_vector_attribute(mesh, "mc_pos", mc_positions)
+        _write_float_vector_attribute(mesh, "mtk_tile_east", tile_east)
+        _write_float_vector_attribute(mesh, "mtk_tile_west", tile_west)
+        _write_float_vector_attribute(mesh, "mtk_tile_top", tile_top)
+        _write_float_vector_attribute(mesh, "mtk_tile_bottom", tile_bottom)
+        _write_float_vector_attribute(mesh, "mtk_tile_south", tile_south)
+        _write_float_vector_attribute(mesh, "mtk_tile_north", tile_north)
         _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
         _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
         _write_string_attribute(mesh, "block_state", block_states)
