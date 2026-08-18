@@ -579,9 +579,27 @@ def _build_tree_nodes_and_links(
     links.new(realize_node.outputs['Geometry'], store_uv_final.inputs['Geometry'])
     links.new(comb_atlas_uv.outputs['Vector'], store_uv_final.inputs['Value'])
 
+    # Store UV Tiling Transform attribute for downstream shaders (MC Atlas UV Tiling)
+    store_tiling = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_tiling.data_type = 'FLOAT_COLOR'
+    store_tiling.domain = 'CORNER'
+    store_tiling.inputs['Name'].default_value = "mtk_uv_tiling_transform"
+    store_tiling.inputs['Value'].default_value = (1.0, 1.0, 0.0, 0.0)
+    store_tiling.location = (2550, 50)
+    links.new(store_uv_final.outputs['Geometry'], store_tiling.inputs['Geometry'])
+
+    # Store UV Rotation attribute for downstream shaders
+    store_rot = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_rot.data_type = 'FLOAT'
+    store_rot.domain = 'CORNER'
+    store_rot.inputs['Name'].default_value = "mtk_uv_rotation"
+    store_rot.inputs['Value'].default_value = 0.0
+    store_rot.location = (2700, 50)
+    links.new(store_tiling.outputs['Geometry'], store_rot.inputs['Geometry'])
+
     # --- SET MATERIAL ---
     set_mat = nodes.new('GeometryNodeSetMaterial')
     set_mat.inputs['Material'].default_value = mat
-    set_mat.location = (2550, 50)
-    links.new(store_uv_final.outputs['Geometry'], set_mat.inputs['Geometry'])
+    set_mat.location = (2850, 50)
+    links.new(store_rot.outputs['Geometry'], set_mat.inputs['Geometry'])
     links.new(set_mat.outputs['Geometry'], group_out.inputs['Geometry'])

@@ -182,6 +182,8 @@ def update_world_point_cloud(
         _write_float_vector_attribute(mesh, "mtk_tile_north", tile_north)
         _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
         _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
+        _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)
+        _write_float_attribute(mesh, "mtk_uv_rotation", [0.0] * num_pts)
         _write_string_attribute(mesh, "block_state", block_states)
 
     return PointCloudBuildResult(
@@ -191,6 +193,15 @@ def update_world_point_cloud(
         props_count=props_count,
         fluids_count=fluids_count,
     )
+
+
+def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):
+    attr = mesh.attributes.get(name)
+    if not attr or attr.data_type != 'FLOAT' or attr.domain != 'POINT' or len(attr.data) != len(values):
+        if attr:
+            mesh.attributes.remove(attr)
+        attr = mesh.attributes.new(name=name, type='FLOAT', domain='POINT')
+    attr.data.foreach_set('value', values)
 
 
 def _write_int_attribute(mesh: bpy.types.Mesh, name: str, values: list[int]):
