@@ -7,6 +7,7 @@ class YEFIRA_UL_palette_list(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             layout.label(text=item.state_str, icon='CUBE')
 
+
 class YEFIRA_UL_delta_list(bpy.types.UIList):
     """Delta 变动历史 UI 列表"""
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
@@ -16,8 +17,9 @@ class YEFIRA_UL_delta_list(bpy.types.UIList):
             row.label(text=item.pos_str, icon='EMPTY_AXIS')
             row.label(text=item.block_state, icon='FILE_REFRESH')
 
+
 class YEFIRA_PT_main_panel(bpy.types.Panel):
-    bl_label = "Yefira B3D"
+    bl_label = "Yefira B3D (Geometry Nodes)"
     bl_idname = "YEFIRA_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -55,25 +57,33 @@ class YEFIRA_PT_main_panel(bpy.types.Panel):
 
         layout.separator()
 
-        # 3. 点云与校验同步控制面板
-        box_pc = layout.box()
-        box_pc.label(text="Point Cloud & Sync Validation", icon='POINTCLOUD_DATA')
+        # 3. 几何节点与点云控制
+        box_gn = layout.box()
+        box_gn.label(text="Geometry Nodes & Point Cloud", icon='GEOMETRY_NODES')
         if props.has_selection:
-            col_pc = box_pc.column(align=True)
-            col_pc.label(text=f"Active Points: {props.point_count} pts", icon='POINTCLOUD_POINT')
+            col = box_gn.column(align=True)
+            col.prop(props, "filter_air", text="Filter Air Blocks")
+            box_gn.operator("yefira.rebuild_world", icon='FILE_REFRESH', text="Rebuild Point Cloud")
+
+            # 统计面板
+            box_stat = box_gn.box()
+            box_stat.label(text=f"Active Points: {props.point_count} pts", icon='POINTCLOUD_DATA')
             
-            col_pc.label(text="Transform: Free (User Move/Rotate/Scale)", icon='OBJECT_ORIGIN')
+            row_stats = box_stat.row(align=True)
+            row_stats.label(text=f"Cubes: {props.cubes_count}", icon='CUBE')
+            row_stats.label(text=f"Props: {props.props_count}", icon='OBJECT_DATA')
+            row_stats.label(text=f"Fluids: {props.fluids_count}", icon='MOD_FLUID')
 
-            col_pc.prop(props, "filter_air", text="Filter Air Blocks")
-            col_pc.prop(props, "enable_geo_nodes", text="Voxel Cube Render")
+            # 模版集合状态提示
+            tmpl_col = bpy.data.collections.get("MC_Block_Templates")
+            tmpl_count = len(tmpl_col.objects) if tmpl_col else 0
+            box_stat.label(text=f"Template Collection: {tmpl_count} models", icon='OUTLINER_COLLECTION')
 
-            val_box = box_pc.box()
+            val_box = box_gn.box()
             val_icon = 'CHECKMARK' if props.sync_verified else 'ERROR'
             val_box.label(text=f"Sync: {props.validation_info}", icon=val_icon)
-
-            box_pc.operator("yefira.rebuild_point_cloud", icon='FILE_REFRESH', text="Rebuild Point Cloud")
         else:
-            box_pc.label(text="No selection active", icon='INFO')
+            box_gn.label(text="No active selection from Minecraft", icon='INFO')
 
         layout.separator()
 

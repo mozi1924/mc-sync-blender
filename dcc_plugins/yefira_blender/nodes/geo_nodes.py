@@ -1,122 +1,158 @@
+"""
+Geometry Nodes World Tree Builder for Yefira Blender Plugin.
+Generates a complete, high-performance procedural Minecraft world from Point Cloud attributes.
+"""
+
+from __future__ import annotations
 import bpy
 import logging
-from ..core.storage import VoxelStorage
+from ..materials.atlas_integration import get_or_create_atlas_material, setup_material_slots_for_object
+from ..core.template_catalog import get_or_create_template_collection, TEMPLATE_COLLECTION_NAME
 
 logger = logging.getLogger("Yefira")
 
-AIR_BLOCK_IDS = {"minecraft:air", "minecraft:cave_air", "minecraft:void_air"}
+WORLD_TREE_NAME = "Yefira_WorldTree"
+WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
 
-def update_blender_point_cloud(context, storage: VoxelStorage, filter_air=True, enable_geo_nodes=True):
-    if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
+def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.types.Collection = None) -> bpy.types.Modifier:
+    """
+    Attach and configure the unified Geometry Nodes tree on the Yefira_World point cloud.
+    Handles Cube instancing, Collection Info prop instancing, rotation, and Atlas Material binding.
+    """
+    if not world_obj:
         return None
 
-    min_x, min_y, min_z = storage.min_x, storage.min_y, storage.min_z
-    size_x, size_y, size_z = storage.size_x, storage.size_y, storage.size_z
+    if not template_col:
+        template_col = get_or_create_template_collection(bpy.context)
 
-    obj_name = "Yefira_PointCloud"
-    mesh_name = "Yefira_PointCloud_Mesh"
+    mat = get_or_create_atlas_material()
+    setup_material_slots_for_object(world_obj, mat)
 
-    if obj_name in bpy.data.objects:
-        obj = bpy.data.objects[obj_name]
-        mesh = obj.data
-    else:
-        mesh = bpy.data.meshes.new(mesh_name)
-        obj = bpy.data.objects.new(obj_name, mesh)
-        obj.location = (0.0, 0.0, 0.0)
-        context.collection.objects.link(obj)
-
-    vertices = []
-    block_states = []
-    block_ids = []
-    mc_positions = []
-
-    palette_map = {}
-
-    for (abs_x, abs_y, abs_z), state_str in storage.block_map.items():
-        if filter_air and state_str in AIR_BLOCK_IDS:
-            continue
-
-        vx = (abs_x - min_x) - size_x / 2.0 + 0.5
-        vy = (abs_z - min_z) - size_z / 2.0 + 0.5  # Blender Y = MC Z
-        vz = (abs_y - min_y) + 0.5               # Blender Z = MC Y
-
-        vertices.append((vx, vy, vz))
-        block_states.append(state_str.encode('utf-8'))
-
-        if state_str not in palette_map:
-            palette_map[state_str] = len(palette_map)
-        block_ids.append(palette_map[state_str])
-        mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
-
-    mesh.clear_geometry()
-    mesh.from_pydata(vertices, [], [])
-    mesh.update()
-
-    if vertices:
-        # 1. block_state (STRING)
-        attr_state = mesh.attributes.get("block_state")
-        if not attr_state or attr_state.domain != 'POINT' or attr_state.data_type != 'STRING':
-            if attr_state:
-                mesh.attributes.remove(attr_state)
-            attr_state = mesh.attributes.new(name="block_state", type='STRING', domain='POINT')
-
-        # 2. block_id (INT)
-        attr_id = mesh.attributes.get("block_id")
-        if not attr_id or attr_id.domain != 'POINT' or attr_id.data_type != 'INT':
-            if attr_id:
-                mesh.attributes.remove(attr_id)
-            attr_id = mesh.attributes.new(name="block_id", type='INT', domain='POINT')
-
-        # 3. mc_pos (FLOAT_VECTOR)
-        attr_pos = mesh.attributes.get("mc_pos")
-        if not attr_pos or attr_pos.domain != 'POINT' or attr_pos.data_type != 'FLOAT_VECTOR':
-            if attr_pos:
-                mesh.attributes.remove(attr_pos)
-            attr_pos = mesh.attributes.new(name="mc_pos", type='FLOAT_VECTOR', domain='POINT')
-
-        for i in range(len(vertices)):
-            attr_state.data[i].value = block_states[i]
-            attr_id.data[i].value = block_ids[i]
-            attr_pos.data[i].vector = mc_positions[i]
-
-    if enable_geo_nodes:
-        setup_geometry_nodes(obj)
-
-    return obj
-
-
-def setup_geometry_nodes(obj):
-    mod_name = "Yefira_VoxelRenderer"
-    tree_name = "Yefira_VoxelTree"
-
-    mod = obj.modifiers.get(mod_name)
+    mod = world_obj.modifiers.get(WORLD_MODIFIER_NAME)
     if not mod:
-        mod = obj.modifiers.new(name=mod_name, type='NODES')
+        mod = world_obj.modifiers.new(name=WORLD_MODIFIER_NAME, type='NODES')
 
-    if not mod.node_group:
-        if tree_name in bpy.data.node_groups:
-            gn_tree = bpy.data.node_groups[tree_name]
-        else:
-            gn_tree = bpy.data.node_groups.new(name=tree_name, type='GeometryNodeTree')
-            gn_tree.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
-            gn_tree.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    # Recreate or update node group
+    if WORLD_TREE_NAME in bpy.data.node_groups:
+        gn_tree = bpy.data.node_groups[WORLD_TREE_NAME]
+        gn_tree.nodes.clear()
+        _build_tree_nodes_and_links(gn_tree, template_col, mat)
+    else:
+        gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, mat)
 
-            nodes = gn_tree.nodes
-            input_node = nodes.new('NodeGroupInput')
-            output_node = nodes.new('NodeGroupOutput')
-            input_node.location = (-300, 0)
-            output_node.location = (300, 0)
+    mod.node_group = gn_tree
+    return mod
 
-            iop = nodes.new('GeometryNodeInstanceOnPoints')
-            iop.location = (0, 0)
 
-            cube = nodes.new('GeometryNodeMeshCube')
-            cube.inputs['Size'].default_value = (0.95, 0.95, 0.95)
-            cube.location = (-200, -150)
+def _create_world_geometry_node_tree(
+    tree_name: str,
+    template_col: bpy.types.Collection,
+    mat: bpy.types.Material,
+) -> bpy.types.GeometryNodeTree:
+    gn_tree = bpy.data.node_groups.new(name=tree_name, type='GeometryNodeTree')
+    gn_tree.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    gn_tree.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    _build_tree_nodes_and_links(gn_tree, template_col, mat)
+    return gn_tree
 
-            links = gn_tree.links
-            links.new(input_node.outputs['Geometry'], iop.inputs['Points'])
-            links.new(cube.outputs['Mesh'], iop.inputs['Instance'])
-            links.new(iop.outputs['Instances'], output_node.inputs['Geometry'])
 
-        mod.node_group = gn_tree
+def _build_tree_nodes_and_links(
+    gn_tree: bpy.types.GeometryNodeTree,
+    template_col: bpy.types.Collection,
+    mat: bpy.types.Material,
+):
+    nodes = gn_tree.nodes
+    links = gn_tree.links
+
+    # 1. Inputs & Outputs
+    group_in = nodes.new('NodeGroupInput')
+    group_in.location = (-1000, 0)
+
+    group_out = nodes.new('NodeGroupOutput')
+    group_out.location = (1300, 0)
+
+    # 2. Named Attribute Readers
+    # A. block_type (INT)
+    attr_type = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_type.data_type = 'INT'
+    attr_type.inputs['Name'].default_value = "block_type"
+    attr_type.location = (-1000, -250)
+
+    # B. instance_index (INT)
+    attr_idx = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_idx.data_type = 'INT'
+    attr_idx.inputs['Name'].default_value = "instance_index"
+    attr_idx.location = (-600, -350)
+
+    # C. instance_rotation (FLOAT_VECTOR)
+    attr_rot = nodes.new('GeometryNodeInputNamedAttribute')
+    attr_rot.data_type = 'FLOAT_VECTOR'
+    attr_rot.inputs['Name'].default_value = "instance_rotation"
+    attr_rot.location = (-200, -400)
+
+    # 3. Compare block_type == 0 (Cubes)
+    cmp_cube = nodes.new('FunctionNodeCompare')
+    cmp_cube.data_type = 'INT'
+    cmp_cube.operation = 'EQUAL'
+    cmp_cube.inputs['B'].default_value = 0 # Compare with 0 (Cube)
+    cmp_cube.location = (-750, 100)
+    links.new(attr_type.outputs['Attribute'], cmp_cube.inputs['A'])
+
+    # 4. Separate Geometry (Cubes vs Props)
+    sep_geo = nodes.new('GeometryNodeSeparateGeometry')
+    sep_geo.location = (-550, 100)
+    links.new(group_in.outputs['Geometry'], sep_geo.inputs['Geometry'])
+    links.new(cmp_cube.outputs['Result'], sep_geo.inputs['Selection'])
+
+    # --- BRANCH A: Standard Cubes with UVMap ---
+    mesh_cube = nodes.new('GeometryNodeMeshCube')
+    mesh_cube.inputs['Size'].default_value = (1.0, 1.0, 1.0)
+    mesh_cube.location = (-400, 350)
+
+    # Store UVMap attribute on the Cube mesh
+    store_uv = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_uv.data_type = 'FLOAT_VECTOR'
+    store_uv.domain = 'CORNER'
+    store_uv.inputs['Name'].default_value = "UVMap"
+    store_uv.location = (-200, 350)
+    links.new(mesh_cube.outputs['Mesh'], store_uv.inputs['Geometry'])
+    links.new(mesh_cube.outputs['UV Map'], store_uv.inputs['Value'])
+
+    iop_cube = nodes.new('GeometryNodeInstanceOnPoints')
+    iop_cube.location = (50, 200)
+    links.new(sep_geo.outputs['Selection'], iop_cube.inputs['Points'])
+    links.new(store_uv.outputs['Geometry'], iop_cube.inputs['Instance'])
+
+    # --- BRANCH B: Collection Props ---
+    iop_prop = nodes.new('GeometryNodeInstanceOnPoints')
+    iop_prop.inputs['Pick Instance'].default_value = True
+    iop_prop.location = (50, -150)
+
+    col_info = nodes.new('GeometryNodeCollectionInfo')
+    col_info.inputs['Collection'].default_value = template_col
+    col_info.inputs['Separate Children'].default_value = True
+    col_info.inputs['Reset Children'].default_value = True
+    col_info.location = (-300, -150)
+
+    links.new(sep_geo.outputs['Inverted'], iop_prop.inputs['Points'])
+    links.new(col_info.outputs['Instances'], iop_prop.inputs['Instance'])
+    links.new(attr_idx.outputs['Attribute'], iop_prop.inputs['Instance Index'])
+    links.new(attr_rot.outputs['Attribute'], iop_prop.inputs['Rotation'])
+
+    # --- JOIN BRANCHES ---
+    join_node = nodes.new('GeometryNodeJoinGeometry')
+    join_node.location = (350, 0)
+    links.new(iop_cube.outputs['Instances'], join_node.inputs['Geometry'])
+    links.new(iop_prop.outputs['Instances'], join_node.inputs['Geometry'])
+
+    # --- REALIZE INSTANCES ---
+    realize_node = nodes.new('GeometryNodeRealizeInstances')
+    realize_node.location = (600, 0)
+    links.new(join_node.outputs['Geometry'], realize_node.inputs['Geometry'])
+
+    # --- SET MATERIAL ---
+    set_mat = nodes.new('GeometryNodeSetMaterial')
+    set_mat.inputs['Material'].default_value = mat
+    set_mat.location = (900, 0)
+    links.new(realize_node.outputs['Geometry'], set_mat.inputs['Geometry'])
+    links.new(set_mat.outputs['Geometry'], group_out.inputs['Geometry'])
