@@ -75,6 +75,19 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "smoker": ["smoker_front", "smoker_side", "smoker_top", "smoker_bottom"],
     "furnace": ["furnace_front", "furnace_side", "furnace_top", "furnace_bottom"],
     "blast_furnace": ["blast_furnace_front", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
+    "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
+    "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
+    "dispenser": ["dispenser_front", "dispenser_front_vertical", "dispenser_side", "dispenser_top", "furnace_top"],
+    "dropper": ["dropper_front", "dropper_front_vertical", "dropper_side", "dropper_top", "furnace_top"],
+    "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
+    "piston": ["piston_top", "piston_bottom", "piston_side"],
+    "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
+    "barrel": ["barrel_top", "barrel_bottom", "barrel_side"],
+    "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
+    "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
+    "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
+    "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
 }
 
 
@@ -124,18 +137,33 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         if stem not in locations_by_name:
             add(stem, [location] * 6, int(location.get("texture_id", 0)))
 
-    # Block name to texture aliases (e.g. water -> water_still, lava -> lava_still, magma_block -> magma)
+    # Block name to texture aliases (e.g. water, command_block, furnace, etc.)
     for block_name, target_stems in BLOCK_TO_TEXTURE_ALIASES.items():
         if block_name in locations_by_name:
             continue
         found_loc = next((texture_by_stem.get(s) for s in target_stems if texture_by_stem.get(s)), None)
         if found_loc:
-            # Check for side/top/bottom differentiation among stems
-            top_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_top", "_top_off"))), found_loc)
-            bottom_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_bottom")), found_loc)
-            front_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_front", "_front_on"))), found_loc)
+            # Check for side/top/bottom/front/back differentiation among stems
+            top_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None)
+            bottom_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_bottom")), None)
+            front_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey")) or s in ("carved_pumpkin", "jack_o_lantern")), None)
+            back_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_back")), None)
             side_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
-            face_locations = [side_loc, side_loc, top_loc, bottom_loc, front_loc, side_loc]
+
+            if "command_block" in block_name:
+                # Vertical-base model (Top is front arrow, Bottom is back input square, 4 sides are side)
+                face_locations = [side_loc, side_loc, front_loc or found_loc, back_loc or side_loc, side_loc, side_loc]
+            elif "piston" in block_name:
+                # Vertical-base model (Top is piston head, Bottom is back base, 4 sides are side)
+                face_locations = [side_loc, side_loc, top_loc or found_loc, bottom_loc or side_loc, side_loc, side_loc]
+            else:
+                # Horizontal-base model (North is front, South is back, Top is top, Bottom is bottom, East/West are side)
+                actual_top = top_loc or found_loc
+                actual_bottom = bottom_loc or found_loc
+                actual_back = back_loc or side_loc
+                actual_front = front_loc or found_loc
+                face_locations = [side_loc, side_loc, actual_top, actual_bottom, actual_back, actual_front]
+
             add(block_name, face_locations, int(found_loc.get("texture_id", 0)))
 
     # Texture-only PBR packs expose components such as grass_block_top and

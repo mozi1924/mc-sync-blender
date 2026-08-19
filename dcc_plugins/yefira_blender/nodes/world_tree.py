@@ -195,6 +195,7 @@ def _build_tree_nodes_and_links(
     iop_cube.location = (-200, 250)
     links.new(sep_geo.outputs["Selection"], iop_cube.inputs["Points"])
     links.new(cube_surface.outputs["Geometry"], iop_cube.inputs["Instance"])
+    links.new(attr_rot.outputs["Attribute"], iop_cube.inputs["Rotation"])
 
     transfer_cube_attributes = nodes.new("GeometryNodeGroup")
     transfer_cube_attributes.node_tree = group_attribute_transfer

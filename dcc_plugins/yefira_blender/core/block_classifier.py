@@ -163,7 +163,42 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
     off_x, off_y, off_z = 0.0, 0.0, 0.0
     facing = props.get("facing", "north")
-    rot_z = YAW_MAP.get(facing, 0.0)
+    axis = props.get("axis", "y")
+
+    if "command_block" in name or name in ("piston", "sticky_piston", "piston_head"):
+        # Vertical-base blocks (Base template naturally points UP at +Z in Blender)
+        if facing == "up":
+            rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
+        elif facing == "down":
+            rot_x, rot_y, rot_z = math.radians(180), 0.0, 0.0
+        elif facing == "north":
+            rot_x, rot_y, rot_z = math.radians(90), 0.0, 0.0
+        elif facing == "south":
+            rot_x, rot_y, rot_z = math.radians(-90), 0.0, 0.0
+        elif facing == "west":
+            rot_x, rot_y, rot_z = 0.0, math.radians(-90), 0.0
+        elif facing == "east":
+            rot_x, rot_y, rot_z = 0.0, math.radians(90), 0.0
+    elif "axis" in props:
+        # Axis-aligned blocks (Logs, Pillars, Basalt, Hay, Bone)
+        if axis == "x":
+            rot_y = math.radians(90)
+        elif axis == "z":
+            rot_x = math.radians(90)
+    else:
+        # Standard horizontal-base blocks (Base template points NORTH at -Y in Blender)
+        if facing == "north":
+            rot_z = 0.0
+        elif facing == "south":
+            rot_z = math.radians(180)
+        elif facing == "east":
+            rot_z = math.radians(90)
+        elif facing == "west":
+            rot_z = math.radians(-90)
+        elif facing == "up":
+            rot_x = math.radians(-90)
+        elif facing == "down":
+            rot_x = math.radians(90)
 
     if block_id in FLUID_BLOCKS:
         block_type = BlockTypeEnum.FLUID
@@ -214,13 +249,6 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         # Standard Cube
         block_type = BlockTypeEnum.CUBE
         template_name = "cube"
-
-        # Check for axis alignment (logs, pillars, basalt)
-        axis = props.get("axis", "y")
-        if axis == "x":
-            rot_y = math.radians(90)
-        elif axis == "z":
-            rot_x = math.radians(90)
 
     parsed = ParsedBlock(
         full_state=state_str_clean,
