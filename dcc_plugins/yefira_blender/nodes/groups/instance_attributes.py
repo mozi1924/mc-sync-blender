@@ -6,7 +6,7 @@ import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
 
 GROUP_NAME_INSTANCE_ATTRIBUTES = "Yefira_Transfer_Instance_Attributes"
-INSTANCE_ATTRIBUTES_VERSION = 3
+INSTANCE_ATTRIBUTES_VERSION = 4
 
 FACE_NAMES = ("top", "bottom", "east", "west", "south", "north")
 FACE_TILE_ATTRIBUTES = tuple(f"mtk_tile_{face}" for face in FACE_NAMES)
@@ -14,6 +14,13 @@ FACE_INT_ATTRIBUTES = tuple(
     f"mtk_{kind}_{face}"
     for kind in ("chunk", "texture")
     for face in FACE_NAMES
+)
+INSTANCE_INT_ATTRIBUTES = (
+    "block_type",
+    "mtk_material_id",
+    "is_opaque",
+    "mtk_is_opaque",
+    *FACE_INT_ATTRIBUTES,
 )
 ATLAS_FLOAT_ATTRIBUTES = (
     "mtk_atlas_width",
@@ -52,8 +59,8 @@ def get_or_create_instance_attribute_transfer_group() -> bpy.types.GeometryNodeT
     last_geometry = group_in.outputs["Geometry"]
 
     specs = (
+        *((name, "INT") for name in INSTANCE_INT_ATTRIBUTES),
         *((name, "FLOAT_VECTOR") for name in FACE_TILE_ATTRIBUTES),
-        *((name, "INT") for name in FACE_INT_ATTRIBUTES),
         *((name, "FLOAT") for name in ATLAS_FLOAT_ATTRIBUTES),
         *((name, "FLOAT_COLOR") for name in FACE_TINT_ATTRIBUTES),
         *((name, "FLOAT_COLOR") for name in FACE_ANIM_ATTRIBUTES),

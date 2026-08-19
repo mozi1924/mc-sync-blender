@@ -32,6 +32,50 @@ FLUID_BLOCKS = {
     "minecraft:flowing_lava",
 }
 
+# Transparent and Translucent blocks (fallback classification when atlas mapping lacks per-texture alpha)
+TRANSPARENT_BLOCKS = {
+    "minecraft:glass",
+    "minecraft:tinted_glass",
+    "minecraft:white_stained_glass",
+    "minecraft:orange_stained_glass",
+    "minecraft:magenta_stained_glass",
+    "minecraft:light_blue_stained_glass",
+    "minecraft:yellow_stained_glass",
+    "minecraft:lime_stained_glass",
+    "minecraft:pink_stained_glass",
+    "minecraft:gray_stained_glass",
+    "minecraft:light_gray_stained_glass",
+    "minecraft:cyan_stained_glass",
+    "minecraft:purple_stained_glass",
+    "minecraft:blue_stained_glass",
+    "minecraft:brown_stained_glass",
+    "minecraft:green_stained_glass",
+    "minecraft:red_stained_glass",
+    "minecraft:black_stained_glass",
+    "minecraft:ice",
+    "minecraft:packed_ice",
+    "minecraft:blue_ice",
+    "minecraft:frosted_ice",
+    "minecraft:water",
+    "minecraft:flowing_water",
+    "minecraft:slime_block",
+    "minecraft:honey_block",
+    "minecraft:beacon",
+    "minecraft:barrier",
+    "minecraft:structure_void",
+    "minecraft:light",
+    "minecraft:oak_leaves",
+    "minecraft:spruce_leaves",
+    "minecraft:birch_leaves",
+    "minecraft:jungle_leaves",
+    "minecraft:acacia_leaves",
+    "minecraft:dark_oak_leaves",
+    "minecraft:mangrove_leaves",
+    "minecraft:cherry_leaves",
+    "minecraft:azalea_leaves",
+    "minecraft:flowering_azalea_leaves",
+}
+
 # Cross Plant blocks (rendered with X-shaped quad)
 CROSS_PLANTS = {
     "minecraft:short_grass", "minecraft:tall_grass", "minecraft:fern", "minecraft:large_fern",
@@ -72,7 +116,7 @@ class ParsedBlock:
     __slots__ = (
         'full_state', 'block_id', 'namespace', 'name', 'props',
         'block_type', 'template_name', 'rot_euler', 'offset',
-        'tint_color', 'tint_data', 'is_waterlogged'
+        'tint_color', 'tint_data', 'is_waterlogged', 'is_opaque'
     )
 
     def __init__(
@@ -89,6 +133,7 @@ class ParsedBlock:
         tint_color: tuple[float, float, float, float],
         tint_data: tuple[float, float, float, float],
         is_waterlogged: bool,
+        is_opaque: int = 1,
     ):
         self.full_state = full_state
         self.block_id = block_id
@@ -102,6 +147,7 @@ class ParsedBlock:
         self.tint_color = tint_color
         self.tint_data = tint_data
         self.is_waterlogged = is_waterlogged
+        self.is_opaque = is_opaque
 
 
 # In-memory parsing cache to avoid re-parsing identical state strings
@@ -250,6 +296,12 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         block_type = BlockTypeEnum.CUBE
         template_name = "cube"
 
+    # Determine opacity
+    if block_id in TRANSPARENT_BLOCKS or name.endswith(("_glass", "_stained_glass", "_leaves", "_pane")) or name in ("glass", "tinted_glass", "ice", "water", "slime_block", "honey_block", "beacon"):
+        is_opaque = 0
+    else:
+        is_opaque = 1
+
     parsed = ParsedBlock(
         full_state=state_str_clean,
         block_id=block_id,
@@ -263,6 +315,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         tint_color=tint_color,
         tint_data=tint_data,
         is_waterlogged=is_waterlogged,
+        is_opaque=is_opaque,
     )
     _STATE_PARSE_CACHE[state_str] = parsed
     return parsed
@@ -282,6 +335,7 @@ def _make_air(state_str: str) -> ParsedBlock:
         tint_color=(1.0, 1.0, 1.0, 1.0),
         tint_data=(0.0, 0.0, 0.0, 0.0),
         is_waterlogged=False,
+        is_opaque=0,
     )
 
 # Alias for backwards compatibility

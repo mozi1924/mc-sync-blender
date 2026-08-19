@@ -24,6 +24,10 @@ from .material_dispatcher import (
     get_or_create_material_dispatcher_group,
     GROUP_NAME_MATERIAL_DISPATCHER,
 )
+from .culling_merge import (
+    get_or_create_culling_merge_group,
+    GROUP_NAME_CULLING_MERGE,
+)
 
 __all__ = (
     "get_or_create_cube_surface_group",
@@ -33,6 +37,7 @@ __all__ = (
     "get_or_create_face_selector_color_group",
     "get_or_create_atlas_uv_calculator_group",
     "get_or_create_material_dispatcher_group",
+    "get_or_create_culling_merge_group",
     "GROUP_NAME_CUBE_SURFACE",
     "GROUP_NAME_INSTANCE_ATTRIBUTES",
     "GROUP_NAME_FACE_SELECTOR_VECTOR",
@@ -40,4 +45,5 @@ __all__ = (
     "GROUP_NAME_FACE_SELECTOR_COLOR",
     "GROUP_NAME_ATLAS_UV_CALCULATOR",
     "GROUP_NAME_MATERIAL_DISPATCHER",
+    "GROUP_NAME_CULLING_MERGE",
 )

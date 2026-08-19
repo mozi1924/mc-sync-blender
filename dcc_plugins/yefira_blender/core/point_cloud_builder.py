@@ -116,6 +116,7 @@ def update_world_point_cloud(
     rotations = []
     offsets = []
     material_ids = []
+    is_opaque_list = []
     tint_colors = []
     tint_datas = []
     mc_positions = []
@@ -167,6 +168,7 @@ def update_world_point_cloud(
         tint_colors.append(parsed.tint_color)
         tint_datas.append(parsed.tint_data)
         mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
+        is_opaque_list.append(int(parsed.is_opaque))
 
         atlas_keys = _atlas_lookup_keys(parsed)
 
@@ -239,6 +241,8 @@ def update_world_point_cloud(
         _write_int_attribute(mesh, "block_type", block_types)
         _write_int_attribute(mesh, "instance_index", instance_indices)
         _write_int_attribute(mesh, "mtk_material_id", material_ids)
+        _write_int_attribute(mesh, "is_opaque", is_opaque_list)
+        _write_int_attribute(mesh, "mtk_is_opaque", is_opaque_list)
         # Atlas metadata is emitted as geometry attributes rather than
         # Geometry Nodes modifier inputs.  This makes a material replacement
         # deterministic and removes user-adjustable sync state.

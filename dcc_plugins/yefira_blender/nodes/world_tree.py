@@ -30,14 +30,15 @@ from .groups import (
     get_or_create_face_selector_vector_group,
     get_or_create_instance_attribute_transfer_group,
     get_or_create_material_dispatcher_group,
+    get_or_create_culling_merge_group,
 )
 
 logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 13: decoupled material dispatcher sub-node group with fake-user multi-chunk mapping.
-WORLD_TREE_SCHEMA_VERSION = 13
+# Schema version 14: transparency-aware hidden face culling and vertex merging node group.
+WORLD_TREE_SCHEMA_VERSION = 14
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -104,6 +105,8 @@ def _update_tree_bindings(
             node.inputs["Collection"].default_value = template_col
         elif node.bl_idname == "GeometryNodeGroup" and node.name == "Material Dispatcher":
             node.node_tree = group_mat_dispatcher
+        elif node.bl_idname == "GeometryNodeGroup" and node.name == "Hidden Face Culling & Merge":
+            node.node_tree = get_or_create_culling_merge_group()
 
 
 def _remove_legacy_atlas_inputs(tree: bpy.types.GeometryNodeTree) -> None:
@@ -146,6 +149,7 @@ def _build_tree_nodes_and_links(
     group_uv_calc = get_or_create_atlas_uv_calculator_group()
     group_cube_surface = get_or_create_cube_surface_group()
     group_attribute_transfer = get_or_create_instance_attribute_transfer_group()
+    group_culling_merge = get_or_create_culling_merge_group()
 
     # 2. Top-level Inputs & Outputs
     group_in = nodes.new("NodeGroupInput")
@@ -469,14 +473,22 @@ def _build_tree_nodes_and_links(
     links.new(store_timing.outputs["Geometry"], store_size.inputs["Geometry"])
     links.new(call_size_selector.outputs["Selected"], store_size.inputs["Value"])
 
+    # --- SUBGROUP: HIDDEN FACE CULLING & VERTEX MERGE ---
+    call_culling_merge = nodes.new("GeometryNodeGroup")
+    call_culling_merge.node_tree = group_culling_merge
+    call_culling_merge.name = "Hidden Face Culling & Merge"
+    call_culling_merge.location = (2620, 100)
+    links.new(store_size.outputs["Geometry"], call_culling_merge.inputs["Geometry"])
+    links.new(group_in.outputs["Geometry"], call_culling_merge.inputs["Point Cloud"])
+
     # --- SUBGROUP: MATERIAL DISPATCHER ---
     call_mat_dispatcher = nodes.new("GeometryNodeGroup")
     call_mat_dispatcher.node_tree = group_mat_dispatcher
     call_mat_dispatcher.name = "Material Dispatcher"
-    call_mat_dispatcher.location = (2620, 100)
-    links.new(store_size.outputs["Geometry"], call_mat_dispatcher.inputs["Geometry"])
+    call_mat_dispatcher.location = (2840, 100)
+    links.new(call_culling_merge.outputs["Geometry"], call_mat_dispatcher.inputs["Geometry"])
 
     # Final Output
-    group_out.location = (2840, 100)
+    group_out.location = (3060, 100)
     links.new(call_mat_dispatcher.outputs["Geometry"], group_out.inputs["Geometry"])
     prune_unlinked_nodes(gn_tree)
