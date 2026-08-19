@@ -31,6 +31,7 @@ def update_world_point_cloud(
     block_face_lut: Optional[dict[str, list[tuple[int, int]]]] = None,
     block_face_chunk_lut: Optional[dict[str, list[int]]] = None,
     block_face_texture_lut: Optional[dict[str, list[int]]] = None,
+    block_face_tint_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
     atlas_width: float = 1024.0,
     atlas_height: float = 1024.0,
     tile_size: float = 16.0,
@@ -86,6 +87,7 @@ def update_world_point_cloud(
     tile_north = []
     face_chunks = [[] for _ in range(6)]
     face_textures = [[] for _ in range(6)]
+    face_tint_data = [[] for _ in range(6)]
 
     palette_mat_cache = {}
     cubes_count = 0
@@ -169,6 +171,9 @@ def update_world_point_cloud(
         for face_index in range(6):
             face_chunks[face_index].append(chunk_ids[face_index])
             face_textures[face_index].append(texture_ids[face_index])
+        tint_values = _lookup_face_values(block_face_tint_lut, parsed, (0.0, 0.0, 0.0, 0.0))
+        for face_index in range(6):
+            face_tint_data[face_index].append(tint_values[face_index])
 
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:
@@ -209,6 +214,8 @@ def update_world_point_cloud(
             _write_int_attribute(mesh, f"mtk_chunk_{name}", values)
         for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_textures):
             _write_int_attribute(mesh, f"mtk_texture_{name}", values)
+        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_tint_data):
+            _write_float_color_attribute(mesh, f"mtk_tint_data_{name}", values)
         _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
         _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
         _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)
@@ -225,13 +232,13 @@ def update_world_point_cloud(
     )
 
 
-def _lookup_face_values(lut, parsed: ParsedBlock, default: int) -> list[int]:
+def _lookup_face_values(lut, parsed: ParsedBlock, default) -> list:
     values = None
     if lut:
         values = lut.get(parsed.name) or lut.get(parsed.block_id) or lut.get(f"minecraft:{parsed.name}")
     if not values or len(values) < 6:
         return [default] * 6
-    return [int(value) for value in values[:6]]
+    return [type(default)(value) if isinstance(default, int) else tuple(value) for value in values[:6]]
 
 
 def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):

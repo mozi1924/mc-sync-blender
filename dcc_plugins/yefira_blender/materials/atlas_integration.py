@@ -234,6 +234,39 @@ def build_block_face_atlas_ids(mapping: Optional[dict]) -> tuple[dict[str, list[
     return chunk_lut, texture_lut
 
 
+def build_block_face_tint_lut(mapping: Optional[dict]) -> dict[str, list[tuple[float, float, float, float]]]:
+    """Build face-domain biome-tint weights from Mozi's atlas metadata."""
+    tint_lut: dict[str, list[tuple[float, float, float, float]]] = {}
+    if not mapping:
+        return tint_lut
+
+    def add_aliases(name: str, values: list[tuple[float, float, float, float]]) -> None:
+        tint_lut[name] = values
+        if ":" in name:
+            short_name = name.split(":", 1)[1]
+            tint_lut[short_name] = values
+            if short_name.startswith("block/"):
+                tint_lut[short_name[6:]] = values
+
+    for material in mapping.get("materials", []):
+        name = material.get("name", "")
+        if not name:
+            continue
+        fallback_location = _fallback_texture_location(mapping, name)
+        values = []
+        for face_name in FACE_ORDER:
+            location = material.get("faces", {}).get(face_name) or fallback_location or {}
+            values.append((
+                float(location.get("default_base_tint_weight", 0.0)),
+                float(location.get("default_overlay_tint_weight", 0.0)),
+                float(location.get("default_tint_weight", 0.0)),
+                1.0 if location.get("is_hardcoded", False) else 0.0,
+            ))
+        add_aliases(name, values)
+
+    return tint_lut
+
+
 def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
     """
     Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, and LUTs.
@@ -251,6 +284,7 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "block_face_lut": {},
         "block_face_chunk_lut": {},
         "block_face_texture_lut": {},
+        "block_face_tint_lut": {},
         "material_id_map": {},
     }
 
@@ -286,9 +320,11 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
 
         face_lut, mat_id_map = build_block_face_lut(mapping)
         face_chunk_lut, face_texture_lut = build_block_face_atlas_ids(mapping)
+        face_tint_lut = build_block_face_tint_lut(mapping)
         res["block_face_lut"] = face_lut
         res["block_face_chunk_lut"] = face_chunk_lut
         res["block_face_texture_lut"] = face_texture_lut
+        res["block_face_tint_lut"] = face_tint_lut
         res["material_id_map"] = mat_id_map
 
     return res

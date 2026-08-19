@@ -23,7 +23,7 @@ WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
 # Changing this is an explicit migration.  Point-cloud updates must never
 # rebuild the node graph: doing so invalidates evaluation work and makes live
 # sync depend on Blender's transient node/point ordering.
-WORLD_TREE_SCHEMA_VERSION = 6
+WORLD_TREE_SCHEMA_VERSION = 7
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -375,6 +375,19 @@ def _build_tree_nodes_and_links(
         links.new(reader.outputs['Attribute'], store.inputs['Value'])
         last_cube_geo = store.outputs['Geometry']
 
+    for face in ("top", "bottom", "east", "west", "south", "north"):
+        attr_name = f"mtk_tint_data_{face}"
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT_COLOR'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'FLOAT_COLOR'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_cube_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_cube_geo = store.outputs['Geometry']
+
     # --- BRANCH B: Collection Props ---
     iop_prop = nodes.new('GeometryNodeInstanceOnPoints')
     iop_prop.inputs['Pick Instance'].default_value = True
@@ -432,6 +445,19 @@ def _build_tree_nodes_and_links(
         reader.inputs['Name'].default_value = attr_name
         store = nodes.new('GeometryNodeStoreNamedAttribute')
         store.data_type = 'FLOAT'
+        store.domain = 'INSTANCE'
+        store.inputs['Name'].default_value = attr_name
+        links.new(last_prop_geo, store.inputs['Geometry'])
+        links.new(reader.outputs['Attribute'], store.inputs['Value'])
+        last_prop_geo = store.outputs['Geometry']
+
+    for face in ("top", "bottom", "east", "west", "south", "north"):
+        attr_name = f"mtk_tint_data_{face}"
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT_COLOR'
+        reader.inputs['Name'].default_value = attr_name
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'FLOAT_COLOR'
         store.domain = 'INSTANCE'
         store.inputs['Name'].default_value = attr_name
         links.new(last_prop_geo, store.inputs['Geometry'])
@@ -675,6 +701,37 @@ def _build_tree_nodes_and_links(
     store_rot.location = (2700, 50)
     links.new(store_tiling.outputs['Geometry'], store_rot.inputs['Geometry'])
 
+    def selected_face_color_attribute(prefix: str, label: str):
+        """Resolve six point colors to a realized FACE-domain color."""
+        readers = {}
+        for face in ("top", "bottom", "east", "west", "south", "north"):
+            reader = nodes.new('GeometryNodeInputNamedAttribute')
+            reader.data_type = 'FLOAT_COLOR'
+            reader.inputs['Name'].default_value = f"{prefix}_{face}"
+            readers[face] = reader
+
+        def mix(compare, false_socket, true_socket):
+            node = nodes.new('ShaderNodeMix')
+            node.data_type = 'RGBA'
+            links.new(compare.outputs['Result'], node.inputs[0])
+            links.new(false_socket, node.inputs[6])
+            links.new(true_socket, node.inputs[7])
+            return node.outputs[2]
+
+        value = mix(cmp_north_r, readers['south'].outputs['Attribute'], readers['north'].outputs['Attribute'])
+        value = mix(cmp_east_r, value, readers['east'].outputs['Attribute'])
+        value = mix(cmp_west_r, value, readers['west'].outputs['Attribute'])
+        value = mix(cmp_bottom_r, value, readers['bottom'].outputs['Attribute'])
+        value = mix(cmp_top_r, value, readers['top'].outputs['Attribute'])
+        store = nodes.new('GeometryNodeStoreNamedAttribute')
+        store.data_type = 'FLOAT_COLOR'
+        store.domain = 'FACE'
+        store.inputs['Name'].default_value = label
+        links.new(value, store.inputs['Value'])
+        return store
+
+    store_face_tint_data = selected_face_color_attribute("mtk_tint_data", "mtk_biome_tint_data")
+
     def selected_face_int_attribute(prefix: str, label: str):
         """Resolve one of six point attributes to a realized FACE attribute."""
         readers = {}
@@ -706,7 +763,8 @@ def _build_tree_nodes_and_links(
 
     store_chunk_id = selected_face_int_attribute("mtk_chunk", "mtk_atlas_chunk_id")
     store_texture_id = selected_face_int_attribute("mtk_texture", "mtk_atlas_texture_id")
-    links.new(store_rot.outputs['Geometry'], store_chunk_id.inputs['Geometry'])
+    links.new(store_rot.outputs['Geometry'], store_face_tint_data.inputs['Geometry'])
+    links.new(store_face_tint_data.outputs['Geometry'], store_chunk_id.inputs['Geometry'])
     links.new(store_chunk_id.outputs['Geometry'], store_texture_id.inputs['Geometry'])
 
     # MoziToolKit emits one material per atlas chunk.  Resolve the material
