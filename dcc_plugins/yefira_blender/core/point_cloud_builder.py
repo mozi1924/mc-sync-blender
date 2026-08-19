@@ -23,6 +23,42 @@ class PointCloudBuildResult(NamedTuple):
     fluids_count: int
 
 
+def _resolve_template_index(template_indices: dict[str, int], name: str) -> int:
+    """Resolve a block template name to a Collection index with prefix/suffix fallback."""
+    if not name or not template_indices:
+        return 0
+    if name in template_indices:
+        return template_indices[name]
+    low = name.lower()
+    if low in template_indices:
+        return template_indices[low]
+
+    for key, idx in template_indices.items():
+        if low.endswith(key) or key.endswith(low):
+            return idx
+        if "bed_head" in low and "bed_head" in key:
+            return idx
+        if "bed_foot" in low and "bed_foot" in key:
+            return idx
+        if "door" in low and "lower" in low and "door_lower" in key:
+            return idx
+        if "door" in low and "upper" in low and "door_upper" in key:
+            return idx
+        if "stairs" in low and "stairs" in key:
+            return idx
+        if "slab" in low and "slab" in key:
+            return idx
+        if "chest" in low and "chest" in key:
+            return idx
+        if "torch" in low and "torch" in key:
+            return idx
+        if "plant" in low and "plant" in key:
+            return idx
+        if "carpet" in low and "carpet" in key:
+            return idx
+    return 0
+
+
 def update_world_point_cloud(
     context: bpy.types.Context,
     storage: VoxelStorage,
@@ -123,7 +159,7 @@ def update_world_point_cloud(
         block_types.append(parsed.block_type)
 
         # Template Index for Collection Info Pick Instance
-        tmpl_idx = template_indices.get(parsed.template_name, 0)
+        tmpl_idx = _resolve_template_index(template_indices, parsed.template_name)
         instance_indices.append(tmpl_idx)
 
         rotations.append(parsed.rot_euler)

@@ -1,6 +1,7 @@
 """
 Template Asset Collection Manager for Minecraft Props and Non-Cube Models.
 Manages the 'MC_Block_Templates' collection in Blender used by Geometry Nodes.
+Generates procedural non-cube models and entity blocks with fake-user persistence.
 """
 
 from __future__ import annotations
@@ -12,24 +13,22 @@ logger = logging.getLogger("Yefira")
 
 TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
 
+
 def get_or_create_template_collection(context: bpy.types.Context) -> bpy.types.Collection:
     """
     Find or create the 'MC_Block_Templates' collection in the active scene.
-    Ensures default procedural templates exist if the collection is newly created.
+    Ensures all default procedural templates exist and are linked.
     """
     if TEMPLATE_COLLECTION_NAME in bpy.data.collections:
         col = bpy.data.collections[TEMPLATE_COLLECTION_NAME]
     else:
         col = bpy.data.collections.new(TEMPLATE_COLLECTION_NAME)
         context.scene.collection.children.link(col)
-        # Exclude from view layer rendering by default so template instances don't clutter the origin
         col.hide_render = True
         col.hide_viewport = True
 
-    # Populate basic procedural shapes if collection is empty
-    if not col.objects:
-        _populate_default_templates(col)
-
+    # Always ensure all standard procedural templates exist
+    _populate_default_templates(col)
     return col
 
 
@@ -37,93 +36,177 @@ def get_template_index_map(col: bpy.types.Collection) -> dict[str, int]:
     """
     Return mapping of template object name -> integer index in collection.
     Geometry Nodes 'Collection Info' with 'Pick Instance' uses 0-based indexing matching col.objects.
+    Includes comprehensive alias resolution for entity blocks and non-cubes.
     """
     mapping = {}
+    obj_names = [obj.name for obj in col.objects]
+
     for idx, obj in enumerate(col.objects):
-        # Match both exact name and base name (e.g. 'oak_stairs' matches 'oak_stairs' or 'oak_stairs_straight')
         mapping[obj.name] = idx
-        clean_name = obj.name.lower()
-        mapping[clean_name] = idx
+        mapping[obj.name.lower()] = idx
+
+    # Dynamic alias resolution helper
+    def register_alias(alias_key: str, target_name: str):
+        if target_name in mapping:
+            target_idx = mapping[target_name]
+            mapping[alias_key] = target_idx
+            mapping[alias_key.lower()] = target_idx
+
+    # Canonical aliases
+    for obj_name in obj_names:
+        low = obj_name.lower()
+        if "stairs" in low:
+            register_alias("stairs", obj_name)
+            register_alias("stairs_straight", obj_name)
+        elif "slab" in low:
+            register_alias("slab", obj_name)
+            register_alias("slab_bottom", obj_name)
+        elif "bed_head" in low:
+            register_alias("bed_head", obj_name)
+        elif "bed_foot" in low:
+            register_alias("bed_foot", obj_name)
+        elif "door_lower" in low or "door_bottom" in low:
+            register_alias("door_lower", obj_name)
+            register_alias("door_bottom", obj_name)
+        elif "door_upper" in low or "door_top" in low:
+            register_alias("door_upper", obj_name)
+            register_alias("door_top", obj_name)
+        elif "chest" in low:
+            register_alias("chest", obj_name)
+        elif "plant" in low or "cross" in low:
+            register_alias("cross_plant", obj_name)
+            register_alias("flower", obj_name)
+        elif "torch" in low:
+            register_alias("torch", obj_name)
+        elif "trapdoor" in low:
+            register_alias("trapdoor", obj_name)
+        elif "carpet" in low:
+            register_alias("carpet", obj_name)
+        elif "fence" in low:
+            register_alias("fence", obj_name)
+        elif "wall" in low:
+            register_alias("wall", obj_name)
+        elif "lantern" in low:
+            register_alias("lantern", obj_name)
+
     return mapping
 
 
-def _populate_default_templates(col: bpy.types.Collection):
-    """
-    Create basic fallback procedural template meshes in the collection.
-    Users can replace or add custom OBJ/glTF models to this collection anytime.
-    """
-    # 1. Stairs Template (Standard step shape: L-shaped box)
-    if "stairs_straight" not in bpy.data.objects:
-        stair_mesh = bpy.data.meshes.new("Template_Stairs_Mesh")
-        # 8 vertices for bottom half, 8 vertices for back step
-        # Bottom half: [-0.5, 0.5] x [-0.5, 0.5] x [-0.5, 0.0]
-        # Top-back half: [-0.5, 0.5] x [0.0, 0.5] x [0.0, 0.5]
+def _ensure_template_box(
+    col: bpy.types.Collection,
+    name: str,
+    min_pt: tuple[float, float, float],
+    max_pt: tuple[float, float, float],
+) -> bpy.types.Object:
+    """Helper to create and link an axis-aligned cuboid mesh template with fake-user."""
+    obj = bpy.data.objects.get(name)
+    if not obj:
+        mesh = bpy.data.meshes.new(f"Template_{name}_Mesh")
+        mesh.use_fake_user = True
+        x0, y0, z0 = min_pt
+        x1, y1, z1 = max_pt
         v = [
-            (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5), # 0-3: bottom
-            (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.0, 0.0), (-0.5, 0.0, 0.0),     # 4-7: step ledge
-            (-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5),       # 8-11: top ledge
-        ]
-        f = [
-            (0, 1, 2, 3), # Bottom
-            (0, 4, 5, 1), # Front lower
-            (4, 7, 6, 5), # Step horizontal
-            (7, 8, 9, 6), # Step vertical
-            (8, 11, 10, 9), # Top horizontal
-            (3, 2, 10, 11), # Back vertical
-            (0, 3, 11, 8, 7, 4), # Left side
-            (1, 5, 6, 9, 10, 2), # Right side
-        ]
-        stair_mesh.from_pydata(v, [], f)
-        stair_mesh.update()
-        stair_obj = bpy.data.objects.new("stairs_straight", stair_mesh)
-        col.objects.link(stair_obj)
-
-    # 2. Slab Template (Bottom half cube: 1x1x0.5)
-    if "slab_bottom" not in bpy.data.objects:
-        slab_mesh = bpy.data.meshes.new("Template_Slab_Mesh")
-        v = [
-            (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
-            (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0),
+            (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+            (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1),
         ]
         f = [
             (0, 1, 2, 3), (4, 7, 6, 5),
             (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)
         ]
-        slab_mesh.from_pydata(v, [], f)
-        slab_mesh.update()
-        slab_obj = bpy.data.objects.new("slab_bottom", slab_mesh)
-        col.objects.link(slab_obj)
+        mesh.from_pydata(v, [], f)
+        mesh.update()
+        obj = bpy.data.objects.new(name, mesh)
+
+    obj.use_fake_user = True
+    if obj.data:
+        obj.data.use_fake_user = True
+    if obj.name not in col.objects:
+        col.objects.link(obj)
+    return obj
+
+
+def _populate_default_templates(col: bpy.types.Collection):
+    """
+    Create basic fallback procedural template meshes in the collection.
+    Covers common Minecraft entity blocks (Beds, Doors, Chests, Trapdoors, Slabs, Stairs, Plants).
+    """
+    # 1. Stairs Template (Standard step shape: L-shaped box)
+    if "stairs_straight" not in bpy.data.objects:
+        stair_mesh = bpy.data.meshes.new("Template_Stairs_Mesh")
+        stair_mesh.use_fake_user = True
+        v = [
+            (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
+            (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.0, 0.0), (-0.5, 0.0, 0.0),
+            (-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5),
+        ]
+        f = [
+            (0, 1, 2, 3), (0, 4, 5, 1), (4, 7, 6, 5), (7, 8, 9, 6),
+            (8, 11, 10, 9), (3, 2, 10, 11), (0, 3, 11, 8, 7, 4), (1, 5, 6, 9, 10, 2),
+        ]
+        stair_mesh.from_pydata(v, [], f)
+        stair_mesh.update()
+        stair_obj = bpy.data.objects.new("stairs_straight", stair_mesh)
+        stair_obj.use_fake_user = True
+    else:
+        stair_obj = bpy.data.objects["stairs_straight"]
+        stair_obj.use_fake_user = True
+        if stair_obj.data:
+            stair_obj.data.use_fake_user = True
+
+    if stair_obj.name not in col.objects:
+        col.objects.link(stair_obj)
+
+    # 2. Slab Template (Bottom half cube: 1x1x0.5)
+    _ensure_template_box(col, "slab_bottom", (-0.5, -0.5, -0.5), (0.5, 0.5, 0.0))
 
     # 3. Cross Plant Template (Intersecting X quads)
     if "cross_plant" not in bpy.data.objects:
         plant_mesh = bpy.data.meshes.new("Template_CrossPlant_Mesh")
+        plant_mesh.use_fake_user = True
         d = 0.4
         v = [
             (-d, -d, -0.5), (d, d, -0.5), (d, d, 0.5), (-d, -d, 0.5),
             (-d, d, -0.5), (d, -d, -0.5), (d, -d, 0.5), (-d, d, 0.5),
         ]
         f = [
-            (0, 1, 2, 3), (1, 0, 3, 2), # Quad 1 (double sided)
-            (4, 5, 6, 7), (5, 4, 7, 6), # Quad 2 (double sided)
+            (0, 1, 2, 3), (1, 0, 3, 2),
+            (4, 5, 6, 7), (5, 4, 7, 6),
         ]
         plant_mesh.from_pydata(v, [], f)
         plant_mesh.update()
         plant_obj = bpy.data.objects.new("cross_plant", plant_mesh)
+        plant_obj.use_fake_user = True
+    else:
+        plant_obj = bpy.data.objects["cross_plant"]
+        plant_obj.use_fake_user = True
+        if plant_obj.data:
+            plant_obj.data.use_fake_user = True
+
+    if plant_obj.name not in col.objects:
         col.objects.link(plant_obj)
 
     # 4. Torch Template (Small vertical pillar)
-    if "torch" not in bpy.data.objects:
-        torch_mesh = bpy.data.meshes.new("Template_Torch_Mesh")
-        w = 0.0625 # 2 pixels wide
-        v = [
-            (-w, -w, -0.5), (w, -w, -0.5), (w, w, -0.5), (-w, w, -0.5),
-            (-w, -w, 0.125), (w, -w, 0.125), (w, w, 0.125), (-w, w, 0.125),
-        ]
-        f = [
-            (0, 1, 2, 3), (4, 7, 6, 5),
-            (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)
-        ]
-        torch_mesh.from_pydata(v, [], f)
-        torch_mesh.update()
-        torch_obj = bpy.data.objects.new("torch", torch_mesh)
-        col.objects.link(torch_obj)
+    w = 0.0625
+    _ensure_template_box(col, "torch", (-w, -w, -0.5), (w, w, 0.125))
+
+    # 5. Bed Head Template (Entity Block: Mattress height 9/16, Headboard)
+    _ensure_template_box(col, "bed_head", (-0.5, -0.5, -0.5), (0.5, 0.5, 0.0625))
+
+    # 6. Bed Foot Template (Entity Block: Mattress height 9/16)
+    _ensure_template_box(col, "bed_foot", (-0.5, -0.5, -0.5), (0.5, 0.5, 0.0625))
+
+    # 7. Door Lower Template (Vertical 3/16 panel bottom)
+    _ensure_template_box(col, "door_lower", (-0.5, -0.5, -0.5), (0.5, -0.3125, 0.5))
+
+    # 8. Door Upper Template (Vertical 3/16 panel top)
+    _ensure_template_box(col, "door_upper", (-0.5, -0.5, -0.5), (0.5, -0.3125, 0.5))
+
+    # 9. Chest Template (Entity Block: 14x14x14 box centered)
+    c = 0.4375
+    _ensure_template_box(col, "chest", (-c, -c, -0.5), (c, c, 0.375))
+
+    # 10. Trapdoor Template (Horizontal flat flap 3/16 thick)
+    _ensure_template_box(col, "trapdoor", (-0.5, -0.5, -0.5), (0.5, 0.5, -0.3125))
+
+    # 11. Carpet Template (Flat layer 1/16 thick)
+    _ensure_template_box(col, "carpet", (-0.5, -0.5, -0.5), (0.5, 0.5, -0.4375))
