@@ -17,6 +17,7 @@ from ..core.template_catalog import (
 from ..materials.atlas_integration import (
     extract_atlas_parameters,
     find_bound_atlas_material,
+    find_all_atlas_chunk_materials,
     get_or_create_atlas_material,
     setup_material_slots_for_object,
 )
@@ -34,8 +35,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 10: compact grid alignment and de-overlapped attribute readers.
-WORLD_TREE_SCHEMA_VERSION = 10
+# Schema version 12: support multi-chunk animation UVs, mtk_anim_timing, and mtk_anim_frame_size pipelines.
+WORLD_TREE_SCHEMA_VERSION = 12
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -231,7 +232,7 @@ def _build_tree_nodes_and_links(
     call_tile_selector = nodes.new("GeometryNodeGroup")
     call_tile_selector.node_tree = group_vec_selector
     call_tile_selector.name = "Select Face Tile"
-    call_tile_selector.location = (760, 400)
+    call_tile_selector.location = (760, 500)
     links.new(read_face_norm.outputs["Attribute"], call_tile_selector.inputs["Normal"])
 
     for index, (socket_name, attr_name) in enumerate((
@@ -245,8 +246,29 @@ def _build_tree_nodes_and_links(
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_VECTOR"
         reader.inputs["Name"].default_value = attr_name
-        reader.location = (560, 500 - index * 40)
+        reader.location = (560, 600 - index * 40)
         links.new(reader.outputs["Attribute"], call_tile_selector.inputs[socket_name])
+
+    # --- SUBGROUP: SELECT FACE CHUNK ID (INT) ---
+    call_chunk_selector = nodes.new("GeometryNodeGroup")
+    call_chunk_selector.node_tree = group_int_selector
+    call_chunk_selector.name = "Select Face Chunk ID"
+    call_chunk_selector.location = (760, 260)
+    links.new(read_face_norm.outputs["Attribute"], call_chunk_selector.inputs["Normal"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("South (+Y)", "south"),
+        ("North (-Y)", "north"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "INT"
+        reader.inputs["Name"].default_value = f"mtk_chunk_{face}"
+        reader.location = (560, 320 - index * 40)
+        links.new(reader.outputs["Attribute"], call_chunk_selector.inputs[socket_name])
 
     # --- SUBGROUP: ATLAS UV CALCULATOR ---
     call_uv_calc = nodes.new("GeometryNodeGroup")
@@ -258,13 +280,20 @@ def _build_tree_nodes_and_links(
     read_local_uv = nodes.new("GeometryNodeInputNamedAttribute")
     read_local_uv.data_type = "FLOAT_VECTOR"
     read_local_uv.inputs["Name"].default_value = "LocalUV"
-    read_local_uv.location = (760, 220)
+    read_local_uv.location = (760, 100)
     links.new(read_local_uv.outputs["Attribute"], call_uv_calc.inputs["Local UV"])
+
+    # Link Chunk ID into UV calculator
+    links.new(call_chunk_selector.outputs["Selected"], call_uv_calc.inputs["Chunk ID"])
 
     for index, (socket_name, attr_name) in enumerate((
         ("Tiles Per Row", "mtk_tiles_per_row"),
         ("Tile Size", "mtk_tile_size"),
         ("Atlas Height", "mtk_atlas_height"),
+        ("Anim Atlas Width", "mtk_anim_atlas_width"),
+        ("Anim Atlas Height", "mtk_anim_atlas_height"),
+        ("Anim Frame Width", "mtk_anim_frame_width"),
+        ("Anim Frame Height", "mtk_anim_frame_height"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT"
@@ -329,26 +358,6 @@ def _build_tree_nodes_and_links(
     links.new(call_tint_selector.outputs["Selected"], store_tint_data.inputs["Value"])
 
     # --- SUBGROUP: SELECT FACE CHUNK ID (INT) ---
-    call_chunk_selector = nodes.new("GeometryNodeGroup")
-    call_chunk_selector.node_tree = group_int_selector
-    call_chunk_selector.name = "Select Face Chunk ID"
-    call_chunk_selector.location = (760, -350)
-    links.new(read_face_norm.outputs["Attribute"], call_chunk_selector.inputs["Normal"])
-
-    for index, (socket_name, face) in enumerate((
-        ("Top (+Z)", "top"),
-        ("Bottom (-Z)", "bottom"),
-        ("East (+X)", "east"),
-        ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
-    )):
-        reader = nodes.new("GeometryNodeInputNamedAttribute")
-        reader.data_type = "INT"
-        reader.inputs["Name"].default_value = f"mtk_chunk_{face}"
-        reader.location = (560, -280 - index * 40)
-        links.new(reader.outputs["Attribute"], call_chunk_selector.inputs[socket_name])
-
     store_chunk_id = nodes.new("GeometryNodeStoreNamedAttribute")
     store_chunk_id.data_type = "INT"
     store_chunk_id.domain = "FACE"
@@ -386,13 +395,110 @@ def _build_tree_nodes_and_links(
     links.new(store_chunk_id.outputs["Geometry"], store_texture_id.inputs["Geometry"])
     links.new(call_texture_selector.outputs["Selected"], store_texture_id.inputs["Value"])
 
-    # --- SET MATERIAL INDEX ---
-    # Set Material Index directly from chunk ID for multi-chunk slot dispatching
-    set_mat_index = nodes.new("GeometryNodeSetMaterialIndex")
-    set_mat_index.location = (2260, 100)
-    links.new(store_texture_id.outputs["Geometry"], set_mat_index.inputs["Geometry"])
-    links.new(call_chunk_selector.outputs["Selected"], set_mat_index.inputs["Material Index"])
+    # --- SUBGROUP: SELECT FACE ANIM TIMING (COLOR) ---
+    call_timing_selector = nodes.new("GeometryNodeGroup")
+    call_timing_selector.node_tree = group_color_selector
+    call_timing_selector.name = "Select Face Anim Timing"
+    call_timing_selector.location = (760, -850)
+    links.new(read_face_norm.outputs["Attribute"], call_timing_selector.inputs["Normal"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("South (+Y)", "south"),
+        ("North (-Y)", "north"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "FLOAT_COLOR"
+        reader.inputs["Name"].default_value = f"mtk_anim_timing_{face}"
+        reader.location = (560, -780 - index * 40)
+        links.new(reader.outputs["Attribute"], call_timing_selector.inputs[socket_name])
+
+    store_timing = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_timing.data_type = "FLOAT_COLOR"
+    store_timing.domain = "FACE"
+    store_timing.inputs["Name"].default_value = "mtk_anim_timing"
+    store_timing.location = (2260, 100)
+    links.new(store_texture_id.outputs["Geometry"], store_timing.inputs["Geometry"])
+    links.new(call_timing_selector.outputs["Selected"], store_timing.inputs["Value"])
+
+    # --- SUBGROUP: SELECT FACE ANIM FRAME SIZE (COLOR) ---
+    call_size_selector = nodes.new("GeometryNodeGroup")
+    call_size_selector.node_tree = group_color_selector
+    call_size_selector.name = "Select Face Anim Frame Size"
+    call_size_selector.location = (760, -1100)
+    links.new(read_face_norm.outputs["Attribute"], call_size_selector.inputs["Normal"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("South (+Y)", "south"),
+        ("North (-Y)", "north"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "FLOAT_COLOR"
+        reader.inputs["Name"].default_value = f"mtk_anim_frame_size_{face}"
+        reader.location = (560, -1030 - index * 40)
+        links.new(reader.outputs["Attribute"], call_size_selector.inputs[socket_name])
+
+    store_size = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_size.data_type = "FLOAT_COLOR"
+    store_size.domain = "FACE"
+    store_size.inputs["Name"].default_value = "mtk_anim_frame_size"
+    store_size.location = (2440, 100)
+    links.new(store_timing.outputs["Geometry"], store_size.inputs["Geometry"])
+    links.new(call_size_selector.outputs["Selected"], store_size.inputs["Value"])
+
+    # --- MULTI-CHUNK MATERIAL BINDING ---
+    # Register material data-blocks on the evaluated geometry so Blender's renderer displays textures
+    chunk_mats = find_all_atlas_chunk_materials(atlas_params.get("mapping"))
+    if not chunk_mats:
+        fallback_mat = find_bound_atlas_material(None) or get_or_create_atlas_material()
+        if fallback_mat:
+            chunk_mats = {0: fallback_mat}
+
+    last_mat_geo = store_size.outputs["Geometry"]
+    mat_x = 2620
+
+    if chunk_mats:
+        # Base chunk (0) sets default material across all faces
+        if 0 in chunk_mats:
+            set_mat0 = nodes.new("GeometryNodeSetMaterial")
+            set_mat0.inputs["Material"].default_value = chunk_mats[0]
+            set_mat0.location = (mat_x, 100)
+            links.new(last_mat_geo, set_mat0.inputs["Geometry"])
+            last_mat_geo = set_mat0.outputs["Geometry"]
+            mat_x += 180
+
+        # Specialized chunks (chunk_id > 0) assigned conditionally
+        for cid in sorted(chunk_mats.keys()):
+            if cid == 0:
+                continue
+            mat_obj = chunk_mats[cid]
+            if not mat_obj:
+                continue
+
+            cmp_chunk = nodes.new("FunctionNodeCompare")
+            cmp_chunk.data_type = "INT"
+            cmp_chunk.operation = "EQUAL"
+            cmp_chunk.inputs["B"].default_value = cid
+            cmp_chunk.location = (mat_x, -100)
+            links.new(call_chunk_selector.outputs["Selected"], cmp_chunk.inputs["A"])
+
+            set_mat = nodes.new("GeometryNodeSetMaterial")
+            set_mat.inputs["Material"].default_value = mat_obj
+            set_mat.location = (mat_x, 100)
+            links.new(last_mat_geo, set_mat.inputs["Geometry"])
+            links.new(cmp_chunk.outputs["Result"], set_mat.inputs["Selection"])
+
+            last_mat_geo = set_mat.outputs["Geometry"]
+            mat_x += 180
 
     # Final Output
-    links.new(set_mat_index.outputs["Geometry"], group_out.inputs["Geometry"])
+    group_out.location = (mat_x, 100)
+    links.new(last_mat_geo, group_out.inputs["Geometry"])
     prune_unlinked_nodes(gn_tree)

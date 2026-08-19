@@ -49,6 +49,35 @@ def _atlas_short_name(name: str) -> str:
     return name.removeprefix("block/")
 
 
+BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
+    "water": ["water_still", "water_flow"],
+    "lava": ["lava_still", "lava_flow"],
+    "magma_block": ["magma"],
+    "fire": ["fire_0", "fire_1"],
+    "soul_fire": ["soul_fire_0", "soul_fire_1"],
+    "campfire": ["campfire_fire", "campfire_log"],
+    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log"],
+    "portal": ["nether_portal"],
+    "nether_portal": ["nether_portal"],
+    "kelp": ["kelp", "kelp_plant"],
+    "kelp_plant": ["kelp_plant", "kelp"],
+    "sea_pickle": ["sea_pickle"],
+    "sea_lantern": ["sea_lantern"],
+    "prismarine": ["prismarine"],
+    "prismarine_bricks": ["prismarine_bricks"],
+    "dark_prismarine": ["dark_prismarine"],
+    "lantern": ["lantern"],
+    "soul_lantern": ["soul_lantern"],
+    "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
+    "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
+    "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
+    "respawn_anchor": ["respawn_anchor_top_off", "respawn_anchor_side0", "respawn_anchor_bottom"],
+    "smoker": ["smoker_front", "smoker_side", "smoker_top", "smoker_bottom"],
+    "furnace": ["furnace_front", "furnace_side", "furnace_top", "furnace_bottom"],
+    "blast_furnace": ["blast_furnace_front", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+}
+
+
 def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, list[dict]], dict[str, int]]:
     """Build point-cloud face locations from atlas data, not material names.
 
@@ -94,6 +123,20 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         stem = _atlas_short_name(texture_key)
         if stem not in locations_by_name:
             add(stem, [location] * 6, int(location.get("texture_id", 0)))
+
+    # Block name to texture aliases (e.g. water -> water_still, lava -> lava_still, magma_block -> magma)
+    for block_name, target_stems in BLOCK_TO_TEXTURE_ALIASES.items():
+        if block_name in locations_by_name:
+            continue
+        found_loc = next((texture_by_stem.get(s) for s in target_stems if texture_by_stem.get(s)), None)
+        if found_loc:
+            # Check for side/top/bottom differentiation among stems
+            top_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_top", "_top_off"))), found_loc)
+            bottom_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_bottom")), found_loc)
+            front_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_front", "_front_on"))), found_loc)
+            side_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
+            face_locations = [side_loc, side_loc, top_loc, bottom_loc, front_loc, side_loc]
+            add(block_name, face_locations, int(found_loc.get("texture_id", 0)))
 
     # Texture-only PBR packs expose components such as grass_block_top and
     # oak_log_top but not a logical grass_block/oak_log material entry.  Build
@@ -219,10 +262,17 @@ def build_block_face_lut(mapping: Optional[dict]) -> tuple[dict[str, list[tuple[
 
     locations_by_name, material_ids = _build_block_face_location_lut(mapping)
     for name, locations in locations_by_name.items():
-        face_lut[name] = [
-            (int(location.get("tile_column", 0)), int(location.get("tile_row", 0)))
-            for location in locations
-        ]
+        coords = []
+        for location in locations:
+            if location and location.get("kind") == "animation":
+                px = int(location.get("pixel_x", 0))
+                fw = max(1, int(location.get("frame_width", 16)))
+                coords.append((px // fw, 0))
+            elif location:
+                coords.append((int(location.get("tile_column", 0)), int(location.get("tile_row", 0))))
+            else:
+                coords.append((0, 0))
+        face_lut[name] = coords
     material_id_map.update(material_ids)
 
     return face_lut, material_id_map
@@ -242,8 +292,8 @@ def build_block_face_atlas_ids(mapping: Optional[dict]) -> tuple[dict[str, list[
 
     locations_by_name, _ = _build_block_face_location_lut(mapping)
     for name, locations in locations_by_name.items():
-        chunk_lut[name] = [int(location.get("chunk_id", 0)) for location in locations]
-        texture_lut[name] = [int(location.get("texture_id", 0)) for location in locations]
+        chunk_lut[name] = [int(location.get("chunk_id", 0)) if location else 0 for location in locations]
+        texture_lut[name] = [int(location.get("texture_id", 0)) if location else 0 for location in locations]
 
     return chunk_lut, texture_lut
 
@@ -263,15 +313,51 @@ def build_block_face_tint_lut(mapping: Optional[dict]) -> dict[str, list[tuple[f
                 float(location.get("default_tint_weight", 0.0)),
                 1.0 if location.get("is_hardcoded", False) else 0.0,
             )
+            if location else (0.0, 0.0, 0.0, 0.0)
             for location in locations
         ]
 
     return tint_lut
 
 
+def build_block_face_anim_lut(
+    mapping: Optional[dict],
+) -> tuple[dict[str, list[tuple[float, float, float, float]]], dict[str, list[tuple[float, float, float, float]]]]:
+    """Build per-face animation timing (frame_count, frametime, interpolate, 0) and frame_size LUTs."""
+    timing_lut: dict[str, list[tuple[float, float, float, float]]] = {}
+    frame_size_lut: dict[str, list[tuple[float, float, float, float]]] = {}
+    if not mapping:
+        return timing_lut, frame_size_lut
+
+    locations_by_name, _ = _build_block_face_location_lut(mapping)
+    for name, locations in locations_by_name.items():
+        timing_lut[name] = [
+            (
+                float(loc.get("frame_count", 1)),
+                float(loc.get("frametime", 1)),
+                1.0 if loc.get("interpolate", False) else 0.0,
+                0.0,
+            )
+            if loc else (1.0, 1.0, 0.0, 0.0)
+            for loc in locations
+        ]
+        frame_size_lut[name] = [
+            (
+                float(loc.get("frame_width", loc.get("tile_size", 16))),
+                float(loc.get("frame_height", loc.get("tile_size", 16))),
+                0.0,
+                0.0,
+            )
+            if loc else (16.0, 16.0, 0.0, 0.0)
+            for loc in locations
+        ]
+
+    return timing_lut, frame_size_lut
+
+
 def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
     """
-    Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, and LUTs.
+    Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, chunk dimensions and LUTs.
     """
     if mat is None:
         mat = find_active_atlas_material()
@@ -282,11 +368,20 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "height": 1024.0,
         "tile_size": 16.0,
         "tiles_per_row": 64,
+        "chunk_0_width": 4096.0,
+        "chunk_0_height": 80.0,
+        "chunk_0_tile_size": 16.0,
+        "chunk_0_tiles_per_row": 256.0,
+        "chunk_1_width": 896.0,
+        "chunk_1_height": 1024.0,
+        "chunk_1_tile_size": 16.0,
         "mapping": None,
         "block_face_lut": {},
         "block_face_chunk_lut": {},
         "block_face_texture_lut": {},
         "block_face_tint_lut": {},
+        "block_face_anim_timing_lut": {},
+        "block_face_anim_frame_size_lut": {},
         "material_id_map": {},
     }
 
@@ -309,24 +404,36 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         if "tile_size" in mapping and "mtk_tile_size" not in mat:
             res["tile_size"] = float(mapping["tile_size"])
         chunks = mapping.get("chunks", [])
-        if chunks:
-            chunk = chunks[0]
-            if "width" in chunk and "mtk_atlas_width" not in mat:
-                res["width"] = float(chunk["width"])
-            if "height" in chunk and "mtk_atlas_height" not in mat:
-                res["height"] = float(chunk["height"])
-            if "tile_size" in chunk and "mtk_tile_size" not in mat:
-                res["tile_size"] = float(chunk["tile_size"])
-            if "tiles_per_row" in chunk and "mtk_tiles_per_row" not in mat:
-                res["tiles_per_row"] = int(chunk["tiles_per_row"])
+        chunks_by_id = {c.get("chunk_id", i): c for i, c in enumerate(chunks)}
+
+        if 0 in chunks_by_id:
+            c0 = chunks_by_id[0]
+            res["chunk_0_width"] = float(c0.get("width", res["width"]))
+            res["chunk_0_height"] = float(c0.get("height", res["height"]))
+            res["chunk_0_tile_size"] = float(c0.get("tile_size", res["tile_size"]))
+            res["chunk_0_tiles_per_row"] = float(c0.get("tiles_per_row", res["tiles_per_row"]))
+            res["width"] = res["chunk_0_width"]
+            res["height"] = res["chunk_0_height"]
+            res["tile_size"] = res["chunk_0_tile_size"]
+            res["tiles_per_row"] = int(res["chunk_0_tiles_per_row"])
+
+        if 1 in chunks_by_id:
+            c1 = chunks_by_id[1]
+            res["chunk_1_width"] = float(c1.get("width", 896.0))
+            res["chunk_1_height"] = float(c1.get("height", 1024.0))
+            res["chunk_1_tile_size"] = float(c1.get("tile_size", 16.0))
 
         face_lut, mat_id_map = build_block_face_lut(mapping)
         face_chunk_lut, face_texture_lut = build_block_face_atlas_ids(mapping)
         face_tint_lut = build_block_face_tint_lut(mapping)
+        anim_timing_lut, anim_frame_size_lut = build_block_face_anim_lut(mapping)
+
         res["block_face_lut"] = face_lut
         res["block_face_chunk_lut"] = face_chunk_lut
         res["block_face_texture_lut"] = face_texture_lut
         res["block_face_tint_lut"] = face_tint_lut
+        res["block_face_anim_timing_lut"] = anim_timing_lut
+        res["block_face_anim_frame_size_lut"] = anim_frame_size_lut
         res["material_id_map"] = mat_id_map
 
     return res
@@ -429,10 +536,16 @@ def find_all_atlas_chunk_materials(mapping: Optional[dict] = None) -> dict[int, 
 
     chunk_materials: dict[int, bpy.types.Material] = {}
 
+    # Sort materials to prefer ones specialized with :attr:UVMap or :attr:
+    mats_sorted = sorted(
+        [m for m in bpy.data.materials if m],
+        key=lambda m: (
+            0 if ":attr:UVMap" in m.name else (1 if ":attr:" in m.name else 2)
+        )
+    )
+
     # 1. First priority: Match materials by explicit custom property mtk:atlas_chunk_id
-    for mat in bpy.data.materials:
-        if not mat:
-            continue
+    for mat in mats_sorted:
         for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
             if key in mat:
                 try:
@@ -444,9 +557,7 @@ def find_all_atlas_chunk_materials(mapping: Optional[dict] = None) -> dict[int, 
                     pass
 
     # 2. Second priority: Match materials by naming pattern (e.g., mtk:minecraft:atlas_chunk_000...)
-    for mat in bpy.data.materials:
-        if not mat:
-            continue
+    for mat in mats_sorted:
         if "atlas_chunk_" in mat.name:
             import re
             m = re.search(r"atlas_chunk_(\d+)", mat.name)

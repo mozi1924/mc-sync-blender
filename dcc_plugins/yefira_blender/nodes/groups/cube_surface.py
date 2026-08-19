@@ -6,7 +6,7 @@ import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
 
 GROUP_NAME_CUBE_SURFACE = "Yefira_Cube_Surface"
-CUBE_SURFACE_VERSION = 2
+CUBE_SURFACE_VERSION = 3
 
 
 def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
@@ -39,16 +39,22 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     links.new(cube.outputs["Mesh"], store_normal.inputs["Geometry"])
     links.new(normal.outputs["Normal"], store_normal.inputs["Value"])
 
-    # 3. Position and Normal Deconstruction for 6-Face Local UV calculation
+    # 3. Position and Face Normal Deconstruction for 6-Face Local UV calculation
     position = nodes.new("GeometryNodeInputPosition")
     position.location = (-650, 480)
     separate_pos = nodes.new("ShaderNodeSeparateXYZ")
     separate_pos.location = (-460, 480)
     links.new(position.outputs["Position"], separate_pos.inputs["Vector"])
 
+    # Read Face Normal stored on FACE domain (interpolated to CORNER cleanly)
+    read_face_norm = nodes.new("GeometryNodeInputNamedAttribute")
+    read_face_norm.data_type = "FLOAT_VECTOR"
+    read_face_norm.inputs["Name"].default_value = "CubeFaceNorm"
+    read_face_norm.location = (-650, 250)
+
     separate_normal = nodes.new("ShaderNodeSeparateXYZ")
     separate_normal.location = (-460, 250)
-    links.new(normal.outputs["Normal"], separate_normal.inputs["Vector"])
+    links.new(read_face_norm.outputs["Attribute"], separate_normal.inputs["Vector"])
 
     def compare(axis: str, operation: str, y: float) -> bpy.types.Node:
         node = nodes.new("FunctionNodeCompare")
@@ -88,8 +94,14 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
         links.new(true_value, node.inputs[3])
         return node.outputs[0]
 
-    local_v = mix(top, mix(bottom, plus_y, plus_z, -60, 320), minus_y, 120, 320)
-    local_u = mix(east, mix(west, mix(north, plus_x, minus_x, -60, 100), plus_y, 120, 100), minus_y, 300, 100)
+    # Local V: Default (sides) -> plus_z, Bottom -> plus_y, Top -> minus_y
+    v_side_or_bottom = mix(bottom, plus_z, plus_y, -60, 320)
+    local_v = mix(top, v_side_or_bottom, minus_y, 120, 320)
+
+    # Local U: Default (South/Top/Bottom) -> plus_x, North -> minus_x, West -> plus_y, East -> minus_y
+    u_side_or_north = mix(north, plus_x, minus_x, -60, 100)
+    u_side_or_west = mix(west, u_side_or_north, plus_y, 120, 100)
+    local_u = mix(east, u_side_or_west, minus_y, 300, 100)
 
     combine = nodes.new("ShaderNodeCombineXYZ")
     combine.location = (480, 200)

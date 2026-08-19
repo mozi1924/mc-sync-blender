@@ -115,7 +115,7 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         )
         self.assertIn("INSTANCE_ON_POINTS", node_types)
         self.assertIn("REALIZE_INSTANCES", node_types)
-        self.assertIn("SET_MATERIAL_INDEX", node_types)
+        self.assertIn("SET_MATERIAL", node_types)
         self.assertIn("STORE_NAMED_ATTRIBUTE", node_types)
 
         # Verify UVMap store node exists

@@ -192,7 +192,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
             if slab_type == "top":
                 off_z = 0.5
 
-    elif "torch" in name or "lantern" in name:
+    elif "torch" in name or name in ("lantern", "soul_lantern"):
         block_type = BlockTypeEnum.TORCH
         template_name = name
         if "wall" in name or facing in ("north", "south", "east", "west"):

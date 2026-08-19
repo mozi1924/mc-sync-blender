@@ -32,14 +32,20 @@ def update_world_point_cloud(
     block_face_chunk_lut: Optional[dict[str, list[int]]] = None,
     block_face_texture_lut: Optional[dict[str, list[int]]] = None,
     block_face_tint_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
+    block_face_anim_timing_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
+    block_face_anim_frame_size_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
     atlas_width: float = 1024.0,
     atlas_height: float = 1024.0,
     tile_size: float = 16.0,
     tiles_per_row: int = 64,
+    anim_atlas_width: float = 896.0,
+    anim_atlas_height: float = 1024.0,
+    anim_frame_width: float = 16.0,
+    anim_frame_height: float = 16.0,
 ) -> PointCloudBuildResult:
     """
     Constructs or updates the Yefira_World mesh object from storage voxels in Blender C++.
-    Writes structured attributes including 6-face Atlas tile coordinates.
+    Writes structured attributes including 6-face Atlas tile coordinates and animation metadata.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return PointCloudBuildResult(None, 0, 0, 0, 0)
@@ -88,6 +94,8 @@ def update_world_point_cloud(
     face_chunks = [[] for _ in range(6)]
     face_textures = [[] for _ in range(6)]
     face_tint_data = [[] for _ in range(6)]
+    face_anim_timing = [[] for _ in range(6)]
+    face_anim_frame_size = [[] for _ in range(6)]
 
     palette_mat_cache = {}
     cubes_count = 0
@@ -170,6 +178,12 @@ def update_world_point_cloud(
         for face_index in range(6):
             face_tint_data[face_index].append(tint_values[face_index])
 
+        anim_timing_values = _lookup_face_values(block_face_anim_timing_lut, parsed, (1.0, 1.0, 0.0, 0.0))
+        anim_frame_size_values = _lookup_face_values(block_face_anim_frame_size_lut, parsed, (float(tile_size), float(tile_size), 0.0, 0.0))
+        for face_index in range(6):
+            face_anim_timing[face_index].append(anim_timing_values[face_index])
+            face_anim_frame_size[face_index].append(anim_frame_size_values[face_index])
+
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:
             cubes_count += 1
@@ -196,6 +210,10 @@ def update_world_point_cloud(
         _write_float_attribute(mesh, "mtk_atlas_height", [float(atlas_height)] * num_pts)
         _write_float_attribute(mesh, "mtk_tile_size", [float(tile_size)] * num_pts)
         _write_float_attribute(mesh, "mtk_tiles_per_row", [float(tiles_per_row)] * num_pts)
+        _write_float_attribute(mesh, "mtk_anim_atlas_width", [float(anim_atlas_width)] * num_pts)
+        _write_float_attribute(mesh, "mtk_anim_atlas_height", [float(anim_atlas_height)] * num_pts)
+        _write_float_attribute(mesh, "mtk_anim_frame_width", [float(anim_frame_width)] * num_pts)
+        _write_float_attribute(mesh, "mtk_anim_frame_height", [float(anim_frame_height)] * num_pts)
         _write_float_vector_attribute(mesh, "instance_rotation", rotations)
         _write_float_vector_attribute(mesh, "instance_offset", offsets)
         _write_float_vector_attribute(mesh, "mc_pos", mc_positions)
@@ -211,6 +229,10 @@ def update_world_point_cloud(
             _write_int_attribute(mesh, f"mtk_texture_{name}", values)
         for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_tint_data):
             _write_float_color_attribute(mesh, f"mtk_tint_data_{name}", values)
+        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_anim_timing):
+            _write_float_color_attribute(mesh, f"mtk_anim_timing_{name}", values)
+        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_anim_frame_size):
+            _write_float_color_attribute(mesh, f"mtk_anim_frame_size_{name}", values)
         _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
         _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
         _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)

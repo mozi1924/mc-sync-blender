@@ -34,10 +34,16 @@ def trigger_point_cloud_update(context: bpy.types.Context):
         block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
         block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
         block_face_tint_lut=atlas_params.get("block_face_tint_lut", {}),
+        block_face_anim_timing_lut=atlas_params.get("block_face_anim_timing_lut", {}),
+        block_face_anim_frame_size_lut=atlas_params.get("block_face_anim_frame_size_lut", {}),
         atlas_width=atlas_params["width"],
         atlas_height=atlas_params["height"],
         tile_size=atlas_params["tile_size"],
         tiles_per_row=atlas_params["tiles_per_row"],
+        anim_atlas_width=atlas_params.get("chunk_1_width", 896.0),
+        anim_atlas_height=atlas_params.get("chunk_1_height", 1024.0),
+        anim_frame_width=atlas_params.get("chunk_1_tile_size", 16.0),
+        anim_frame_height=atlas_params.get("chunk_1_tile_size", 16.0),
     )
 
     if res.world_obj:
