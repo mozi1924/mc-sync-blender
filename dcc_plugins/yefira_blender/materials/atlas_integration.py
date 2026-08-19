@@ -22,6 +22,19 @@ FALLBACK_MATERIAL_NAME = "Yefira_Fallback_PBR"
 FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 
+def _fallback_texture_location(mapping: dict, block_name: str) -> Optional[dict]:
+    """Resolve generated-model textures that have no explicit six-face map."""
+    textures = mapping.get("textures", {})
+    short_name = block_name.split(":", 1)[-1]
+    if short_name.startswith("block/"):
+        short_name = short_name[6:]
+    for key in (short_name, f"minecraft:{short_name}", f"minecraft:block/{short_name}"):
+        location = textures.get(key)
+        if isinstance(location, dict):
+            return location
+    return None
+
+
 def find_active_atlas_material() -> Optional[bpy.types.Material]:
     """Find the best active Atlas material in Blender scene."""
     if not HAS_BPY:
@@ -129,9 +142,10 @@ def build_block_face_lut(mapping: Optional[dict]) -> tuple[dict[str, list[tuple[
             material_id_map[name.split(":", 1)[1]] = mat_id
 
         faces_dict = mat_entry.get("faces", {})
+        fallback_location = _fallback_texture_location(mapping, name)
         face_coords = []
         for face_name in FACE_ORDER:
-            loc = faces_dict.get(face_name)
+            loc = faces_dict.get(face_name) or fallback_location
             if loc and isinstance(loc, dict) and "tile_column" in loc and "tile_row" in loc:
                 face_coords.append((int(loc["tile_column"]), int(loc["tile_row"])))
             elif loc and isinstance(loc, dict) and "texture_id" in loc:
@@ -198,8 +212,9 @@ def build_block_face_atlas_ids(mapping: Optional[dict]) -> tuple[dict[str, list[
         if not name:
             continue
         chunks, textures = [], []
+        fallback_location = _fallback_texture_location(mapping, name)
         for face_name in FACE_ORDER:
-            location = material.get("faces", {}).get(face_name) or {}
+            location = material.get("faces", {}).get(face_name) or fallback_location or {}
             chunks.append(int(location.get("chunk_id", 0)))
             textures.append(int(location.get("texture_id", 0)))
         add_aliases(name, chunks, textures)
