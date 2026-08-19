@@ -29,14 +29,15 @@ from .groups import (
     get_or_create_face_selector_int_group,
     get_or_create_face_selector_vector_group,
     get_or_create_instance_attribute_transfer_group,
+    get_or_create_material_dispatcher_group,
 )
 
 logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 12: support multi-chunk animation UVs, mtk_anim_timing, and mtk_anim_frame_size pipelines.
-WORLD_TREE_SCHEMA_VERSION = 12
+# Schema version 13: decoupled material dispatcher sub-node group with fake-user multi-chunk mapping.
+WORLD_TREE_SCHEMA_VERSION = 13
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -61,22 +62,31 @@ def setup_world_geometry_nodes(
     # Populate all material slots on world_obj in chunk_id order (Slot 0 -> Chunk 0, Slot 1 -> Chunk 1...)
     setup_material_slots_for_object(world_obj, mat, atlas_params.get("mapping"))
 
+    # Resolve all chunk materials and construct/update independent Material Dispatcher group
+    chunk_mats = find_all_atlas_chunk_materials(atlas_params.get("mapping"))
+    if not chunk_mats:
+        fallback_mat = find_bound_atlas_material(None) or get_or_create_atlas_material()
+        if fallback_mat:
+            chunk_mats = {0: fallback_mat}
+
+    group_mat_dispatcher = get_or_create_material_dispatcher_group(chunk_mats)
+
     mod = world_obj.modifiers.get(WORLD_MODIFIER_NAME)
     if not mod:
         mod = world_obj.modifiers.new(name=WORLD_MODIFIER_NAME, type="NODES")
 
     gn_tree = bpy.data.node_groups.get(WORLD_TREE_NAME)
     if gn_tree and gn_tree.get(WORLD_TREE_SCHEMA_PROPERTY) == WORLD_TREE_SCHEMA_VERSION:
-        _update_tree_bindings(gn_tree, template_col)
+        _update_tree_bindings(gn_tree, template_col, group_mat_dispatcher)
     elif gn_tree:
         gn_tree.nodes.clear()
         _remove_legacy_atlas_inputs(gn_tree)
         ensure_socket(gn_tree, "Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
         ensure_socket(gn_tree, "Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-        _build_tree_nodes_and_links(gn_tree, template_col, atlas_params)
+        _build_tree_nodes_and_links(gn_tree, template_col, atlas_params, group_mat_dispatcher)
         gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
     else:
-        gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, atlas_params)
+        gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, atlas_params, group_mat_dispatcher)
         gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
 
     mod.node_group = gn_tree
@@ -86,11 +96,14 @@ def setup_world_geometry_nodes(
 def _update_tree_bindings(
     tree: bpy.types.GeometryNodeTree,
     template_col: bpy.types.Collection,
+    group_mat_dispatcher: bpy.types.GeometryNodeTree,
 ) -> None:
     """Refresh external data-block references without rebuilding nodes."""
     for node in tree.nodes:
         if node.bl_idname == "GeometryNodeCollectionInfo" and "Collection" in node.inputs:
             node.inputs["Collection"].default_value = template_col
+        elif node.bl_idname == "GeometryNodeGroup" and node.name == "Material Dispatcher":
+            node.node_tree = group_mat_dispatcher
 
 
 def _remove_legacy_atlas_inputs(tree: bpy.types.GeometryNodeTree) -> None:
@@ -108,11 +121,12 @@ def _create_world_geometry_node_tree(
     tree_name: str,
     template_col: bpy.types.Collection,
     atlas_params: dict[str, Any],
+    group_mat_dispatcher: bpy.types.GeometryNodeTree,
 ) -> bpy.types.GeometryNodeTree:
     gn_tree = bpy.data.node_groups.new(name=tree_name, type="GeometryNodeTree")
     ensure_socket(gn_tree, "Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     ensure_socket(gn_tree, "Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    _build_tree_nodes_and_links(gn_tree, template_col, atlas_params)
+    _build_tree_nodes_and_links(gn_tree, template_col, atlas_params, group_mat_dispatcher)
     return gn_tree
 
 
@@ -120,6 +134,7 @@ def _build_tree_nodes_and_links(
     gn_tree: bpy.types.GeometryNodeTree,
     template_col: bpy.types.Collection,
     atlas_params: dict[str, Any],
+    group_mat_dispatcher: bpy.types.GeometryNodeTree,
 ) -> None:
     nodes = gn_tree.nodes
     links = gn_tree.links
@@ -453,52 +468,14 @@ def _build_tree_nodes_and_links(
     links.new(store_timing.outputs["Geometry"], store_size.inputs["Geometry"])
     links.new(call_size_selector.outputs["Selected"], store_size.inputs["Value"])
 
-    # --- MULTI-CHUNK MATERIAL BINDING ---
-    # Register material data-blocks on the evaluated geometry so Blender's renderer displays textures
-    chunk_mats = find_all_atlas_chunk_materials(atlas_params.get("mapping"))
-    if not chunk_mats:
-        fallback_mat = find_bound_atlas_material(None) or get_or_create_atlas_material()
-        if fallback_mat:
-            chunk_mats = {0: fallback_mat}
-
-    last_mat_geo = store_size.outputs["Geometry"]
-    mat_x = 2620
-
-    if chunk_mats:
-        # Base chunk (0) sets default material across all faces
-        if 0 in chunk_mats:
-            set_mat0 = nodes.new("GeometryNodeSetMaterial")
-            set_mat0.inputs["Material"].default_value = chunk_mats[0]
-            set_mat0.location = (mat_x, 100)
-            links.new(last_mat_geo, set_mat0.inputs["Geometry"])
-            last_mat_geo = set_mat0.outputs["Geometry"]
-            mat_x += 180
-
-        # Specialized chunks (chunk_id > 0) assigned conditionally
-        for cid in sorted(chunk_mats.keys()):
-            if cid == 0:
-                continue
-            mat_obj = chunk_mats[cid]
-            if not mat_obj:
-                continue
-
-            cmp_chunk = nodes.new("FunctionNodeCompare")
-            cmp_chunk.data_type = "INT"
-            cmp_chunk.operation = "EQUAL"
-            cmp_chunk.inputs["B"].default_value = cid
-            cmp_chunk.location = (mat_x, -100)
-            links.new(call_chunk_selector.outputs["Selected"], cmp_chunk.inputs["A"])
-
-            set_mat = nodes.new("GeometryNodeSetMaterial")
-            set_mat.inputs["Material"].default_value = mat_obj
-            set_mat.location = (mat_x, 100)
-            links.new(last_mat_geo, set_mat.inputs["Geometry"])
-            links.new(cmp_chunk.outputs["Result"], set_mat.inputs["Selection"])
-
-            last_mat_geo = set_mat.outputs["Geometry"]
-            mat_x += 180
+    # --- SUBGROUP: MATERIAL DISPATCHER ---
+    call_mat_dispatcher = nodes.new("GeometryNodeGroup")
+    call_mat_dispatcher.node_tree = group_mat_dispatcher
+    call_mat_dispatcher.name = "Material Dispatcher"
+    call_mat_dispatcher.location = (2620, 100)
+    links.new(store_size.outputs["Geometry"], call_mat_dispatcher.inputs["Geometry"])
 
     # Final Output
-    group_out.location = (mat_x, 100)
-    links.new(last_mat_geo, group_out.inputs["Geometry"])
+    group_out.location = (2840, 100)
+    links.new(call_mat_dispatcher.outputs["Geometry"], group_out.inputs["Geometry"])
     prune_unlinked_nodes(gn_tree)

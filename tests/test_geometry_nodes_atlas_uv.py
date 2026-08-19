@@ -115,7 +115,13 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         )
         self.assertIn("INSTANCE_ON_POINTS", node_types)
         self.assertIn("REALIZE_INSTANCES", node_types)
-        self.assertIn("SET_MATERIAL", node_types)
+        dispatcher_groups = [
+            node for node in gn_tree.nodes
+            if node.type == "GROUP" and node.node_tree
+            and node.node_tree.name == "Yefira_Material_Dispatcher"
+        ]
+        self.assertTrue(dispatcher_groups)
+        self.assertIn("SET_MATERIAL", [node.type for node in dispatcher_groups[0].node_tree.nodes])
         self.assertIn("STORE_NAMED_ATTRIBUTE", node_types)
 
         # Verify UVMap store node exists

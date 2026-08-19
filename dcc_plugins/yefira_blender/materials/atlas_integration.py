@@ -616,4 +616,3 @@ def setup_material_slots_for_object(
     for cid in range(needed_slots):
         target_mat = chunk_materials.get(cid) or mat
         obj.data.materials[cid] = target_mat
-
