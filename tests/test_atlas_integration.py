@@ -5,13 +5,25 @@ Unit tests for Yefira Atlas Material Integration, 6-face UV math, and Geometry N
 import sys
 import os
 import unittest
-import json
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dcc_plugins", "yefira_blender")))
+dcc_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dcc_plugins"))
+if dcc_dir not in sys.path:
+    sys.path.insert(0, dcc_dir)
+plugin_dir = os.path.join(dcc_dir, "yefira_blender")
+if plugin_dir not in sys.path:
+    sys.path.insert(0, plugin_dir)
 
 from materials.atlas_integration import (
     build_block_face_lut,
     extract_atlas_parameters,
+    setup_material_slots_for_object,
+    find_all_atlas_chunk_materials,
     FACE_ORDER,
 )
 from core.block_classifier import parse_and_classify, BlockTypeEnum
@@ -192,6 +204,39 @@ class TestYefiraAtlasIntegration(unittest.TestCase):
         self.assertAlmostEqual(pixel_span_x, 32.0)
         self.assertAlmostEqual(pixel_span_y, 32.0)
 
+    def test_multi_chunk_material_slots_setup(self):
+        """Verify setup_material_slots_for_object populates slots for all chunks."""
+        mesh = bpy.data.meshes.new("TestMultiChunkMesh")
+        obj = bpy.data.objects.new("TestMultiChunkObj", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+
+        mat0 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_000")
+        mat0["mtk:atlas_chunk_id"] = 0
+        mat1 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001")
+        mat1["mtk:atlas_chunk_id"] = 1
+        mat2 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_002")
+        mat2["mtk:atlas_chunk_id"] = 2
+
+        mapping = {
+            "chunks": [
+                {"chunk_id": 0, "kind": "static"},
+                {"chunk_id": 1, "kind": "static"},
+                {"chunk_id": 2, "kind": "animation"},
+            ]
+        }
+
+        chunk_mats = find_all_atlas_chunk_materials(mapping)
+        self.assertEqual(len(chunk_mats), 3)
+        self.assertIs(chunk_mats[0], mat0)
+        self.assertIs(chunk_mats[1], mat1)
+        self.assertIs(chunk_mats[2], mat2)
+
+        setup_material_slots_for_object(obj, mat0, mapping)
+        self.assertEqual(len(obj.data.materials), 3)
+        self.assertIs(obj.data.materials[0], mat0)
+        self.assertIs(obj.data.materials[1], mat1)
+        self.assertIs(obj.data.materials[2], mat2)
+
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

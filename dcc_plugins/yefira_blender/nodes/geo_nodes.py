@@ -15,101 +15,28 @@ from ..materials.atlas_integration import (
     setup_material_slots_for_object,
 )
 from ..core.template_catalog import get_or_create_template_collection, TEMPLATE_COLLECTION_NAME
+from .world_groups import (
+    get_or_create_cube_surface_group,
+    get_or_create_instance_attribute_transfer_group,
+)
 
 logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Changing this is an explicit migration.  Point-cloud updates must never
-# rebuild the node graph: doing so invalidates evaluation work and makes live
-# sync depend on Blender's transient node/point ordering.
-WORLD_TREE_SCHEMA_VERSION = 7
+# Schema version 9: reusable instance-attribute transfer group.
+WORLD_TREE_SCHEMA_VERSION = 9
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
-def setup_world_geometry_nodes(world_obj: bpy.types.Object, template_col: bpy.types.Collection = None) -> Optional[bpy.types.Modifier]:
-    """
-    Attach and configure the unified Geometry Nodes tree on the Yefira_World point cloud.
-    Handles Cube instancing, Collection Info prop instancing, rotation, and Atlas Material binding.
-    """
-    if not world_obj:
-        return None
-
-    if not template_col:
-        template_col = get_or_create_template_collection(bpy.context)
-
-    # Prefer the material slots already applied to this world.  Falling back
-    # to a global data-block search here used to overwrite a valid replacement
-    # with the first unrelated atlas chunk Blender happened to enumerate.
-    mat = find_bound_atlas_material(world_obj) or get_or_create_atlas_material()
-    setup_material_slots_for_object(world_obj, mat)
-
-    atlas_params = extract_atlas_parameters(mat)
-
-    mod = world_obj.modifiers.get(WORLD_MODIFIER_NAME)
-    if not mod:
-        mod = world_obj.modifiers.new(name=WORLD_MODIFIER_NAME, type='NODES')
-
-    # Create the graph once, then retain it for all live point updates.  The
-    # schema marker provides a controlled one-time migration for files made by
-    # older versions of the add-on.
-    gn_tree = bpy.data.node_groups.get(WORLD_TREE_NAME)
-    if gn_tree and gn_tree.get(WORLD_TREE_SCHEMA_PROPERTY) == WORLD_TREE_SCHEMA_VERSION:
-        _update_tree_bindings(gn_tree, template_col, mat)
-    elif gn_tree:
-        gn_tree.nodes.clear()
-        _remove_legacy_atlas_inputs(gn_tree)
-        _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
-        _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
-        _build_tree_nodes_and_links(gn_tree, template_col, mat, atlas_params)
-        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
-    else:
-        gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, mat, atlas_params)
-        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
-
-    mod.node_group = gn_tree
-
-    return mod
-
-
-def _update_tree_bindings(
-    tree: bpy.types.GeometryNodeTree,
-    template_col: bpy.types.Collection,
-    mat: bpy.types.Material,
-) -> None:
-    """Refresh external data-block references without rebuilding nodes."""
-    for node in tree.nodes:
-        if node.bl_idname == 'GeometryNodeSetMaterial' and 'Material' in node.inputs:
-            node.inputs['Material'].default_value = mat
-        elif node.bl_idname == 'GeometryNodeCollectionInfo' and 'Collection' in node.inputs:
-            node.inputs['Collection'].default_value = template_col
-
-
-def _remove_legacy_atlas_inputs(tree: bpy.types.GeometryNodeTree) -> None:
-    """Remove former user-facing atlas controls during the v5 migration."""
-    for item in list(tree.interface.items_tree):
-        if (
-            item.item_type == 'SOCKET'
-            and item.in_out == 'INPUT'
-            and item.name in {"Atlas Width", "Atlas Height", "Tile Size", "Tiles Per Row"}
-        ):
-            tree.interface.remove(item)
-
-
-def _create_world_geometry_node_tree(
-    tree_name: str,
-    template_col: bpy.types.Collection,
-    mat: bpy.types.Material,
-    atlas_params: dict[str, Any],
-) -> bpy.types.GeometryNodeTree:
-    gn_tree = bpy.data.node_groups.new(name=tree_name, type='GeometryNodeTree')
-    _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
-    _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
-    _build_tree_nodes_and_links(gn_tree, template_col, mat, atlas_params)
-    return gn_tree
-
-
-def _ensure_socket(tree: bpy.types.GeometryNodeTree, name: str, in_out: str, socket_type: str, default_value=None, min_value=None):
+def _ensure_socket(
+    tree: bpy.types.NodeTree,
+    name: str,
+    in_out: str,
+    socket_type: str,
+    default_value=None,
+    min_value=None,
+):
     """Ensure socket exists on node tree interface."""
     for item in tree.interface.items_tree:
         if item.item_type == 'SOCKET' and item.name == name and item.in_out == in_out:
@@ -124,36 +51,522 @@ def _ensure_socket(tree: bpy.types.GeometryNodeTree, name: str, in_out: str, soc
     return socket
 
 
+def get_or_create_face_selector_vector_group() -> bpy.types.GeometryNodeTree:
+    """Reusable node group: Selects a Vector from 6 face inputs based on Face Normal."""
+    name = "Yefira_Face_Selector_Vector"
+    tree = bpy.data.node_groups.get(name)
+    if tree and tree.get("yefira_built"):
+        return tree
+
+    if not tree:
+        tree = bpy.data.node_groups.new(name=name, type='GeometryNodeTree')
+    tree.nodes.clear()
+
+    _ensure_socket(tree, "Normal", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "South (+Y)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "North (-Y)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "East (+X)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "West (-X)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "Bottom (-Z)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "Top (+Z)", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "Selected", 'OUTPUT', 'NodeSocketVector')
+
+    nodes, links = tree.nodes, tree.links
+    gin = nodes.new('NodeGroupInput')
+    gin.location = (-600, 0)
+    gout = nodes.new('NodeGroupOutput')
+    gout.location = (800, 0)
+
+    sep_norm = nodes.new('ShaderNodeSeparateXYZ')
+    sep_norm.location = (-400, 200)
+    links.new(gin.outputs['Normal'], sep_norm.inputs['Vector'])
+
+    cmp_north = nodes.new('FunctionNodeCompare')
+    cmp_north.data_type = 'FLOAT'
+    cmp_north.operation = 'LESS_THAN'
+    cmp_north.inputs['B'].default_value = -0.5
+    cmp_north.location = (-200, 300)
+    links.new(sep_norm.outputs['Y'], cmp_north.inputs['A'])
+
+    cmp_east = nodes.new('FunctionNodeCompare')
+    cmp_east.data_type = 'FLOAT'
+    cmp_east.operation = 'GREATER_THAN'
+    cmp_east.inputs['B'].default_value = 0.5
+    cmp_east.location = (-200, 150)
+    links.new(sep_norm.outputs['X'], cmp_east.inputs['A'])
+
+    cmp_west = nodes.new('FunctionNodeCompare')
+    cmp_west.data_type = 'FLOAT'
+    cmp_west.operation = 'LESS_THAN'
+    cmp_west.inputs['B'].default_value = -0.5
+    cmp_west.location = (-200, 0)
+    links.new(sep_norm.outputs['X'], cmp_west.inputs['A'])
+
+    cmp_bottom = nodes.new('FunctionNodeCompare')
+    cmp_bottom.data_type = 'FLOAT'
+    cmp_bottom.operation = 'LESS_THAN'
+    cmp_bottom.inputs['B'].default_value = -0.5
+    cmp_bottom.location = (-200, -150)
+    links.new(sep_norm.outputs['Z'], cmp_bottom.inputs['A'])
+
+    cmp_top = nodes.new('FunctionNodeCompare')
+    cmp_top.data_type = 'FLOAT'
+    cmp_top.operation = 'GREATER_THAN'
+    cmp_top.inputs['B'].default_value = 0.5
+    cmp_top.location = (-200, -300)
+    links.new(sep_norm.outputs['Z'], cmp_top.inputs['A'])
+
+    m1 = nodes.new('ShaderNodeMix')
+    m1.data_type = 'VECTOR'
+    m1.location = (0, 200)
+    links.new(cmp_north.outputs['Result'], m1.inputs[0])
+    links.new(gin.outputs['South (+Y)'], m1.inputs[4])
+    links.new(gin.outputs['North (-Y)'], m1.inputs[5])
+
+    m2 = nodes.new('ShaderNodeMix')
+    m2.data_type = 'VECTOR'
+    m2.location = (150, 150)
+    links.new(cmp_east.outputs['Result'], m2.inputs[0])
+    links.new(m1.outputs[1], m2.inputs[4])
+    links.new(gin.outputs['East (+X)'], m2.inputs[5])
+
+    m3 = nodes.new('ShaderNodeMix')
+    m3.data_type = 'VECTOR'
+    m3.location = (300, 100)
+    links.new(cmp_west.outputs['Result'], m3.inputs[0])
+    links.new(m2.outputs[1], m3.inputs[4])
+    links.new(gin.outputs['West (-X)'], m3.inputs[5])
+
+    m4 = nodes.new('ShaderNodeMix')
+    m4.data_type = 'VECTOR'
+    m4.location = (450, 50)
+    links.new(cmp_bottom.outputs['Result'], m4.inputs[0])
+    links.new(m3.outputs[1], m4.inputs[4])
+    links.new(gin.outputs['Bottom (-Z)'], m4.inputs[5])
+
+    m5 = nodes.new('ShaderNodeMix')
+    m5.data_type = 'VECTOR'
+    m5.location = (600, 0)
+    links.new(cmp_top.outputs['Result'], m5.inputs[0])
+    links.new(m4.outputs[1], m5.inputs[4])
+    links.new(gin.outputs['Top (+Z)'], m5.inputs[5])
+
+    links.new(m5.outputs[1], gout.inputs['Selected'])
+    tree["yefira_built"] = True
+    return tree
+
+
+def get_or_create_face_selector_int_group() -> bpy.types.GeometryNodeTree:
+    """Reusable node group: Selects an Integer from 6 face inputs based on Face Normal."""
+    name = "Yefira_Face_Selector_Int"
+    tree = bpy.data.node_groups.get(name)
+    if tree and tree.get("yefira_built"):
+        return tree
+
+    if not tree:
+        tree = bpy.data.node_groups.new(name=name, type='GeometryNodeTree')
+    tree.nodes.clear()
+
+    _ensure_socket(tree, "Normal", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "South (+Y)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "North (-Y)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "East (+X)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "West (-X)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "Bottom (-Z)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "Top (+Z)", 'INPUT', 'NodeSocketInt', default_value=0)
+    _ensure_socket(tree, "Selected", 'OUTPUT', 'NodeSocketInt')
+
+    nodes, links = tree.nodes, tree.links
+    gin = nodes.new('NodeGroupInput')
+    gin.location = (-600, 0)
+    gout = nodes.new('NodeGroupOutput')
+    gout.location = (800, 0)
+
+    sep_norm = nodes.new('ShaderNodeSeparateXYZ')
+    sep_norm.location = (-400, 200)
+    links.new(gin.outputs['Normal'], sep_norm.inputs['Vector'])
+
+    cmp_north = nodes.new('FunctionNodeCompare')
+    cmp_north.data_type = 'FLOAT'
+    cmp_north.operation = 'LESS_THAN'
+    cmp_north.inputs['B'].default_value = -0.5
+    cmp_north.location = (-200, 300)
+    links.new(sep_norm.outputs['Y'], cmp_north.inputs['A'])
+
+    cmp_east = nodes.new('FunctionNodeCompare')
+    cmp_east.data_type = 'FLOAT'
+    cmp_east.operation = 'GREATER_THAN'
+    cmp_east.inputs['B'].default_value = 0.5
+    cmp_east.location = (-200, 150)
+    links.new(sep_norm.outputs['X'], cmp_east.inputs['A'])
+
+    cmp_west = nodes.new('FunctionNodeCompare')
+    cmp_west.data_type = 'FLOAT'
+    cmp_west.operation = 'LESS_THAN'
+    cmp_west.inputs['B'].default_value = -0.5
+    cmp_west.location = (-200, 0)
+    links.new(sep_norm.outputs['X'], cmp_west.inputs['A'])
+
+    cmp_bottom = nodes.new('FunctionNodeCompare')
+    cmp_bottom.data_type = 'FLOAT'
+    cmp_bottom.operation = 'LESS_THAN'
+    cmp_bottom.inputs['B'].default_value = -0.5
+    cmp_bottom.location = (-200, -150)
+    links.new(sep_norm.outputs['Z'], cmp_bottom.inputs['A'])
+
+    cmp_top = nodes.new('FunctionNodeCompare')
+    cmp_top.data_type = 'FLOAT'
+    cmp_top.operation = 'GREATER_THAN'
+    cmp_top.inputs['B'].default_value = 0.5
+    cmp_top.location = (-200, -300)
+    links.new(sep_norm.outputs['Z'], cmp_top.inputs['A'])
+
+    def make_switch(compare_node, false_socket, true_socket, x, y):
+        sw = nodes.new('GeometryNodeSwitch')
+        sw.input_type = 'INT'
+        sw.location = (x, y)
+        links.new(compare_node.outputs['Result'], sw.inputs['Switch'])
+        links.new(false_socket, sw.inputs['False'])
+        links.new(true_socket, sw.inputs['True'])
+        return sw.outputs['Output']
+
+    v1 = make_switch(cmp_north, gin.outputs['South (+Y)'], gin.outputs['North (-Y)'], 0, 200)
+    v2 = make_switch(cmp_east, v1, gin.outputs['East (+X)'], 150, 150)
+    v3 = make_switch(cmp_west, v2, gin.outputs['West (-X)'], 300, 100)
+    v4 = make_switch(cmp_bottom, v3, gin.outputs['Bottom (-Z)'], 450, 50)
+    v5 = make_switch(cmp_top, v4, gin.outputs['Top (+Z)'], 600, 0)
+
+    links.new(v5, gout.inputs['Selected'])
+    tree["yefira_built"] = True
+    return tree
+
+
+def get_or_create_face_selector_color_group() -> bpy.types.GeometryNodeTree:
+    """Reusable node group: Selects a Color (RGBA) from 6 face inputs based on Face Normal."""
+    name = "Yefira_Face_Selector_Color"
+    tree = bpy.data.node_groups.get(name)
+    if tree and tree.get("yefira_built"):
+        return tree
+
+    if not tree:
+        tree = bpy.data.node_groups.new(name=name, type='GeometryNodeTree')
+    tree.nodes.clear()
+
+    _ensure_socket(tree, "Normal", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "South (+Y)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "North (-Y)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "East (+X)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "West (-X)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "Bottom (-Z)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "Top (+Z)", 'INPUT', 'NodeSocketColor')
+    _ensure_socket(tree, "Selected", 'OUTPUT', 'NodeSocketColor')
+
+    nodes, links = tree.nodes, tree.links
+    gin = nodes.new('NodeGroupInput')
+    gin.location = (-600, 0)
+    gout = nodes.new('NodeGroupOutput')
+    gout.location = (800, 0)
+
+    sep_norm = nodes.new('ShaderNodeSeparateXYZ')
+    sep_norm.location = (-400, 200)
+    links.new(gin.outputs['Normal'], sep_norm.inputs['Vector'])
+
+    cmp_north = nodes.new('FunctionNodeCompare')
+    cmp_north.data_type = 'FLOAT'
+    cmp_north.operation = 'LESS_THAN'
+    cmp_north.inputs['B'].default_value = -0.5
+    cmp_north.location = (-200, 300)
+    links.new(sep_norm.outputs['Y'], cmp_north.inputs['A'])
+
+    cmp_east = nodes.new('FunctionNodeCompare')
+    cmp_east.data_type = 'FLOAT'
+    cmp_east.operation = 'GREATER_THAN'
+    cmp_east.inputs['B'].default_value = 0.5
+    cmp_east.location = (-200, 150)
+    links.new(sep_norm.outputs['X'], cmp_east.inputs['A'])
+
+    cmp_west = nodes.new('FunctionNodeCompare')
+    cmp_west.data_type = 'FLOAT'
+    cmp_west.operation = 'LESS_THAN'
+    cmp_west.inputs['B'].default_value = -0.5
+    cmp_west.location = (-200, 0)
+    links.new(sep_norm.outputs['X'], cmp_west.inputs['A'])
+
+    cmp_bottom = nodes.new('FunctionNodeCompare')
+    cmp_bottom.data_type = 'FLOAT'
+    cmp_bottom.operation = 'LESS_THAN'
+    cmp_bottom.inputs['B'].default_value = -0.5
+    cmp_bottom.location = (-200, -150)
+    links.new(sep_norm.outputs['Z'], cmp_bottom.inputs['A'])
+
+    cmp_top = nodes.new('FunctionNodeCompare')
+    cmp_top.data_type = 'FLOAT'
+    cmp_top.operation = 'GREATER_THAN'
+    cmp_top.inputs['B'].default_value = 0.5
+    cmp_top.location = (-200, -300)
+    links.new(sep_norm.outputs['Z'], cmp_top.inputs['A'])
+
+    m1 = nodes.new('ShaderNodeMix')
+    m1.data_type = 'RGBA'
+    m1.location = (0, 200)
+    links.new(cmp_north.outputs['Result'], m1.inputs[0])
+    links.new(gin.outputs['South (+Y)'], m1.inputs[6])
+    links.new(gin.outputs['North (-Y)'], m1.inputs[7])
+
+    m2 = nodes.new('ShaderNodeMix')
+    m2.data_type = 'RGBA'
+    m2.location = (150, 150)
+    links.new(cmp_east.outputs['Result'], m2.inputs[0])
+    links.new(m1.outputs[2], m2.inputs[6])
+    links.new(gin.outputs['East (+X)'], m2.inputs[7])
+
+    m3 = nodes.new('ShaderNodeMix')
+    m3.data_type = 'RGBA'
+    m3.location = (300, 100)
+    links.new(cmp_west.outputs['Result'], m3.inputs[0])
+    links.new(m2.outputs[2], m3.inputs[6])
+    links.new(gin.outputs['West (-X)'], m3.inputs[7])
+
+    m4 = nodes.new('ShaderNodeMix')
+    m4.data_type = 'RGBA'
+    m4.location = (450, 50)
+    links.new(cmp_bottom.outputs['Result'], m4.inputs[0])
+    links.new(m3.outputs[2], m4.inputs[6])
+    links.new(gin.outputs['Bottom (-Z)'], m4.inputs[7])
+
+    m5 = nodes.new('ShaderNodeMix')
+    m5.data_type = 'RGBA'
+    m5.location = (600, 0)
+    links.new(cmp_top.outputs['Result'], m5.inputs[0])
+    links.new(m4.outputs[2], m5.inputs[6])
+    links.new(gin.outputs['Top (+Z)'], m5.inputs[7])
+
+    links.new(m5.outputs[2], gout.inputs['Selected'])
+    tree["yefira_built"] = True
+    return tree
+
+
+def get_or_create_atlas_uv_calculator_group() -> bpy.types.GeometryNodeTree:
+    """Reusable node group: Calculates UVMap coordinate in Atlas space from LocalUV and Tile Col/Row."""
+    name = "Yefira_Atlas_UV_Calculator"
+    tree = bpy.data.node_groups.get(name)
+    if tree and tree.get("yefira_built"):
+        return tree
+
+    if not tree:
+        tree = bpy.data.node_groups.new(name=name, type='GeometryNodeTree')
+    tree.nodes.clear()
+
+    _ensure_socket(tree, "Target Tile", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "Local UV", 'INPUT', 'NodeSocketVector')
+    _ensure_socket(tree, "Tiles Per Row", 'INPUT', 'NodeSocketFloat', default_value=64.0)
+    _ensure_socket(tree, "Tile Size", 'INPUT', 'NodeSocketFloat', default_value=16.0)
+    _ensure_socket(tree, "Atlas Height", 'INPUT', 'NodeSocketFloat', default_value=1024.0)
+    _ensure_socket(tree, "Atlas UV", 'OUTPUT', 'NodeSocketVector')
+
+    nodes, links = tree.nodes, tree.links
+    gin = nodes.new('NodeGroupInput')
+    gin.location = (-600, 0)
+    gout = nodes.new('NodeGroupOutput')
+    gout.location = (600, 0)
+
+    sep_target = nodes.new('ShaderNodeSeparateXYZ')
+    sep_target.location = (-400, 150)
+    links.new(gin.outputs['Target Tile'], sep_target.inputs['Vector'])
+
+    sep_local = nodes.new('ShaderNodeSeparateXYZ')
+    sep_local.location = (-400, -150)
+    links.new(gin.outputs['Local UV'], sep_local.inputs['Vector'])
+
+    step_u = nodes.new('ShaderNodeMath')
+    step_u.operation = 'DIVIDE'
+    step_u.inputs[0].default_value = 1.0
+    step_u.location = (-200, 250)
+    links.new(gin.outputs['Tiles Per Row'], step_u.inputs[1])
+
+    step_v = nodes.new('ShaderNodeMath')
+    step_v.operation = 'DIVIDE'
+    step_v.location = (-200, -250)
+    links.new(gin.outputs['Tile Size'], step_v.inputs[0])
+    links.new(gin.outputs['Atlas Height'], step_v.inputs[1])
+
+    col_plus_u = nodes.new('ShaderNodeMath')
+    col_plus_u.operation = 'ADD'
+    col_plus_u.location = (-200, 100)
+    links.new(sep_target.outputs['X'], col_plus_u.inputs[0])
+    links.new(sep_local.outputs['X'], col_plus_u.inputs[1])
+
+    atlas_u = nodes.new('ShaderNodeMath')
+    atlas_u.operation = 'MULTIPLY'
+    atlas_u.location = (0, 100)
+    links.new(col_plus_u.outputs['Value'], atlas_u.inputs[0])
+    links.new(step_u.outputs['Value'], atlas_u.inputs[1])
+
+    inv_v = nodes.new('ShaderNodeMath')
+    inv_v.operation = 'SUBTRACT'
+    inv_v.inputs[0].default_value = 1.0
+    inv_v.location = (-200, -50)
+    links.new(sep_local.outputs['Y'], inv_v.inputs[1])
+
+    row_plus_inv_v = nodes.new('ShaderNodeMath')
+    row_plus_inv_v.operation = 'ADD'
+    row_plus_inv_v.location = (0, -50)
+    links.new(sep_target.outputs['Y'], row_plus_inv_v.inputs[0])
+    links.new(inv_v.outputs['Value'], row_plus_inv_v.inputs[1])
+
+    v_scaled = nodes.new('ShaderNodeMath')
+    v_scaled.operation = 'MULTIPLY'
+    v_scaled.location = (180, -50)
+    links.new(row_plus_inv_v.outputs['Value'], v_scaled.inputs[0])
+    links.new(step_v.outputs['Value'], v_scaled.inputs[1])
+
+    atlas_v = nodes.new('ShaderNodeMath')
+    atlas_v.operation = 'SUBTRACT'
+    atlas_v.inputs[0].default_value = 1.0
+    atlas_v.location = (340, -50)
+    links.new(v_scaled.outputs['Value'], atlas_v.inputs[1])
+
+    comb = nodes.new('ShaderNodeCombineXYZ')
+    comb.location = (450, 50)
+    links.new(atlas_u.outputs['Value'], comb.inputs['X'])
+    links.new(atlas_v.outputs['Value'], comb.inputs['Y'])
+    links.new(comb.outputs['Vector'], gout.inputs['Atlas UV'])
+
+    tree["yefira_built"] = True
+    return tree
+
+
+def setup_world_geometry_nodes(
+    world_obj: bpy.types.Object,
+    template_col: bpy.types.Collection = None,
+) -> Optional[bpy.types.Modifier]:
+    """
+    Attach and configure the unified Geometry Nodes tree on the Yefira_World point cloud.
+    Handles Cube instancing, Collection Info prop instancing, rotation, and multi-chunk Material binding.
+    """
+    if not world_obj:
+        return None
+
+    if not template_col:
+        template_col = get_or_create_template_collection(bpy.context)
+
+    # Resolve bound Atlas material and mapping
+    mat = find_bound_atlas_material(world_obj) or get_or_create_atlas_material()
+    atlas_params = extract_atlas_parameters(mat)
+
+    # Populate all material slots on world_obj in chunk_id order (Slot 0 -> Chunk 0, Slot 1 -> Chunk 1...)
+    setup_material_slots_for_object(world_obj, mat, atlas_params.get("mapping"))
+
+    mod = world_obj.modifiers.get(WORLD_MODIFIER_NAME)
+    if not mod:
+        mod = world_obj.modifiers.new(name=WORLD_MODIFIER_NAME, type='NODES')
+
+    gn_tree = bpy.data.node_groups.get(WORLD_TREE_NAME)
+    if gn_tree and gn_tree.get(WORLD_TREE_SCHEMA_PROPERTY) == WORLD_TREE_SCHEMA_VERSION:
+        _update_tree_bindings(gn_tree, template_col)
+    elif gn_tree:
+        gn_tree.nodes.clear()
+        _remove_legacy_atlas_inputs(gn_tree)
+        _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+        _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+        _build_tree_nodes_and_links(gn_tree, template_col, atlas_params)
+        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
+    else:
+        gn_tree = _create_world_geometry_node_tree(WORLD_TREE_NAME, template_col, atlas_params)
+        gn_tree[WORLD_TREE_SCHEMA_PROPERTY] = WORLD_TREE_SCHEMA_VERSION
+
+    mod.node_group = gn_tree
+    return mod
+
+
+def _update_tree_bindings(
+    tree: bpy.types.GeometryNodeTree,
+    template_col: bpy.types.Collection,
+) -> None:
+    """Refresh external data-block references without rebuilding nodes."""
+    for node in tree.nodes:
+        if node.bl_idname == 'GeometryNodeCollectionInfo' and 'Collection' in node.inputs:
+            node.inputs['Collection'].default_value = template_col
+
+
+def _remove_legacy_atlas_inputs(tree: bpy.types.GeometryNodeTree) -> None:
+    """Remove former user-facing atlas controls during migration."""
+    for item in list(tree.interface.items_tree):
+        if (
+            item.item_type == 'SOCKET'
+            and item.in_out == 'INPUT'
+            and item.name in {"Atlas Width", "Atlas Height", "Tile Size", "Tiles Per Row"}
+        ):
+            tree.interface.remove(item)
+
+
+def _prune_unlinked_nodes(tree: bpy.types.GeometryNodeTree) -> None:
+    """Remove construction leftovers that do not contribute to group output.
+
+    The builder uses named fields as well as geometry wires.  Walking upstream
+    from every Group Output input preserves both kinds of dependency while
+    allowing a migration to replace a subgraph with a node group cleanly.
+    """
+    required = {node for node in tree.nodes if node.bl_idname == 'NodeGroupOutput'}
+    stack = list(required)
+    while stack:
+        node = stack.pop()
+        for input_socket in node.inputs:
+            for link in input_socket.links:
+                if link.from_node not in required:
+                    required.add(link.from_node)
+                    stack.append(link.from_node)
+    for node in list(tree.nodes):
+        if node not in required:
+            tree.nodes.remove(node)
+
+
+def _create_world_geometry_node_tree(
+    tree_name: str,
+    template_col: bpy.types.Collection,
+    atlas_params: dict[str, Any],
+) -> bpy.types.GeometryNodeTree:
+    gn_tree = bpy.data.node_groups.new(name=tree_name, type='GeometryNodeTree')
+    _ensure_socket(gn_tree, "Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    _ensure_socket(gn_tree, "Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    _build_tree_nodes_and_links(gn_tree, template_col, atlas_params)
+    return gn_tree
+
+
 def _build_tree_nodes_and_links(
     gn_tree: bpy.types.GeometryNodeTree,
     template_col: bpy.types.Collection,
-    mat: bpy.types.Material,
     atlas_params: dict[str, Any],
 ):
     nodes = gn_tree.nodes
     links = gn_tree.links
+
+    # Ensure reusable node groups
+    group_vec_selector = get_or_create_face_selector_vector_group()
+    group_int_selector = get_or_create_face_selector_int_group()
+    group_color_selector = get_or_create_face_selector_color_group()
+    group_uv_calc = get_or_create_atlas_uv_calculator_group()
+    group_cube_surface = get_or_create_cube_surface_group()
+    group_attribute_transfer = get_or_create_instance_attribute_transfer_group()
 
     # 1. Inputs & Outputs
     group_in = nodes.new('NodeGroupInput')
     group_in.location = (-1400, 0)
 
     group_out = nodes.new('NodeGroupOutput')
-    group_out.location = (2800, 0)
+    group_out.location = (3200, 0)
 
     # 2. Named Attribute Readers from Point Cloud
-    # A. block_type (INT)
     attr_type = nodes.new('GeometryNodeInputNamedAttribute')
     attr_type.data_type = 'INT'
     attr_type.inputs['Name'].default_value = "block_type"
     attr_type.location = (-1400, -250)
 
-    # B. instance_index (INT)
     attr_idx = nodes.new('GeometryNodeInputNamedAttribute')
     attr_idx.data_type = 'INT'
     attr_idx.inputs['Name'].default_value = "instance_index"
     attr_idx.location = (-1000, -350)
 
-    # C. instance_rotation (FLOAT_VECTOR)
     attr_rot = nodes.new('GeometryNodeInputNamedAttribute')
     attr_rot.data_type = 'FLOAT_VECTOR'
     attr_rot.inputs['Name'].default_value = "instance_rotation"
@@ -201,7 +614,7 @@ def _build_tree_nodes_and_links(
     sep_norm_cube.location = (-580, 650)
     links.new(norm_cube.outputs['Normal'], sep_norm_cube.inputs['Vector'])
 
-    # Direction comparisons for base cube
+    # Direction comparisons for base cube local UV
     cmp_top = nodes.new('FunctionNodeCompare')
     cmp_top.data_type = 'FLOAT'
     cmp_top.operation = 'GREATER_THAN'
@@ -237,7 +650,6 @@ def _build_tree_nodes_and_links(
     cmp_north.location = (-400, 800)
     links.new(sep_norm_cube.outputs['Y'], cmp_north.inputs['A'])
 
-    # Coordinate arithmetic (X+0.5, 0.5-X, Y+0.5, 0.5-Y, Z+0.5)
     add_x_05 = nodes.new('ShaderNodeMath')
     add_x_05.operation = 'ADD'
     add_x_05.inputs[1].default_value = 0.5
@@ -273,45 +685,43 @@ def _build_tree_nodes_and_links(
     mix_v1.data_type = 'FLOAT'
     mix_v1.location = (-220, 1100)
     links.new(cmp_bottom.outputs['Result'], mix_v1.inputs[0])
-    links.new(add_z_05.outputs['Value'], mix_v1.inputs[2]) # False: Z+0.5
-    links.new(add_y_05.outputs['Value'], mix_v1.inputs[3]) # True: Y+0.5
+    links.new(add_z_05.outputs['Value'], mix_v1.inputs[2])
+    links.new(add_y_05.outputs['Value'], mix_v1.inputs[3])
 
     mix_v2 = nodes.new('ShaderNodeMix')
     mix_v2.data_type = 'FLOAT'
     mix_v2.location = (-60, 1100)
     links.new(cmp_top.outputs['Result'], mix_v2.inputs[0])
-    links.new(mix_v1.outputs[0], mix_v2.inputs[2])         # False: mix_v1
-    links.new(sub_05_y.outputs['Value'], mix_v2.inputs[3]) # True: 0.5-Y (Top)
+    links.new(mix_v1.outputs[0], mix_v2.inputs[2])
+    links.new(sub_05_y.outputs['Value'], mix_v2.inputs[3])
 
     # Select local U
     mix_u1 = nodes.new('ShaderNodeMix')
     mix_u1.data_type = 'FLOAT'
     mix_u1.location = (-220, 900)
     links.new(cmp_north.outputs['Result'], mix_u1.inputs[0])
-    links.new(add_x_05.outputs['Value'], mix_u1.inputs[2]) # False: X+0.5
-    links.new(sub_05_x.outputs['Value'], mix_u1.inputs[3]) # True: 0.5-X (North)
+    links.new(add_x_05.outputs['Value'], mix_u1.inputs[2])
+    links.new(sub_05_x.outputs['Value'], mix_u1.inputs[3])
 
     mix_u2 = nodes.new('ShaderNodeMix')
     mix_u2.data_type = 'FLOAT'
     mix_u2.location = (-60, 900)
     links.new(cmp_west.outputs['Result'], mix_u2.inputs[0])
-    links.new(mix_u1.outputs[0], mix_u2.inputs[2])         # False: mix_u1
-    links.new(add_y_05.outputs['Value'], mix_u2.inputs[3]) # True: Y+0.5 (West)
+    links.new(mix_u1.outputs[0], mix_u2.inputs[2])
+    links.new(add_y_05.outputs['Value'], mix_u2.inputs[3])
 
     mix_u3 = nodes.new('ShaderNodeMix')
     mix_u3.data_type = 'FLOAT'
     mix_u3.location = (100, 900)
     links.new(cmp_east.outputs['Result'], mix_u3.inputs[0])
-    links.new(mix_u2.outputs[0], mix_u3.inputs[2])         # False: mix_u2
-    links.new(sub_05_y.outputs['Value'], mix_u3.inputs[3]) # True: 0.5-Y (East)
+    links.new(mix_u2.outputs[0], mix_u3.inputs[2])
+    links.new(sub_05_y.outputs['Value'], mix_u3.inputs[3])
 
-    # Combine local UV
     comb_local_uv = nodes.new('ShaderNodeCombineXYZ')
     comb_local_uv.location = (280, 1000)
     links.new(mix_u3.outputs[0], comb_local_uv.inputs['X'])
     links.new(mix_v2.outputs[0], comb_local_uv.inputs['Y'])
 
-    # Store LocalUV on Base Cube Mesh
     store_local_uv = nodes.new('GeometryNodeStoreNamedAttribute')
     store_local_uv.data_type = 'FLOAT_VECTOR'
     store_local_uv.domain = 'CORNER'
@@ -324,69 +734,24 @@ def _build_tree_nodes_and_links(
     iop_cube = nodes.new('GeometryNodeInstanceOnPoints')
     iop_cube.location = (480, 400)
     links.new(sep_geo.outputs['Selection'], iop_cube.inputs['Points'])
-    links.new(store_local_uv.outputs['Geometry'], iop_cube.inputs['Instance'])
+    cube_surface = nodes.new('GeometryNodeGroup')
+    cube_surface.node_tree = group_cube_surface
+    cube_surface.name = "Minecraft Cube Surface"
+    cube_surface.label = "Cube Surface + Local UV"
+    cube_surface.location = (280, 550)
+    links.new(cube_surface.outputs['Geometry'], iop_cube.inputs['Instance'])
 
-    # Store 6-face tile coordinate attributes on INSTANCE domain for Cubes
     last_cube_geo = iop_cube.outputs['Instances']
-    inst_store_x = 700
-    for face_name in ("mtk_tile_top", "mtk_tile_bottom", "mtk_tile_east", "mtk_tile_west", "mtk_tile_south", "mtk_tile_north"):
-        r_face = nodes.new('GeometryNodeInputNamedAttribute')
-        r_face.data_type = 'FLOAT_VECTOR'
-        r_face.inputs['Name'].default_value = face_name
-        r_face.location = (inst_store_x, 600)
 
-        st_face = nodes.new('GeometryNodeStoreNamedAttribute')
-        st_face.data_type = 'FLOAT_VECTOR'
-        st_face.domain = 'INSTANCE'
-        st_face.inputs['Name'].default_value = face_name
-        st_face.location = (inst_store_x, 400)
-
-        links.new(last_cube_geo, st_face.inputs['Geometry'])
-        links.new(r_face.outputs['Attribute'], st_face.inputs['Value'])
-        last_cube_geo = st_face.outputs['Geometry']
-        inst_store_x += 180
-
-    # Preserve MoziToolKit's per-face atlas identity through instancing.
-    # Tile coordinates alone are ambiguous when an atlas spans chunks.
-    for attr_name in (
-        "mtk_chunk_top", "mtk_chunk_bottom", "mtk_chunk_east", "mtk_chunk_west", "mtk_chunk_south", "mtk_chunk_north",
-        "mtk_texture_top", "mtk_texture_bottom", "mtk_texture_east", "mtk_texture_west", "mtk_texture_south", "mtk_texture_north",
-    ):
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'INT'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'INT'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_cube_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_cube_geo = store.outputs['Geometry']
-
-    for attr_name in ("mtk_atlas_width", "mtk_atlas_height", "mtk_tile_size", "mtk_tiles_per_row"):
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'FLOAT'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'FLOAT'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_cube_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_cube_geo = store.outputs['Geometry']
-
-    for face in ("top", "bottom", "east", "west", "south", "north"):
-        attr_name = f"mtk_tint_data_{face}"
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'FLOAT_COLOR'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'FLOAT_COLOR'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_cube_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_cube_geo = store.outputs['Geometry']
+    # Pass the shared point-cloud render contract to INSTANCE domain.
+    # Keep this in a group so the cube and prop branches cannot drift apart.
+    transfer_cube_attributes = nodes.new('GeometryNodeGroup')
+    transfer_cube_attributes.node_tree = group_attribute_transfer
+    transfer_cube_attributes.name = "Transfer Cube Instance Attributes"
+    transfer_cube_attributes.label = "Transfer Instance Attributes"
+    transfer_cube_attributes.location = (700, 400)
+    links.new(last_cube_geo, transfer_cube_attributes.inputs['Geometry'])
+    last_cube_geo = transfer_cube_attributes.outputs['Geometry']
 
     # --- BRANCH B: Collection Props ---
     iop_prop = nodes.new('GeometryNodeInstanceOnPoints')
@@ -404,385 +769,198 @@ def _build_tree_nodes_and_links(
     links.new(attr_idx.outputs['Attribute'], iop_prop.inputs['Instance Index'])
     links.new(attr_rot.outputs['Attribute'], iop_prop.inputs['Rotation'])
 
-    # Store 6-face tile coordinate attributes on INSTANCE domain for Props
     last_prop_geo = iop_prop.outputs['Instances']
-    prop_store_x = 700
-    for face_name in ("mtk_tile_top", "mtk_tile_bottom", "mtk_tile_east", "mtk_tile_west", "mtk_tile_south", "mtk_tile_north"):
-        r_face_p = nodes.new('GeometryNodeInputNamedAttribute')
-        r_face_p.data_type = 'FLOAT_VECTOR'
-        r_face_p.inputs['Name'].default_value = face_name
-        r_face_p.location = (prop_store_x, -50)
 
-        st_face_p = nodes.new('GeometryNodeStoreNamedAttribute')
-        st_face_p.data_type = 'FLOAT_VECTOR'
-        st_face_p.domain = 'INSTANCE'
-        st_face_p.inputs['Name'].default_value = face_name
-        st_face_p.location = (prop_store_x, -250)
+    transfer_prop_attributes = nodes.new('GeometryNodeGroup')
+    transfer_prop_attributes.node_tree = group_attribute_transfer
+    transfer_prop_attributes.name = "Transfer Prop Instance Attributes"
+    transfer_prop_attributes.label = "Transfer Instance Attributes"
+    transfer_prop_attributes.location = (700, -150)
+    links.new(last_prop_geo, transfer_prop_attributes.inputs['Geometry'])
+    last_prop_geo = transfer_prop_attributes.outputs['Geometry']
 
-        links.new(last_prop_geo, st_face_p.inputs['Geometry'])
-        links.new(r_face_p.outputs['Attribute'], st_face_p.inputs['Value'])
-        last_prop_geo = st_face_p.outputs['Geometry']
-        prop_store_x += 180
-
-    for attr_name in (
-        "mtk_chunk_top", "mtk_chunk_bottom", "mtk_chunk_east", "mtk_chunk_west", "mtk_chunk_south", "mtk_chunk_north",
-        "mtk_texture_top", "mtk_texture_bottom", "mtk_texture_east", "mtk_texture_west", "mtk_texture_south", "mtk_texture_north",
-    ):
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'INT'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'INT'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_prop_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_prop_geo = store.outputs['Geometry']
-
-    for attr_name in ("mtk_atlas_width", "mtk_atlas_height", "mtk_tile_size", "mtk_tiles_per_row"):
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'FLOAT'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'FLOAT'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_prop_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_prop_geo = store.outputs['Geometry']
-
-    for face in ("top", "bottom", "east", "west", "south", "north"):
-        attr_name = f"mtk_tint_data_{face}"
-        reader = nodes.new('GeometryNodeInputNamedAttribute')
-        reader.data_type = 'FLOAT_COLOR'
-        reader.inputs['Name'].default_value = attr_name
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'FLOAT_COLOR'
-        store.domain = 'INSTANCE'
-        store.inputs['Name'].default_value = attr_name
-        links.new(last_prop_geo, store.inputs['Geometry'])
-        links.new(reader.outputs['Attribute'], store.inputs['Value'])
-        last_prop_geo = store.outputs['Geometry']
-
-    # --- JOIN BRANCHES ---
+    # --- JOIN BRANCHES & REALIZE ---
     join_node = nodes.new('GeometryNodeJoinGeometry')
     join_node.location = (1800, 100)
     links.new(last_cube_geo, join_node.inputs['Geometry'])
     links.new(last_prop_geo, join_node.inputs['Geometry'])
 
-    # --- REALIZE INSTANCES ---
     realize_node = nodes.new('GeometryNodeRealizeInstances')
     realize_node.location = (2000, 100)
     links.new(join_node.outputs['Geometry'], realize_node.inputs['Geometry'])
 
-    # Read Face Normal from Realized Mesh for 6-Face Tile Selection
+    # Read Face Normal from Realized Mesh
     read_face_norm = nodes.new('GeometryNodeInputNamedAttribute')
     read_face_norm.data_type = 'FLOAT_VECTOR'
     read_face_norm.inputs['Name'].default_value = "CubeFaceNorm"
-    read_face_norm.location = (1100, -100)
+    read_face_norm.location = (2000, -100)
 
-    sep_norm_real = nodes.new('ShaderNodeSeparateXYZ')
-    sep_norm_real.location = (1280, -100)
-    links.new(read_face_norm.outputs['Attribute'], sep_norm_real.inputs['Vector'])
+    # --- NODE GROUP: SELECT FACE TILE (VECTOR) ---
+    call_tile_selector = nodes.new('GeometryNodeGroup')
+    call_tile_selector.node_tree = group_vec_selector
+    call_tile_selector.name = "Select Face Tile"
+    call_tile_selector.location = (2250, 300)
+    links.new(read_face_norm.outputs['Attribute'], call_tile_selector.inputs['Normal'])
 
-    cmp_top_r = nodes.new('FunctionNodeCompare')
-    cmp_top_r.data_type = 'FLOAT'
-    cmp_top_r.operation = 'GREATER_THAN'
-    cmp_top_r.inputs['B'].default_value = 0.5
-    cmp_top_r.location = (1460, 50)
-    links.new(sep_norm_real.outputs['Z'], cmp_top_r.inputs['A'])
+    for socket_name, attr_name in (
+        ('Top (+Z)', 'mtk_tile_top'),
+        ('Bottom (-Z)', 'mtk_tile_bottom'),
+        ('East (+X)', 'mtk_tile_east'),
+        ('West (-X)', 'mtk_tile_west'),
+        ('South (+Y)', 'mtk_tile_south'),
+        ('North (-Y)', 'mtk_tile_north'),
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT_VECTOR'
+        reader.inputs['Name'].default_value = attr_name
+        reader.location = (2050, 500)
+        links.new(reader.outputs['Attribute'], call_tile_selector.inputs[socket_name])
 
-    cmp_bottom_r = nodes.new('FunctionNodeCompare')
-    cmp_bottom_r.data_type = 'FLOAT'
-    cmp_bottom_r.operation = 'LESS_THAN'
-    cmp_bottom_r.inputs['B'].default_value = -0.5
-    cmp_bottom_r.location = (1460, -50)
-    links.new(sep_norm_real.outputs['Z'], cmp_bottom_r.inputs['A'])
-
-    cmp_east_r = nodes.new('FunctionNodeCompare')
-    cmp_east_r.data_type = 'FLOAT'
-    cmp_east_r.operation = 'GREATER_THAN'
-    cmp_east_r.inputs['B'].default_value = 0.5
-    cmp_east_r.location = (1460, -150)
-    links.new(sep_norm_real.outputs['X'], cmp_east_r.inputs['A'])
-
-    cmp_west_r = nodes.new('FunctionNodeCompare')
-    cmp_west_r.data_type = 'FLOAT'
-    cmp_west_r.operation = 'LESS_THAN'
-    cmp_west_r.inputs['B'].default_value = -0.5
-    cmp_west_r.location = (1460, -250)
-    links.new(sep_norm_real.outputs['X'], cmp_west_r.inputs['A'])
-
-    cmp_north_r = nodes.new('FunctionNodeCompare')
-    cmp_north_r.data_type = 'FLOAT'
-    cmp_north_r.operation = 'LESS_THAN'
-    cmp_north_r.inputs['B'].default_value = -0.5
-    cmp_north_r.location = (1460, -350)
-    links.new(sep_norm_real.outputs['Y'], cmp_north_r.inputs['A'])
-
-    # Read 6 Face Tile Coordinate Attributes from Realized Mesh
-    read_tile_top = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_top.data_type = 'FLOAT_VECTOR'
-    read_tile_top.inputs['Name'].default_value = "mtk_tile_top"
-    read_tile_top.location = (1280, -450)
-
-    read_tile_bottom = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_bottom.data_type = 'FLOAT_VECTOR'
-    read_tile_bottom.inputs['Name'].default_value = "mtk_tile_bottom"
-    read_tile_bottom.location = (1280, -550)
-
-    read_tile_east = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_east.data_type = 'FLOAT_VECTOR'
-    read_tile_east.inputs['Name'].default_value = "mtk_tile_east"
-    read_tile_east.location = (1280, -650)
-
-    read_tile_west = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_west.data_type = 'FLOAT_VECTOR'
-    read_tile_west.inputs['Name'].default_value = "mtk_tile_west"
-    read_tile_west.location = (1280, -750)
-
-    read_tile_south = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_south.data_type = 'FLOAT_VECTOR'
-    read_tile_south.inputs['Name'].default_value = "mtk_tile_south"
-    read_tile_south.location = (1280, -850)
-
-    read_tile_north = nodes.new('GeometryNodeInputNamedAttribute')
-    read_tile_north.data_type = 'FLOAT_VECTOR'
-    read_tile_north.inputs['Name'].default_value = "mtk_tile_north"
-    read_tile_north.location = (1280, -950)
-
-    # Select Face Tile Coordinate:
-    mix_tile1 = nodes.new('ShaderNodeMix')
-    mix_tile1.data_type = 'VECTOR'
-    mix_tile1.location = (1660, -350)
-    links.new(cmp_north_r.outputs['Result'], mix_tile1.inputs[0])
-    links.new(read_tile_south.outputs['Attribute'], mix_tile1.inputs[4])
-    links.new(read_tile_north.outputs['Attribute'], mix_tile1.inputs[5])
-
-    mix_tile2 = nodes.new('ShaderNodeMix')
-    mix_tile2.data_type = 'VECTOR'
-    mix_tile2.location = (1820, -350)
-    links.new(cmp_east_r.outputs['Result'], mix_tile2.inputs[0])
-    links.new(mix_tile1.outputs[1], mix_tile2.inputs[4])
-    links.new(read_tile_east.outputs['Attribute'], mix_tile2.inputs[5])
-
-    mix_tile3 = nodes.new('ShaderNodeMix')
-    mix_tile3.data_type = 'VECTOR'
-    mix_tile3.location = (1980, -350)
-    links.new(cmp_west_r.outputs['Result'], mix_tile3.inputs[0])
-    links.new(mix_tile2.outputs[1], mix_tile3.inputs[4])
-    links.new(read_tile_west.outputs['Attribute'], mix_tile3.inputs[5])
-
-    mix_tile4 = nodes.new('ShaderNodeMix')
-    mix_tile4.data_type = 'VECTOR'
-    mix_tile4.location = (2140, -350)
-    links.new(cmp_bottom_r.outputs['Result'], mix_tile4.inputs[0])
-    links.new(mix_tile3.outputs[1], mix_tile4.inputs[4])
-    links.new(read_tile_bottom.outputs['Attribute'], mix_tile4.inputs[5])
-
-    mix_tile5 = nodes.new('ShaderNodeMix')
-    mix_tile5.data_type = 'VECTOR'
-    mix_tile5.location = (2300, -350)
-    links.new(cmp_top_r.outputs['Result'], mix_tile5.inputs[0])
-    links.new(mix_tile4.outputs[1], mix_tile5.inputs[4])
-    links.new(read_tile_top.outputs['Attribute'], mix_tile5.inputs[5])
-
-    sep_target_tile = nodes.new('ShaderNodeSeparateXYZ')
-    sep_target_tile.location = (1460, 200)
-    links.new(mix_tile5.outputs[1], sep_target_tile.inputs['Vector'])
-
-    # --- ATLAS UV TRANSFORMATION ---
-    # Atlas dimensions are data, not artist controls.  MoziToolKit/Yefira
-    # writes these named geometry attributes for every point before evaluation.
-    attr_tile_size = nodes.new('GeometryNodeInputNamedAttribute')
-    attr_tile_size.data_type = 'FLOAT'
-    attr_tile_size.inputs['Name'].default_value = "mtk_tile_size"
-    attr_tile_size.location = (1240, 560)
-
-    attr_atlas_height = nodes.new('GeometryNodeInputNamedAttribute')
-    attr_atlas_height.data_type = 'FLOAT'
-    attr_atlas_height.inputs['Name'].default_value = "mtk_atlas_height"
-    attr_atlas_height.location = (1240, 440)
-
-    attr_tiles_per_row = nodes.new('GeometryNodeInputNamedAttribute')
-    attr_tiles_per_row.data_type = 'FLOAT'
-    attr_tiles_per_row.inputs['Name'].default_value = "mtk_tiles_per_row"
-    attr_tiles_per_row.location = (1240, 680)
-
-    step_u = nodes.new('ShaderNodeMath')
-    step_u.operation = 'DIVIDE'
-    step_u.location = (1460, 500)
-    step_u.inputs[0].default_value = 1.0
-    links.new(attr_tiles_per_row.outputs['Attribute'], step_u.inputs[1])
-
-    step_v = nodes.new('ShaderNodeMath')
-    step_v.operation = 'DIVIDE'
-    step_v.location = (1460, 380)
-    links.new(attr_tile_size.outputs['Attribute'], step_v.inputs[0])
-    links.new(attr_atlas_height.outputs['Attribute'], step_v.inputs[1])
+    # --- NODE GROUP: ATLAS UV CALCULATOR ---
+    call_uv_calc = nodes.new('GeometryNodeGroup')
+    call_uv_calc.node_tree = group_uv_calc
+    call_uv_calc.name = "Calculate Atlas UV"
+    call_uv_calc.location = (2450, 300)
+    links.new(call_tile_selector.outputs['Selected'], call_uv_calc.inputs['Target Tile'])
 
     read_local_uv = nodes.new('GeometryNodeInputNamedAttribute')
     read_local_uv.data_type = 'FLOAT_VECTOR'
     read_local_uv.inputs['Name'].default_value = "LocalUV"
-    read_local_uv.location = (1460, -200)
+    read_local_uv.location = (2250, 100)
+    links.new(read_local_uv.outputs['Attribute'], call_uv_calc.inputs['Local UV'])
 
-    sep_local_uv = nodes.new('ShaderNodeSeparateXYZ')
-    sep_local_uv.location = (1640, -200)
-    links.new(read_local_uv.outputs['Attribute'], sep_local_uv.inputs['Vector'])
+    for socket_name, attr_name in (
+        ('Tiles Per Row', 'mtk_tiles_per_row'),
+        ('Tile Size', 'mtk_tile_size'),
+        ('Atlas Height', 'mtk_atlas_height'),
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT'
+        reader.inputs['Name'].default_value = attr_name
+        reader.location = (2250, -50)
+        links.new(reader.outputs['Attribute'], call_uv_calc.inputs[socket_name])
 
-    # Atlas U = (col + local_u) * step_u
-    col_plus_u = nodes.new('ShaderNodeMath')
-    col_plus_u.operation = 'ADD'
-    col_plus_u.location = (1680, 300)
-    links.new(sep_target_tile.outputs['X'], col_plus_u.inputs[0])
-    links.new(sep_local_uv.outputs['X'], col_plus_u.inputs[1])
-
-    atlas_u = nodes.new('ShaderNodeMath')
-    atlas_u.operation = 'MULTIPLY'
-    atlas_u.location = (1840, 300)
-    links.new(col_plus_u.outputs['Value'], atlas_u.inputs[0])
-    links.new(step_u.outputs['Value'], atlas_u.inputs[1])
-
-    # Atlas V = 1.0 - (row + (1.0 - local_v)) * step_v
-    inv_v = nodes.new('ShaderNodeMath')
-    inv_v.operation = 'SUBTRACT'
-    inv_v.inputs[0].default_value = 1.0
-    inv_v.location = (1680, 180)
-    links.new(sep_local_uv.outputs['Y'], inv_v.inputs[1])
-
-    row_plus_inv_v = nodes.new('ShaderNodeMath')
-    row_plus_inv_v.operation = 'ADD'
-    row_plus_inv_v.location = (1840, 180)
-    links.new(sep_target_tile.outputs['Y'], row_plus_inv_v.inputs[0])
-    links.new(inv_v.outputs['Value'], row_plus_inv_v.inputs[1])
-
-    v_scaled = nodes.new('ShaderNodeMath')
-    v_scaled.operation = 'MULTIPLY'
-    v_scaled.location = (2000, 180)
-    links.new(row_plus_inv_v.outputs['Value'], v_scaled.inputs[0])
-    links.new(step_v.outputs['Value'], v_scaled.inputs[1])
-
-    atlas_v = nodes.new('ShaderNodeMath')
-    atlas_v.operation = 'SUBTRACT'
-    atlas_v.inputs[0].default_value = 1.0
-    atlas_v.location = (2160, 180)
-    links.new(v_scaled.outputs['Value'], atlas_v.inputs[1])
-
-    # Combine Atlas UV
-    comb_atlas_uv = nodes.new('ShaderNodeCombineXYZ')
-    comb_atlas_uv.location = (2320, 250)
-    links.new(atlas_u.outputs['Value'], comb_atlas_uv.inputs['X'])
-    links.new(atlas_v.outputs['Value'], comb_atlas_uv.inputs['Y'])
-
-    # Store Final UVMap attribute on Realized Mesh
+    # Store UVMap (CORNER)
     store_uv_final = nodes.new('GeometryNodeStoreNamedAttribute')
     store_uv_final.data_type = 'FLOAT_VECTOR'
     store_uv_final.domain = 'CORNER'
     store_uv_final.inputs['Name'].default_value = "UVMap"
-    store_uv_final.location = (2400, 50)
+    store_uv_final.location = (2650, 100)
     links.new(realize_node.outputs['Geometry'], store_uv_final.inputs['Geometry'])
-    links.new(comb_atlas_uv.outputs['Vector'], store_uv_final.inputs['Value'])
+    links.new(call_uv_calc.outputs['Atlas UV'], store_uv_final.inputs['Value'])
 
-    # Store UV Tiling Transform attribute for downstream shaders (MC Atlas UV Tiling)
+    # Store UV Tiling Transform
     store_tiling = nodes.new('GeometryNodeStoreNamedAttribute')
     store_tiling.data_type = 'FLOAT_COLOR'
     store_tiling.domain = 'CORNER'
     store_tiling.inputs['Name'].default_value = "mtk_uv_tiling_transform"
     store_tiling.inputs['Value'].default_value = (1.0, 1.0, 0.0, 0.0)
-    store_tiling.location = (2550, 50)
+    store_tiling.location = (2800, 100)
     links.new(store_uv_final.outputs['Geometry'], store_tiling.inputs['Geometry'])
 
-    # Store UV Rotation attribute for downstream shaders
+    # Store UV Rotation
     store_rot = nodes.new('GeometryNodeStoreNamedAttribute')
     store_rot.data_type = 'FLOAT'
     store_rot.domain = 'CORNER'
     store_rot.inputs['Name'].default_value = "mtk_uv_rotation"
     store_rot.inputs['Value'].default_value = 0.0
-    store_rot.location = (2700, 50)
+    store_rot.location = (2950, 100)
     links.new(store_tiling.outputs['Geometry'], store_rot.inputs['Geometry'])
 
-    def selected_face_color_attribute(prefix: str, label: str):
-        """Resolve six point colors to a realized FACE-domain color."""
-        readers = {}
-        for face in ("top", "bottom", "east", "west", "south", "north"):
-            reader = nodes.new('GeometryNodeInputNamedAttribute')
-            reader.data_type = 'FLOAT_COLOR'
-            reader.inputs['Name'].default_value = f"{prefix}_{face}"
-            readers[face] = reader
+    # --- NODE GROUP: SELECT FACE TINT DATA (COLOR) ---
+    call_tint_selector = nodes.new('GeometryNodeGroup')
+    call_tint_selector.node_tree = group_color_selector
+    call_tint_selector.name = "Select Biome Tint Data"
+    call_tint_selector.location = (2450, -200)
+    links.new(read_face_norm.outputs['Attribute'], call_tint_selector.inputs['Normal'])
 
-        def mix(compare, false_socket, true_socket):
-            node = nodes.new('ShaderNodeMix')
-            node.data_type = 'RGBA'
-            links.new(compare.outputs['Result'], node.inputs[0])
-            links.new(false_socket, node.inputs[6])
-            links.new(true_socket, node.inputs[7])
-            return node.outputs[2]
+    for socket_name, face in (
+        ('Top (+Z)', 'top'),
+        ('Bottom (-Z)', 'bottom'),
+        ('East (+X)', 'east'),
+        ('West (-X)', 'west'),
+        ('South (+Y)', 'south'),
+        ('North (-Y)', 'north'),
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'FLOAT_COLOR'
+        reader.inputs['Name'].default_value = f"mtk_tint_data_{face}"
+        reader.location = (2250, -200)
+        links.new(reader.outputs['Attribute'], call_tint_selector.inputs[socket_name])
 
-        value = mix(cmp_north_r, readers['south'].outputs['Attribute'], readers['north'].outputs['Attribute'])
-        value = mix(cmp_east_r, value, readers['east'].outputs['Attribute'])
-        value = mix(cmp_west_r, value, readers['west'].outputs['Attribute'])
-        value = mix(cmp_bottom_r, value, readers['bottom'].outputs['Attribute'])
-        value = mix(cmp_top_r, value, readers['top'].outputs['Attribute'])
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'FLOAT_COLOR'
-        store.domain = 'FACE'
-        store.inputs['Name'].default_value = label
-        links.new(value, store.inputs['Value'])
-        return store
+    store_tint_data = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_tint_data.data_type = 'FLOAT_COLOR'
+    store_tint_data.domain = 'FACE'
+    store_tint_data.inputs['Name'].default_value = "mtk_biome_tint_data"
+    store_tint_data.location = (2650, -100)
+    links.new(store_rot.outputs['Geometry'], store_tint_data.inputs['Geometry'])
+    links.new(call_tint_selector.outputs['Selected'], store_tint_data.inputs['Value'])
 
-    store_face_tint_data = selected_face_color_attribute("mtk_tint_data", "mtk_biome_tint_data")
+    # --- NODE GROUP: SELECT FACE CHUNK ID (INT) ---
+    call_chunk_selector = nodes.new('GeometryNodeGroup')
+    call_chunk_selector.node_tree = group_int_selector
+    call_chunk_selector.name = "Select Face Chunk ID"
+    call_chunk_selector.location = (2450, -400)
+    links.new(read_face_norm.outputs['Attribute'], call_chunk_selector.inputs['Normal'])
 
-    def selected_face_int_attribute(prefix: str, label: str):
-        """Resolve one of six point attributes to a realized FACE attribute."""
-        readers = {}
-        for face in ("top", "bottom", "east", "west", "south", "north"):
-            reader = nodes.new('GeometryNodeInputNamedAttribute')
-            reader.data_type = 'INT'
-            reader.inputs['Name'].default_value = f"{prefix}_{face}"
-            readers[face] = reader
+    for socket_name, face in (
+        ('Top (+Z)', 'top'),
+        ('Bottom (-Z)', 'bottom'),
+        ('East (+X)', 'east'),
+        ('West (-X)', 'west'),
+        ('South (+Y)', 'south'),
+        ('North (-Y)', 'north'),
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'INT'
+        reader.inputs['Name'].default_value = f"mtk_chunk_{face}"
+        reader.location = (2250, -400)
+        links.new(reader.outputs['Attribute'], call_chunk_selector.inputs[socket_name])
 
-        def mix(compare, false_socket, true_socket):
-            node = nodes.new('ShaderNodeMix')
-            node.data_type = 'FLOAT'
-            links.new(compare.outputs['Result'], node.inputs[0])
-            links.new(false_socket, node.inputs[2])
-            links.new(true_socket, node.inputs[3])
-            return node.outputs[0]
+    store_chunk_id = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_chunk_id.data_type = 'INT'
+    store_chunk_id.domain = 'FACE'
+    store_chunk_id.inputs['Name'].default_value = "mtk_atlas_chunk_id"
+    store_chunk_id.location = (2650, -300)
+    links.new(store_tint_data.outputs['Geometry'], store_chunk_id.inputs['Geometry'])
+    links.new(call_chunk_selector.outputs['Selected'], store_chunk_id.inputs['Value'])
 
-        value = mix(cmp_north_r, readers['south'].outputs['Attribute'], readers['north'].outputs['Attribute'])
-        value = mix(cmp_east_r, value, readers['east'].outputs['Attribute'])
-        value = mix(cmp_west_r, value, readers['west'].outputs['Attribute'])
-        value = mix(cmp_bottom_r, value, readers['bottom'].outputs['Attribute'])
-        value = mix(cmp_top_r, value, readers['top'].outputs['Attribute'])
-        store = nodes.new('GeometryNodeStoreNamedAttribute')
-        store.data_type = 'INT'
-        store.domain = 'FACE'
-        store.inputs['Name'].default_value = label
-        links.new(value, store.inputs['Value'])
-        return store
+    # --- NODE GROUP: SELECT FACE TEXTURE ID (INT) ---
+    call_texture_selector = nodes.new('GeometryNodeGroup')
+    call_texture_selector.node_tree = group_int_selector
+    call_texture_selector.name = "Select Face Texture ID"
+    call_texture_selector.location = (2450, -600)
+    links.new(read_face_norm.outputs['Attribute'], call_texture_selector.inputs['Normal'])
 
-    store_chunk_id = selected_face_int_attribute("mtk_chunk", "mtk_atlas_chunk_id")
-    store_texture_id = selected_face_int_attribute("mtk_texture", "mtk_atlas_texture_id")
-    links.new(store_rot.outputs['Geometry'], store_face_tint_data.inputs['Geometry'])
-    links.new(store_face_tint_data.outputs['Geometry'], store_chunk_id.inputs['Geometry'])
+    for socket_name, face in (
+        ('Top (+Z)', 'top'),
+        ('Bottom (-Z)', 'bottom'),
+        ('East (+X)', 'east'),
+        ('West (-X)', 'west'),
+        ('South (+Y)', 'south'),
+        ('North (-Y)', 'north'),
+    ):
+        reader = nodes.new('GeometryNodeInputNamedAttribute')
+        reader.data_type = 'INT'
+        reader.inputs['Name'].default_value = f"mtk_texture_{face}"
+        reader.location = (2250, -600)
+        links.new(reader.outputs['Attribute'], call_texture_selector.inputs[socket_name])
+
+    store_texture_id = nodes.new('GeometryNodeStoreNamedAttribute')
+    store_texture_id.data_type = 'INT'
+    store_texture_id.domain = 'FACE'
+    store_texture_id.inputs['Name'].default_value = "mtk_atlas_texture_id"
+    store_texture_id.location = (2650, -500)
     links.new(store_chunk_id.outputs['Geometry'], store_texture_id.inputs['Geometry'])
+    links.new(call_texture_selector.outputs['Selected'], store_texture_id.inputs['Value'])
 
-    # MoziToolKit emits one material per atlas chunk.  Resolve the material
-    # number first, then apply the bound atlas material as the final geometry
-    # operation.  In Blender's evaluator the reverse order can leave the
-    # realized mesh with an unresolved material field (white viewport mesh).
-    chunk_attr = nodes.new('GeometryNodeInputNamedAttribute')
-    chunk_attr.data_type = 'INT'
-    chunk_attr.inputs['Name'].default_value = "mtk_atlas_chunk_id"
-    chunk_attr.location = (2850, -120)
+    # --- SET MATERIAL INDEX ---
+    # Directly set Material Index from chunk ID, enabling multi-chunk slot dispatching!
     set_mat_index = nodes.new('GeometryNodeSetMaterialIndex')
-    set_mat_index.location = (2900, 50)
+    set_mat_index.location = (2900, -300)
     links.new(store_texture_id.outputs['Geometry'], set_mat_index.inputs['Geometry'])
-    links.new(chunk_attr.outputs['Attribute'], set_mat_index.inputs['Material Index'])
+    links.new(call_chunk_selector.outputs['Selected'], set_mat_index.inputs['Material Index'])
 
-    # --- SET MATERIAL ---
-    set_mat = nodes.new('GeometryNodeSetMaterial')
-    set_mat.inputs['Material'].default_value = mat
-    set_mat.location = (3050, 50)
-    links.new(set_mat_index.outputs['Geometry'], set_mat.inputs['Geometry'])
-    links.new(set_mat.outputs['Geometry'], group_out.inputs['Geometry'])
+    # Connect final geometry directly to Group Output (no single Set Material override!)
+    links.new(set_mat_index.outputs['Geometry'], group_out.inputs['Geometry'])
+    _prune_unlinked_nodes(gn_tree)

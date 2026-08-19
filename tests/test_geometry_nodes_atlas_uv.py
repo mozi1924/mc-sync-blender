@@ -101,17 +101,33 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         # 4. Verify Node Group contains UV calculation nodes
         gn_tree = second_mod.node_group
         node_types = [n.type for n in gn_tree.nodes]
-        self.assertTrue("MESH_PRIMITIVE_CUBE" in node_types or "MESH_CUBE" in node_types)
+        # The root tree is an orchestration layer; cube construction is packed
+        # into a reusable group rather than expanded inline.
+        cube_groups = [
+            node for node in gn_tree.nodes
+            if node.type == "GROUP" and node.node_tree
+            and node.node_tree.name == "Yefira_Cube_Surface"
+        ]
+        self.assertTrue(cube_groups)
+        self.assertTrue(
+            "MESH_PRIMITIVE_CUBE" in [node.type for node in cube_groups[0].node_tree.nodes]
+            or "MESH_CUBE" in [node.type for node in cube_groups[0].node_tree.nodes]
+        )
         self.assertIn("INSTANCE_ON_POINTS", node_types)
         self.assertIn("REALIZE_INSTANCES", node_types)
-        self.assertIn("SET_MATERIAL", node_types)
+        self.assertIn("SET_MATERIAL_INDEX", node_types)
         self.assertIn("STORE_NAMED_ATTRIBUTE", node_types)
 
         # Verify UVMap store node exists
         store_nodes = [n for n in gn_tree.nodes if n.type == "STORE_NAMED_ATTRIBUTE"]
         store_names = [n.inputs["Name"].default_value for n in store_nodes if "Name" in n.inputs]
         self.assertIn("UVMap", store_names)
-        self.assertIn("LocalUV", store_names)
+        cube_store_names = [
+            node.inputs["Name"].default_value
+            for node in cube_groups[0].node_tree.nodes
+            if node.type == "STORE_NAMED_ATTRIBUTE" and "Name" in node.inputs
+        ]
+        self.assertIn("LocalUV", cube_store_names)
 
         # 5. Evaluate evaluated dependency graph (ensure no crashes or invalid sockets)
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -137,6 +153,91 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
             self.assertLessEqual(u, 1.0 + 1e-5)
             self.assertGreaterEqual(v, -1e-5)
             self.assertLessEqual(v, 1.0 + 1e-5)
+
+        eval_obj.to_mesh_clear()
+
+    def test_full_pipeline_multi_chunk_dispatch(self):
+        from yefira_blender.core.point_cloud_builder import update_world_point_cloud
+        from yefira_blender.core.storage import VoxelStorage
+        import json
+
+        # 1. Setup multi-chunk materials
+        mat0 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_000")
+        mat0["mtk:atlas_chunk_id"] = 0
+        mat0["mtk_atlas_width"] = 1024.0
+        mat0["mtk_atlas_height"] = 1024.0
+        mat0["mtk_tile_size"] = 16.0
+        mat0["mtk_tiles_per_row"] = 64
+
+        mat1 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001")
+        mat1["mtk:atlas_chunk_id"] = 1
+
+        mat2 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_002")
+        mat2["mtk:atlas_chunk_id"] = 2
+
+        mapping = {
+            "format_version": 10,
+            "tile_size": 16,
+            "chunks": [
+                {"chunk_id": 0, "kind": "static", "width": 1024, "height": 1024, "tile_size": 16, "tiles_per_row": 64},
+                {"chunk_id": 1, "kind": "static", "width": 1024, "height": 1024, "tile_size": 16, "tiles_per_row": 64},
+                {"chunk_id": 2, "kind": "animation", "width": 1024, "height": 2048, "tile_size": 16, "tiles_per_row": 64},
+            ],
+            "textures": {
+                "minecraft:dirt": {"chunk_id": 0, "texture_id": 10, "tile_column": 10, "tile_row": 0},
+                "minecraft:stone": {"chunk_id": 1, "texture_id": 20, "tile_column": 5, "tile_row": 1},
+                "minecraft:water_still": {"chunk_id": 2, "texture_id": 30, "tile_column": 0, "tile_row": 0},
+            }
+        }
+        mat0["mtk:atlas_mapping"] = json.dumps(mapping)
+
+        # 2. Build VoxelStorage
+        storage = VoxelStorage()
+        storage.set_full_snapshot(
+            0, 0, 0,
+            3, 1, 1,
+            ["minecraft:dirt", "minecraft:stone", "minecraft:water_still"],
+            [0, 1, 2],
+        )
+
+        atlas_params = extract_atlas_parameters(mat0)
+        res = update_world_point_cloud(
+            bpy.context,
+            storage,
+            filter_air=False,
+            atlas_mapping_dict=atlas_params.get("material_id_map", {}),
+            block_face_lut=atlas_params.get("block_face_lut", {}),
+            block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
+            block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
+            block_face_tint_lut=atlas_params.get("block_face_tint_lut", {}),
+            atlas_width=atlas_params["width"],
+            atlas_height=atlas_params["height"],
+            tile_size=atlas_params["tile_size"],
+            tiles_per_row=atlas_params["tiles_per_row"],
+        )
+
+        self.assertIsNotNone(res.world_obj)
+        self.assertEqual(res.point_count, 3)
+
+        # 3. Setup Geometry Nodes
+        mod = setup_world_geometry_nodes(res.world_obj)
+        self.assertIsNotNone(mod)
+
+        # Verify object material slots are populated for all chunks
+        self.assertGreaterEqual(len(res.world_obj.data.materials), 3)
+        self.assertIs(res.world_obj.data.materials[0], mat0)
+        self.assertIs(res.world_obj.data.materials[1], mat1)
+        self.assertIs(res.world_obj.data.materials[2], mat2)
+
+        # 4. Evaluate depsgraph and verify materialized mesh
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_obj = res.world_obj.evaluated_get(depsgraph)
+        eval_mesh = eval_obj.to_mesh()
+
+        self.assertIsNotNone(eval_mesh)
+        self.assertIn("UVMap", eval_mesh.attributes)
+        self.assertIn("mtk_atlas_chunk_id", eval_mesh.attributes)
+        self.assertIn("mtk_atlas_texture_id", eval_mesh.attributes)
 
         eval_obj.to_mesh_clear()
 

@@ -422,11 +422,87 @@ def get_or_create_atlas_material() -> Optional[bpy.types.Material]:
     return mat
 
 
-def setup_material_slots_for_object(obj: bpy.types.Object, mat: bpy.types.Material):
-    """Ensure object has the specified material assigned to slot 0."""
-    if not obj:
+def find_all_atlas_chunk_materials(mapping: Optional[dict] = None) -> dict[int, bpy.types.Material]:
+    """Find all Atlas chunk materials in Blender data, keyed by chunk_id."""
+    if not HAS_BPY:
+        return {}
+
+    chunk_materials: dict[int, bpy.types.Material] = {}
+
+    # 1. First priority: Match materials by explicit custom property mtk:atlas_chunk_id
+    for mat in bpy.data.materials:
+        if not mat:
+            continue
+        for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
+            if key in mat:
+                try:
+                    cid = int(mat[key])
+                    if cid not in chunk_materials:
+                        chunk_materials[cid] = mat
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    # 2. Second priority: Match materials by naming pattern (e.g., mtk:minecraft:atlas_chunk_000...)
+    for mat in bpy.data.materials:
+        if not mat:
+            continue
+        if "atlas_chunk_" in mat.name:
+            import re
+            m = re.search(r"atlas_chunk_(\d+)", mat.name)
+            if m:
+                cid = int(m.group(1))
+                if cid not in chunk_materials:
+                    chunk_materials[cid] = mat
+
+    # 3. Check mapping chunks metadata
+    if mapping and "chunks" in mapping:
+        for chunk in mapping["chunks"]:
+            cid = int(chunk.get("chunk_id", 0))
+            if cid not in chunk_materials:
+                if cid == 0:
+                    active = find_active_atlas_material()
+                    if active:
+                        chunk_materials[0] = active
+
+    if not chunk_materials:
+        active = find_active_atlas_material() or get_or_create_atlas_material()
+        if active:
+            chunk_materials[0] = active
+
+    return chunk_materials
+
+
+def setup_material_slots_for_object(
+    obj: bpy.types.Object,
+    mat: Optional[bpy.types.Material] = None,
+    mapping: Optional[dict] = None,
+):
+    """Ensure object has all chunk materials assigned to slots 0..N in order.
+
+    Slot index directly corresponds to mtk_atlas_chunk_id, enabling Geometry Nodes
+    to use Set Material Index without overwriting via a single Set Material node.
+    """
+    if not obj or not getattr(obj, "data", None) or not HAS_BPY:
         return
-    if not obj.data.materials:
-        obj.data.materials.append(mat)
-    else:
-        obj.data.materials[0] = mat
+
+    if mat is None:
+        mat = find_bound_atlas_material(obj) or find_active_atlas_material() or get_or_create_atlas_material()
+
+    if mapping is None and mat:
+        mapping = parse_atlas_mapping(mat)
+
+    chunk_materials = find_all_atlas_chunk_materials(mapping)
+    if not chunk_materials and mat:
+        chunk_materials[0] = mat
+
+    max_chunk_id = max(chunk_materials.keys()) if chunk_materials else 0
+    needed_slots = max(1, max_chunk_id + 1)
+
+    while len(obj.data.materials) < needed_slots:
+        obj.data.materials.append(None)
+
+    for cid in range(needed_slots):
+        target_mat = chunk_materials.get(cid) or mat
+        obj.data.materials[cid] = target_mat
+

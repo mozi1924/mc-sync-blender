@@ -41,4 +41,5 @@ class TestPointClassifier(unittest.TestCase):
         self.assertEqual(p.tint_data, (1.0, 1.0, 1.0, 0.0))
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])
+
