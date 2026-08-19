@@ -35,6 +35,95 @@ def _fallback_texture_location(mapping: dict, block_name: str) -> Optional[dict]
     return None
 
 
+def _atlas_name_aliases(name: str) -> tuple[str, ...]:
+    """Return stable mapping aliases for a Minecraft block/texture name."""
+    short_name = name.split(":", 1)[-1]
+    if short_name.startswith("block/"):
+        short_name = short_name[6:]
+    return tuple(dict.fromkeys((name, short_name, f"minecraft:{short_name}", f"minecraft:block/{short_name}")))
+
+
+def _atlas_short_name(name: str) -> str:
+    """Return ``grass_block_top`` for every supported resource-key spelling."""
+    name = name.split(":", 1)[-1]
+    return name.removeprefix("block/")
+
+
+def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, list[dict]], dict[str, int]]:
+    """Build point-cloud face locations from atlas data, not material names.
+
+    Normal meshes preserve a source texture per polygon.  Yefira instead has
+    a Minecraft block state at each point, so a texture-only pack needs a
+    small, deterministic bridge from common ``*_side/top/bottom/end`` texture
+    sets to the logical block name.  Explicit six-face mappings always win.
+    """
+    locations_by_name: dict[str, list[dict]] = {}
+    material_ids: dict[str, int] = {}
+    if not mapping:
+        return locations_by_name, material_ids
+
+    textures = mapping.get("textures", {})
+    texture_by_stem: dict[str, dict] = {}
+    for texture_key, location in textures.items():
+        if not isinstance(location, dict):
+            continue
+        for alias in _atlas_name_aliases(texture_key):
+            texture_by_stem.setdefault(_atlas_short_name(alias), location)
+
+    def add(name: str, face_locations: list[dict], material_id: int) -> None:
+        for alias in _atlas_name_aliases(name):
+            locations_by_name[alias] = face_locations
+            material_ids[alias] = material_id
+
+    # First consume the authoritative material mapping.  A real model can
+    # encode arbitrary face layouts that texture-name conventions cannot.
+    for index, material in enumerate(mapping.get("materials", [])):
+        name = material.get("name", "")
+        if not name:
+            continue
+        fallback = _fallback_texture_location(mapping, name) or {}
+        faces = material.get("faces", {})
+        face_locations = [faces.get(face_name) or fallback for face_name in FACE_ORDER]
+        add(name, face_locations, int(material.get("material_id", index)))
+
+    # Direct texture entries represent an all-face block unless a material
+    # mapping already supplied a more precise answer.
+    for texture_key, location in textures.items():
+        if not isinstance(location, dict):
+            continue
+        stem = _atlas_short_name(texture_key)
+        if stem not in locations_by_name:
+            add(stem, [location] * 6, int(location.get("texture_id", 0)))
+
+    # Texture-only PBR packs expose components such as grass_block_top and
+    # oak_log_top but not a logical grass_block/oak_log material entry.  Build
+    # a face map from those components.  This intentionally replaces a
+    # uniform fallback but never an already differentiated six-face mapping.
+    base_names = set(texture_by_stem)
+    for stem in tuple(texture_by_stem):
+        for suffix in ("_side", "_top", "_bottom", "_end"):
+            if stem.endswith(suffix):
+                base_names.add(stem[:-len(suffix)])
+
+    for base_name in base_names:
+        base = texture_by_stem.get(base_name)
+        side = texture_by_stem.get(f"{base_name}_side") or base
+        top = texture_by_stem.get(f"{base_name}_top") or texture_by_stem.get(f"{base_name}_end") or side
+        bottom = texture_by_stem.get(f"{base_name}_bottom") or texture_by_stem.get(f"{base_name}_end") or top
+        if not side or not top or not bottom:
+            continue
+        if base_name == "grass_block":
+            bottom = texture_by_stem.get("dirt") or bottom
+        face_locations = [side, side, top, bottom, side, side]
+        existing = locations_by_name.get(base_name)
+        has_differentiated_faces = existing and len({loc.get("texture_key") for loc in existing if loc}) > 1
+        has_named_variants = any(texture_by_stem.get(f"{base_name}{suffix}") for suffix in ("_side", "_top", "_bottom", "_end"))
+        if has_named_variants and not has_differentiated_faces:
+            add(base_name, face_locations, material_ids.get(base_name, int(side.get("texture_id", 0))))
+
+    return locations_by_name, material_ids
+
+
 def find_active_atlas_material() -> Optional[bpy.types.Material]:
     """Find the best active Atlas material in Blender scene."""
     if not HAS_BPY:
@@ -128,57 +217,13 @@ def build_block_face_lut(mapping: Optional[dict]) -> tuple[dict[str, list[tuple[
     if not mapping:
         return face_lut, material_id_map
 
-    textures = mapping.get("textures", {})
-    materials = mapping.get("materials", [])
-
-    # 1. Populate from explicit 6-face material definitions
-    for idx, mat_entry in enumerate(materials):
-        name = mat_entry.get("name", "")
-        if not name:
-            continue
-        mat_id = int(mat_entry.get("material_id", idx))
-        material_id_map[name] = mat_id
-        if ":" in name:
-            material_id_map[name.split(":", 1)[1]] = mat_id
-
-        faces_dict = mat_entry.get("faces", {})
-        fallback_location = _fallback_texture_location(mapping, name)
-        face_coords = []
-        for face_name in FACE_ORDER:
-            loc = faces_dict.get(face_name) or fallback_location
-            if loc and isinstance(loc, dict) and "tile_column" in loc and "tile_row" in loc:
-                face_coords.append((int(loc["tile_column"]), int(loc["tile_row"])))
-            elif loc and isinstance(loc, dict) and "texture_id" in loc:
-                # If chunk has tiles_per_row
-                t_id = int(loc["texture_id"])
-                tiles_per_row = int(loc.get("tiles_per_row", 64))
-                face_coords.append((t_id % tiles_per_row, t_id // tiles_per_row))
-            else:
-                face_coords.append((0, 0))
-
-        face_lut[name] = face_coords
-        if ":" in name:
-            face_lut[name.split(":", 1)[1]] = face_coords
-
-    # 2. Populate fallback textures from textures map
-    for tex_key, loc in textures.items():
-        if not loc or not isinstance(loc, dict):
-            continue
-        col = int(loc.get("tile_column", 0))
-        row = int(loc.get("tile_row", 0))
-        stem = tex_key
-        if ":" in stem:
-            stem = stem.split(":", 1)[1]
-        if stem.startswith("block/"):
-            stem = stem[6:]
-
-        if stem not in face_lut:
-            face_lut[stem] = [(col, row)] * 6
-            face_lut[tex_key] = [(col, row)] * 6
-        if stem not in material_id_map:
-            t_id = int(loc.get("texture_id", len(material_id_map)))
-            material_id_map[stem] = t_id
-            material_id_map[tex_key] = t_id
+    locations_by_name, material_ids = _build_block_face_location_lut(mapping)
+    for name, locations in locations_by_name.items():
+        face_lut[name] = [
+            (int(location.get("tile_column", 0)), int(location.get("tile_row", 0)))
+            for location in locations
+        ]
+    material_id_map.update(material_ids)
 
     return face_lut, material_id_map
 
@@ -195,41 +240,10 @@ def build_block_face_atlas_ids(mapping: Optional[dict]) -> tuple[dict[str, list[
     if not mapping:
         return chunk_lut, texture_lut
 
-    def add_aliases(name: str, chunks: list[int], textures: list[int]) -> None:
-        chunk_lut[name] = chunks
-        texture_lut[name] = textures
-        if ":" in name:
-            short_name = name.split(":", 1)[1]
-            chunk_lut[short_name] = chunks
-            texture_lut[short_name] = textures
-            if short_name.startswith("block/"):
-                short_name = short_name[6:]
-                chunk_lut[short_name] = chunks
-                texture_lut[short_name] = textures
-
-    for material in mapping.get("materials", []):
-        name = material.get("name", "")
-        if not name:
-            continue
-        chunks, textures = [], []
-        fallback_location = _fallback_texture_location(mapping, name)
-        for face_name in FACE_ORDER:
-            location = material.get("faces", {}).get(face_name) or fallback_location or {}
-            chunks.append(int(location.get("chunk_id", 0)))
-            textures.append(int(location.get("texture_id", 0)))
-        add_aliases(name, chunks, textures)
-
-    for texture_key, location in mapping.get("textures", {}).items():
-        if not isinstance(location, dict):
-            continue
-        stem = texture_key.split(":", 1)[-1]
-        if stem.startswith("block/"):
-            stem = stem[6:]
-        chunks = [int(location.get("chunk_id", 0))] * 6
-        textures = [int(location.get("texture_id", 0))] * 6
-        if stem not in chunk_lut:
-            add_aliases(stem, chunks, textures)
-            add_aliases(texture_key, chunks, textures)
+    locations_by_name, _ = _build_block_face_location_lut(mapping)
+    for name, locations in locations_by_name.items():
+        chunk_lut[name] = [int(location.get("chunk_id", 0)) for location in locations]
+        texture_lut[name] = [int(location.get("texture_id", 0)) for location in locations]
 
     return chunk_lut, texture_lut
 
@@ -240,29 +254,17 @@ def build_block_face_tint_lut(mapping: Optional[dict]) -> dict[str, list[tuple[f
     if not mapping:
         return tint_lut
 
-    def add_aliases(name: str, values: list[tuple[float, float, float, float]]) -> None:
-        tint_lut[name] = values
-        if ":" in name:
-            short_name = name.split(":", 1)[1]
-            tint_lut[short_name] = values
-            if short_name.startswith("block/"):
-                tint_lut[short_name[6:]] = values
-
-    for material in mapping.get("materials", []):
-        name = material.get("name", "")
-        if not name:
-            continue
-        fallback_location = _fallback_texture_location(mapping, name)
-        values = []
-        for face_name in FACE_ORDER:
-            location = material.get("faces", {}).get(face_name) or fallback_location or {}
-            values.append((
+    locations_by_name, _ = _build_block_face_location_lut(mapping)
+    for name, locations in locations_by_name.items():
+        tint_lut[name] = [
+            (
                 float(location.get("default_base_tint_weight", 0.0)),
                 float(location.get("default_overlay_tint_weight", 0.0)),
                 float(location.get("default_tint_weight", 0.0)),
                 1.0 if location.get("is_hardcoded", False) else 0.0,
-            ))
-        add_aliases(name, values)
+            )
+            for location in locations
+        ]
 
     return tint_lut
 

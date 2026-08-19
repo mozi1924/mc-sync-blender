@@ -110,6 +110,39 @@ class TestYefiraAtlasIntegration(unittest.TestCase):
         self.assertIn("dirt", face_lut)
         self.assertEqual(face_lut["dirt"], [(5, 1)] * 6)
 
+    def test_texture_only_pbr_pack_derives_cube_faces(self):
+        """Yefira must resolve logical blocks even when the pack has no models."""
+        def location(column, row, texture_id, base=0.0, overlay=0.0):
+            return {
+                "tile_column": column,
+                "tile_row": row,
+                "chunk_id": 0,
+                "texture_id": texture_id,
+                "default_base_tint_weight": base,
+                "default_overlay_tint_weight": overlay,
+            }
+
+        mapping = {
+            "textures": {
+                "minecraft:block/grass_block_side": location(205, 1, 461, overlay=1.0),
+                "minecraft:block/grass_block_top": location(208, 1, 464, base=1.0, overlay=1.0),
+                "minecraft:block/dirt": location(105, 1, 361),
+                "minecraft:block/oak_log": location(127, 2, 639),
+                "minecraft:block/oak_log_top": location(128, 2, 640),
+            },
+            # SPBR's generated entries are uniform.  They must not erase the
+            # side/top decomposition available from its texture table.
+            "materials": [{
+                "material_id": 99,
+                "name": "oak_log",
+                "faces": {face: location(127, 2, 639) for face in FACE_ORDER},
+            }],
+        }
+
+        face_lut, _ = build_block_face_lut(mapping)
+        self.assertEqual(face_lut["grass_block"], [(205, 1), (205, 1), (208, 1), (105, 1), (205, 1), (205, 1)])
+        self.assertEqual(face_lut["oak_log"], [(127, 2), (127, 2), (128, 2), (128, 2), (127, 2), (127, 2)])
+
     def test_non_square_atlas_uv_math(self):
         """
         Verify UV formulas for non-square Atlas textures and 16x16 / 32x32 resolutions.

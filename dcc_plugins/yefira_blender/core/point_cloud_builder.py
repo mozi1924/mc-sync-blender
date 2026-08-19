@@ -124,14 +124,13 @@ def update_world_point_cloud(
         tint_datas.append(parsed.tint_data)
         mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
 
+        atlas_keys = _atlas_lookup_keys(parsed)
+
         # Material ID resolution (Atlas mapping or palette hash)
-        if atlas_mapping_dict and parsed.name in atlas_mapping_dict:
-            mat_id = atlas_mapping_dict[parsed.name]
-        elif atlas_mapping_dict and parsed.block_id in atlas_mapping_dict:
-            mat_id = atlas_mapping_dict[parsed.block_id]
-        elif atlas_mapping_dict and f"minecraft:{parsed.name}" in atlas_mapping_dict:
-            mat_id = atlas_mapping_dict[f"minecraft:{parsed.name}"]
-        else:
+        mat_id = None
+        if atlas_mapping_dict:
+            mat_id = next((atlas_mapping_dict[key] for key in atlas_keys if key in atlas_mapping_dict), None)
+        if mat_id is None:
             if parsed.name not in palette_mat_cache:
                 palette_mat_cache[parsed.name] = len(palette_mat_cache)
             mat_id = palette_mat_cache[parsed.name]
@@ -140,11 +139,7 @@ def update_world_point_cloud(
         # 6-Face Tile Coordinates Lookup from Face LUT
         coords = None
         if block_face_lut:
-            coords = (
-                block_face_lut.get(parsed.name)
-                or block_face_lut.get(parsed.block_id)
-                or block_face_lut.get(f"minecraft:{parsed.name}")
-            )
+            coords = next((block_face_lut[key] for key in atlas_keys if key in block_face_lut), None)
 
         if coords and len(coords) >= 6:
             # Face Order: +X (East), -X (West), +Y (Top), -Y (Bottom), +Z (South), -Z (North)
@@ -235,10 +230,26 @@ def update_world_point_cloud(
 def _lookup_face_values(lut, parsed: ParsedBlock, default) -> list:
     values = None
     if lut:
-        values = lut.get(parsed.name) or lut.get(parsed.block_id) or lut.get(f"minecraft:{parsed.name}")
+        values = next((lut[key] for key in _atlas_lookup_keys(parsed) if key in lut), None)
     if not values or len(values) < 6:
         return [default] * 6
     return [type(default)(value) if isinstance(default, int) else tuple(value) for value in values[:6]]
+
+
+def _atlas_lookup_keys(parsed: ParsedBlock) -> tuple[str, ...]:
+    """Return the mapping keys which can represent this exact block state.
+
+    Vanilla door blockstates select ``*_door_bottom`` or ``*_door_top``
+    models; resource packs usually expose those textures rather than a single
+    ``*_door`` texture.  The point cloud retains the full state, so preserve
+    that distinction before falling back to the ordinary block-name aliases.
+    """
+    keys: list[str] = []
+    if parsed.name.endswith("_door"):
+        half = parsed.props.get("half", "lower")
+        keys.append(f"{parsed.name}_{'top' if half == 'upper' else 'bottom'}")
+    keys.extend((parsed.name, parsed.block_id, f"minecraft:{parsed.name}"))
+    return tuple(dict.fromkeys(keys))
 
 
 def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):
