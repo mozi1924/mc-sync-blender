@@ -255,6 +255,7 @@ def update_world_point_cloud(
         _write_float_attribute(mesh, "mtk_anim_frame_height", [float(anim_frame_height)] * num_pts)
         _write_float_vector_attribute(mesh, "instance_rotation", rotations)
         _write_float_vector_attribute(mesh, "instance_offset", offsets)
+        _write_float_vector_attribute(mesh, "block_center", vertices)
         _write_float_vector_attribute(mesh, "mc_pos", mc_positions)
         _write_float_vector_attribute(mesh, "mtk_tile_east", tile_east)
         _write_float_vector_attribute(mesh, "mtk_tile_west", tile_west)

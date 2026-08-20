@@ -37,8 +37,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 17: LocalFaceID-driven attribute selection & vertical-base orientation fixes.
-WORLD_TREE_SCHEMA_VERSION = 17
+# Schema version 18: Upright Top/Bottom face UV orientation & LocalFaceID dispatch.
+WORLD_TREE_SCHEMA_VERSION = 18
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -300,8 +300,86 @@ def _build_tree_nodes_and_links(
     read_local_uv = nodes.new("GeometryNodeInputNamedAttribute")
     read_local_uv.data_type = "FLOAT_VECTOR"
     read_local_uv.inputs["Name"].default_value = "LocalUV"
-    read_local_uv.location = (760, 100)
-    links.new(read_local_uv.outputs["Attribute"], call_uv_calc.inputs["Local UV"])
+    read_local_uv.location = (560, 100)
+
+    # Calculate upright world-aligned UV for Top (+Z) and Bottom (-Z) faces
+    read_pos = nodes.new("GeometryNodeInputPosition")
+    read_pos.location = (380, -250)
+
+    read_block_center = nodes.new("GeometryNodeInputNamedAttribute")
+    read_block_center.data_type = "FLOAT_VECTOR"
+    read_block_center.inputs["Name"].default_value = "block_center"
+    read_block_center.location = (380, -380)
+
+    sub_pos = nodes.new("ShaderNodeVectorMath")
+    sub_pos.operation = "SUBTRACT"
+    sub_pos.location = (560, -250)
+    links.new(read_pos.outputs["Position"], sub_pos.inputs[0])
+    links.new(read_block_center.outputs["Attribute"], sub_pos.inputs[1])
+
+    sep_rel = nodes.new("ShaderNodeSeparateXYZ")
+    sep_rel.location = (720, -250)
+    links.new(sub_pos.outputs["Vector"], sep_rel.inputs["Vector"])
+
+    add_u = nodes.new("ShaderNodeMath")
+    add_u.operation = "ADD"
+    add_u.inputs[1].default_value = 0.5
+    add_u.location = (880, -200)
+    links.new(sep_rel.outputs["X"], add_u.inputs[0])
+
+    add_v = nodes.new("ShaderNodeMath")
+    add_v.operation = "ADD"
+    add_v.inputs[1].default_value = 0.5
+    add_v.location = (880, -300)
+    links.new(sep_rel.outputs["Y"], add_v.inputs[0])
+
+    comb_upright_uv = nodes.new("ShaderNodeCombineXYZ")
+    comb_upright_uv.location = (1040, -250)
+    links.new(add_u.outputs["Value"], comb_upright_uv.inputs["X"])
+    links.new(add_v.outputs["Value"], comb_upright_uv.inputs["Y"])
+
+    # Condition: LocalFaceID in (0: Top, 1: Bottom) AND Realized Normal is vertical (|Normal.Z| > 0.5)
+    cmp_fid = nodes.new("FunctionNodeCompare")
+    cmp_fid.data_type = "INT"
+    cmp_fid.operation = "LESS_EQUAL"
+    cmp_fid.inputs["B"].default_value = 1
+    cmp_fid.location = (560, -450)
+    links.new(read_face_id.outputs["Attribute"], cmp_fid.inputs["A"])
+
+    read_realized_norm = nodes.new("GeometryNodeInputNormal")
+    read_realized_norm.location = (380, -550)
+
+    sep_norm = nodes.new("ShaderNodeSeparateXYZ")
+    sep_norm.location = (560, -550)
+    links.new(read_realized_norm.outputs["Normal"], sep_norm.inputs["Vector"])
+
+    abs_nz = nodes.new("ShaderNodeMath")
+    abs_nz.operation = "ABSOLUTE"
+    abs_nz.location = (720, -550)
+    links.new(sep_norm.outputs["Z"], abs_nz.inputs[0])
+
+    cmp_nz = nodes.new("FunctionNodeCompare")
+    cmp_nz.data_type = "FLOAT"
+    cmp_nz.operation = "GREATER_THAN"
+    cmp_nz.inputs["B"].default_value = 0.5
+    cmp_nz.location = (880, -550)
+    links.new(abs_nz.outputs["Value"], cmp_nz.inputs["A"])
+
+    bool_upright = nodes.new("FunctionNodeBooleanMath")
+    bool_upright.operation = "AND"
+    bool_upright.location = (1040, -500)
+    links.new(cmp_fid.outputs["Result"], bool_upright.inputs[0])
+    links.new(cmp_nz.outputs["Result"], bool_upright.inputs[1])
+
+    switch_uv_in = nodes.new("GeometryNodeSwitch")
+    switch_uv_in.input_type = "VECTOR"
+    switch_uv_in.location = (1200, -200)
+    links.new(bool_upright.outputs["Boolean"], switch_uv_in.inputs["Switch"])
+    links.new(read_local_uv.outputs["Attribute"], switch_uv_in.inputs["False"])
+    links.new(comb_upright_uv.outputs["Vector"], switch_uv_in.inputs["True"])
+
+    # Link selected local UV into UV calculator
+    links.new(switch_uv_in.outputs["Output"], call_uv_calc.inputs["Local UV"])
 
     # Link Chunk ID into UV calculator
     links.new(call_chunk_selector.outputs["Selected"], call_uv_calc.inputs["Chunk ID"])
