@@ -52,11 +52,11 @@ def _atlas_short_name(name: str) -> str:
 BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "water": ["water_still", "water_flow"],
     "lava": ["lava_still", "lava_flow"],
-    "magma_block": ["magma"],
+    "magma_block": ["magma", "magma_block"],
     "fire": ["fire_0", "fire_1"],
     "soul_fire": ["soul_fire_0", "soul_fire_1"],
-    "campfire": ["campfire_fire", "campfire_log"],
-    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log"],
+    "campfire": ["campfire_fire", "campfire_log", "campfire_log_lit"],
+    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log", "soul_campfire_log_lit"],
     "portal": ["nether_portal"],
     "nether_portal": ["nether_portal"],
     "kelp": ["kelp", "kelp_plant"],
@@ -71,10 +71,17 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
     "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
     "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
-    "respawn_anchor": ["respawn_anchor_top_off", "respawn_anchor_side0", "respawn_anchor_bottom"],
-    "smoker": ["smoker_front", "smoker_side", "smoker_top", "smoker_bottom"],
-    "furnace": ["furnace_front", "furnace_side", "furnace_top", "furnace_bottom"],
-    "blast_furnace": ["blast_furnace_front", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "respawn_anchor": [
+        "respawn_anchor_top_off", "respawn_anchor_top",
+        "respawn_anchor_side0", "respawn_anchor_side1", "respawn_anchor_side2",
+        "respawn_anchor_side3", "respawn_anchor_side4", "respawn_anchor_bottom"
+    ],
+    "smoker": ["smoker_front", "smoker_front_on", "smoker_side", "smoker_top", "smoker_bottom"],
+    "furnace": ["furnace_front", "furnace_front_on", "furnace_side", "furnace_top", "furnace_bottom"],
+    "blast_furnace": ["blast_furnace_front", "blast_furnace_front_on", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "redstone_lamp": ["redstone_lamp", "redstone_lamp_on"],
+    "redstone_torch": ["redstone_torch", "redstone_torch_off"],
+    "redstone_wall_torch": ["redstone_torch", "redstone_torch_off"],
     "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
     "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
     "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
@@ -83,11 +90,40 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
     "piston": ["piston_top", "piston_bottom", "piston_side"],
     "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
-    "barrel": ["barrel_top", "barrel_bottom", "barrel_side"],
+    "barrel": ["barrel_top", "barrel_bottom", "barrel_side", "barrel_top_open"],
     "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
     "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
     "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
     "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
+    "red_mushroom_block": ["red_mushroom_block", "mushroom_block_inside"],
+    "brown_mushroom_block": ["brown_mushroom_block", "mushroom_block_inside"],
+    "mushroom_stem": ["mushroom_stem", "mushroom_block_inside"],
+    "grass_block": ["grass_block_top", "grass_block_side", "grass_block_snow", "grass_block_side_overlay", "dirt"],
+    "podzol": ["podzol_top", "podzol_side", "grass_block_snow", "dirt"],
+    "mycelium": ["mycelium_top", "mycelium_side", "grass_block_snow", "dirt"],
+    "white_glazed_terracotta": ["white_glazed_terracotta"],
+    "orange_glazed_terracotta": ["orange_glazed_terracotta"],
+    "magenta_glazed_terracotta": ["magenta_glazed_terracotta"],
+    "light_blue_glazed_terracotta": ["light_blue_glazed_terracotta"],
+    "yellow_glazed_terracotta": ["yellow_glazed_terracotta"],
+    "lime_glazed_terracotta": ["lime_glazed_terracotta"],
+    "pink_glazed_terracotta": ["pink_glazed_terracotta"],
+    "gray_glazed_terracotta": ["gray_glazed_terracotta"],
+    "light_gray_glazed_terracotta": ["light_gray_glazed_terracotta"],
+    "cyan_glazed_terracotta": ["cyan_glazed_terracotta"],
+    "purple_glazed_terracotta": ["purple_glazed_terracotta"],
+    "blue_glazed_terracotta": ["blue_glazed_terracotta"],
+    "brown_glazed_terracotta": ["brown_glazed_terracotta"],
+    "green_glazed_terracotta": ["green_glazed_terracotta"],
+    "red_glazed_terracotta": ["red_glazed_terracotta"],
+    "black_glazed_terracotta": ["black_glazed_terracotta"],
+}
+
+HARDCODED_TINT_BLOCKS = {
+    "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
+    "birch_leaves": (1.0, 1.0, 1.0, 1.0),
+    "lily_pad": (1.0, 1.0, 1.0, 1.0),
+    "redstone_wire": (1.0, 1.0, 1.0, 1.0),
 }
 
 
@@ -112,12 +148,15 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         for alias in _atlas_name_aliases(texture_key):
             texture_by_stem.setdefault(_atlas_short_name(alias), location)
 
+    def get_tex(stem: str) -> Optional[dict]:
+        return texture_by_stem.get(stem)
+
     def add(name: str, face_locations: list[dict], material_id: int) -> None:
         for alias in _atlas_name_aliases(name):
             locations_by_name[alias] = face_locations
             material_ids[alias] = material_id
 
-    # First consume the authoritative material mapping.  A real model can
+    # 1. First consume the authoritative material mapping.  A real model can
     # encode arbitrary face layouts that texture-name conventions cannot.
     for index, material in enumerate(mapping.get("materials", [])):
         name = material.get("name", "")
@@ -128,36 +167,225 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         face_locations = [faces.get(face_name) or fallback for face_name in FACE_ORDER]
         add(name, face_locations, int(material.get("material_id", index)))
 
-    # Direct texture entries represent an all-face block unless a material
-    # mapping already supplied a more precise answer.
-    for texture_key, location in textures.items():
-        if not isinstance(location, dict):
-            continue
-        stem = _atlas_short_name(texture_key)
-        if stem not in locations_by_name:
-            add(stem, [location] * 6, int(location.get("texture_id", 0)))
+    # 2. Stateful and multi-face block definitions (Top/Bottom, Sides, Front/Back)
+    # Furnace, Blast Furnace, Smoker
+    for base in ("furnace", "blast_furnace", "smoker"):
+        top_loc = get_tex(f"{base}_top") or get_tex("furnace_top")
+        bottom_loc = get_tex(f"{base}_bottom") or top_loc
+        side_loc = get_tex(f"{base}_side") or get_tex("furnace_side")
+        front_unlit = get_tex(f"{base}_front") or side_loc
+        front_lit = get_tex(f"{base}_front_on") or front_unlit
 
-    # Block name to texture aliases (e.g. water, command_block, furnace, etc.)
+        if top_loc or side_loc or front_unlit or front_lit:
+            primary_loc = front_unlit or side_loc or top_loc
+            actual_top = top_loc or primary_loc
+            actual_bottom = bottom_loc or primary_loc
+            actual_side = side_loc or primary_loc
+            mat_id = int(primary_loc.get("texture_id", 0)) if primary_loc else 0
+
+            # Unlit layout: [side, side, top, bottom, side, front]
+            unlit_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_unlit or actual_side]
+            if base not in locations_by_name:
+                add(base, unlit_faces, mat_id)
+            if f"{base}_front" not in locations_by_name:
+                add(f"{base}_front", unlit_faces, mat_id)
+            if f"{base}[lit=false]" not in locations_by_name:
+                add(f"{base}[lit=false]", unlit_faces, mat_id)
+
+            # Lit layout: [side, side, top, bottom, side, front_on]
+            lit_mat_id = int(front_lit.get("texture_id", mat_id)) if front_lit else mat_id
+            lit_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_lit or actual_side]
+            if f"{base}_front_on" not in locations_by_name:
+                add(f"{base}_front_on", lit_faces, lit_mat_id)
+            if f"{base}_lit" not in locations_by_name:
+                add(f"{base}_lit", lit_faces, lit_mat_id)
+            if f"{base}[lit=true]" not in locations_by_name:
+                add(f"{base}[lit=true]", lit_faces, lit_mat_id)
+
+    # Beehive and Bee Nest
+    for base in ("beehive", "bee_nest"):
+        top_loc = get_tex(f"{base}_top")
+        bottom_loc = get_tex(f"{base}_bottom") or top_loc
+        side_loc = get_tex(f"{base}_side")
+        front_unlit = get_tex(f"{base}_front") or side_loc
+        front_honey = get_tex(f"{base}_front_honey") or front_unlit
+
+        if top_loc or side_loc or front_unlit or front_honey:
+            primary_loc = front_unlit or side_loc or top_loc
+            actual_top = top_loc or primary_loc
+            actual_bottom = bottom_loc or primary_loc
+            actual_side = side_loc or primary_loc
+            mat_id = int(primary_loc.get("texture_id", 0)) if primary_loc else 0
+
+            normal_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_unlit or actual_side]
+            if base not in locations_by_name:
+                add(base, normal_faces, mat_id)
+            if f"{base}_front" not in locations_by_name:
+                add(f"{base}_front", normal_faces, mat_id)
+
+            honey_mat_id = int(front_honey.get("texture_id", mat_id)) if front_honey else mat_id
+            honey_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_honey or actual_side]
+            if f"{base}_front_honey" not in locations_by_name:
+                add(f"{base}_front_honey", honey_faces, honey_mat_id)
+            if f"{base}[honey_level=5]" not in locations_by_name:
+                add(f"{base}[honey_level=5]", honey_faces, honey_mat_id)
+
+    # Respawn Anchor
+    top_off = get_tex("respawn_anchor_top_off")
+    top_on = get_tex("respawn_anchor_top") or top_off
+    bottom_anchor = get_tex("respawn_anchor_bottom") or top_off
+    side0 = get_tex("respawn_anchor_side0") or top_off
+    if top_off or top_on or side0:
+        base_mat_id = int((top_off or side0).get("texture_id", 0)) if (top_off or side0) else 0
+        off_faces = [side0 or top_off, side0 or top_off, top_off or top_on, bottom_anchor or top_off, side0 or top_off, side0 or top_off]
+        if "respawn_anchor" not in locations_by_name:
+            add("respawn_anchor", off_faces, base_mat_id)
+        if "respawn_anchor_top_off" not in locations_by_name:
+            add("respawn_anchor_top_off", off_faces, base_mat_id)
+        if "respawn_anchor_side0" not in locations_by_name:
+            add("respawn_anchor_side0", off_faces, base_mat_id)
+        if "respawn_anchor[charges=0]" not in locations_by_name:
+            add("respawn_anchor[charges=0]", off_faces, base_mat_id)
+
+        for charges in range(1, 5):
+            side_c = get_tex(f"respawn_anchor_side{charges}") or side0 or top_on
+            c_mat_id = int(side_c.get("texture_id", base_mat_id)) if side_c else base_mat_id
+            c_faces = [side_c, side_c, top_on or top_off, bottom_anchor or top_off, side_c, side_c]
+            if f"respawn_anchor_side{charges}" not in locations_by_name:
+                add(f"respawn_anchor_side{charges}", c_faces, c_mat_id)
+            if f"respawn_anchor[charges={charges}]" not in locations_by_name:
+                add(f"respawn_anchor[charges={charges}]", c_faces, c_mat_id)
+        if top_on and "respawn_anchor_top" not in locations_by_name:
+            top_mat_id = int(top_on.get("texture_id", base_mat_id))
+            side_max = get_tex("respawn_anchor_side4") or side0 or top_on
+            add("respawn_anchor_top", [side_max, side_max, top_on, bottom_anchor or top_off, side_max, side_max], top_mat_id)
+
+    # Carved Pumpkin & Jack o'Lantern
+    pumpkin_top = get_tex("pumpkin_top")
+    pumpkin_side = get_tex("pumpkin_side")
+    for p_name in ("carved_pumpkin", "jack_o_lantern"):
+        if p_name in locations_by_name:
+            continue
+        front_tex = get_tex(p_name)
+        if front_tex or pumpkin_side or pumpkin_top:
+            top_loc = pumpkin_top or pumpkin_side or front_tex
+            side_loc = pumpkin_side or pumpkin_top or front_tex
+            p_mat_id = int((front_tex or side_loc).get("texture_id", 0)) if (front_tex or side_loc) else 0
+            p_faces = [side_loc, side_loc, top_loc, top_loc, side_loc, front_tex or side_loc]
+            add(p_name, p_faces, p_mat_id)
+
+    # Dispenser and Dropper
+    for base in ("dispenser", "dropper"):
+        if base in locations_by_name:
+            continue
+        top_loc = get_tex(f"{base}_top") or get_tex("furnace_top")
+        side_loc = get_tex(f"{base}_side") or get_tex("furnace_side")
+        front_tex = get_tex(f"{base}_front")
+        if front_tex or side_loc or top_loc:
+            actual_top = top_loc or side_loc or front_tex
+            actual_side = side_loc or top_loc or front_tex
+            d_mat_id = int((front_tex or actual_side).get("texture_id", 0)) if (front_tex or actual_side) else 0
+            d_faces = [actual_side, actual_side, actual_top, actual_top, actual_side, front_tex or actual_side]
+            add(base, d_faces, d_mat_id)
+            if f"{base}_front" not in locations_by_name:
+                add(f"{base}_front", d_faces, d_mat_id)
+
+    # Observer
+    if "observer" not in locations_by_name:
+        obs_top = get_tex("observer_top")
+        obs_side = get_tex("observer_side")
+        obs_back = get_tex("observer_back")
+        obs_front = get_tex("observer_front")
+        if obs_front or obs_side or obs_top:
+            primary = obs_front or obs_side or obs_top
+            actual_top = obs_top or primary
+            actual_side = obs_side or primary
+            actual_back = obs_back or actual_side
+            actual_front = obs_front or primary
+            obs_mat_id = int(primary.get("texture_id", 0)) if primary else 0
+            obs_faces = [actual_side, actual_side, actual_top, actual_side, actual_back, actual_front]
+            add("observer", obs_faces, obs_mat_id)
+            if "observer_front" not in locations_by_name:
+                add("observer_front", obs_faces, obs_mat_id)
+            if "observer_back" not in locations_by_name:
+                add("observer_back", obs_faces, obs_mat_id)
+
+    # Barrel
+    if "barrel" not in locations_by_name:
+        barrel_top = get_tex("barrel_top")
+        barrel_top_open = get_tex("barrel_top_open") or barrel_top
+        barrel_bottom = get_tex("barrel_bottom") or barrel_top
+        barrel_side = get_tex("barrel_side") or barrel_top
+        if barrel_top or barrel_side:
+            primary = barrel_top or barrel_side
+            b_mat_id = int(primary.get("texture_id", 0)) if primary else 0
+            barrel_faces = [barrel_side or primary, barrel_side or primary, barrel_top or primary, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
+            add("barrel", barrel_faces, b_mat_id)
+            if "barrel_top" not in locations_by_name:
+                add("barrel_top", barrel_faces, b_mat_id)
+            if "barrel_bottom" not in locations_by_name:
+                add("barrel_bottom", barrel_faces, b_mat_id)
+            if "barrel_side" not in locations_by_name:
+                add("barrel_side", barrel_faces, b_mat_id)
+            if barrel_top_open and "barrel_top_open" not in locations_by_name:
+                open_faces = [barrel_side or primary, barrel_side or primary, barrel_top_open, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
+                add("barrel_top_open", open_faces, b_mat_id)
+                add("barrel[open=true]", open_faces, b_mat_id)
+
+    # Grass block, Podzol, Mycelium
+    dirt_loc = get_tex("dirt")
+    snow_side = get_tex("grass_block_snow")
+    for base in ("grass_block", "podzol", "mycelium"):
+        top_loc = get_tex(f"{base}_top")
+        side_loc = get_tex(f"{base}_side")
+        if top_loc or side_loc:
+            actual_top = top_loc or side_loc
+            actual_bottom = dirt_loc or actual_top
+            actual_side = side_loc or actual_top
+            g_mat_id = int((side_loc or top_loc).get("texture_id", 0)) if (side_loc or top_loc) else 0
+            g_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, actual_side]
+            if base not in locations_by_name:
+                add(base, g_faces, g_mat_id)
+            if f"{base}_top" not in locations_by_name:
+                add(f"{base}_top", g_faces, g_mat_id)
+            if f"{base}_side" not in locations_by_name:
+                add(f"{base}_side", g_faces, g_mat_id)
+            if snow_side and f"{base}[snowy=true]" not in locations_by_name:
+                snow_faces = [snow_side, snow_side, actual_top, actual_bottom, snow_side, snow_side]
+                add(f"{base}[snowy=true]", snow_faces, g_mat_id)
+                if base == "grass_block" and "grass_block_snow" not in locations_by_name:
+                    add("grass_block_snow", snow_faces, g_mat_id)
+
+    # Redstone Lamp
+    lamp_off = get_tex("redstone_lamp")
+    lamp_on = get_tex("redstone_lamp_on")
+    if lamp_off or lamp_on:
+        if lamp_off and "redstone_lamp" not in locations_by_name:
+            off_id = int(lamp_off.get("texture_id", 0))
+            add("redstone_lamp", [lamp_off] * 6, off_id)
+            add("redstone_lamp[lit=false]", [lamp_off] * 6, off_id)
+        if lamp_on and "redstone_lamp_on" not in locations_by_name:
+            on_id = int(lamp_on.get("texture_id", 0))
+            add("redstone_lamp_on", [lamp_on] * 6, on_id)
+            add("redstone_lamp[lit=true]", [lamp_on] * 6, on_id)
+
+    # Other aliases from BLOCK_TO_TEXTURE_ALIASES
     for block_name, target_stems in BLOCK_TO_TEXTURE_ALIASES.items():
         if block_name in locations_by_name:
             continue
         found_loc = next((texture_by_stem.get(s) for s in target_stems if texture_by_stem.get(s)), None)
         if found_loc:
-            # Check for side/top/bottom/front/back differentiation among stems
-            top_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None)
-            bottom_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_bottom")), None)
+            top_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None) or texture_by_stem.get(f"{block_name}_top")
+            bottom_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_bottom")), None) or texture_by_stem.get(f"{block_name}_bottom")
             front_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey")) or s in ("carved_pumpkin", "jack_o_lantern")), None)
             back_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith("_back")), None)
             side_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
 
             if "command_block" in block_name:
-                # Vertical-base model (Top is front arrow, Bottom is back input square, 4 sides are side)
                 face_locations = [side_loc, side_loc, front_loc or found_loc, back_loc or side_loc, side_loc, side_loc]
             elif "piston" in block_name:
-                # Vertical-base model (Top is piston head, Bottom is back base, 4 sides are side)
                 face_locations = [side_loc, side_loc, top_loc or found_loc, bottom_loc or side_loc, side_loc, side_loc]
             else:
-                # Horizontal-base model (North is front, South is back, Top is top, Bottom is bottom, East/West are side)
                 actual_top = top_loc or found_loc
                 actual_bottom = bottom_loc or found_loc
                 actual_back = back_loc or side_loc
@@ -166,10 +394,7 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
 
             add(block_name, face_locations, int(found_loc.get("texture_id", 0)))
 
-    # Texture-only PBR packs expose components such as grass_block_top and
-    # oak_log_top but not a logical grass_block/oak_log material entry.  Build
-    # a face map from those components.  This intentionally replaces a
-    # uniform fallback but never an already differentiated six-face mapping.
+    # Suffix-based multi-face detection (e.g. oak_log_top, oak_log_side, etc.)
     base_names = set(texture_by_stem)
     for stem in tuple(texture_by_stem):
         for suffix in ("_side", "_top", "_bottom", "_end"):
@@ -187,12 +412,131 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             bottom = texture_by_stem.get("dirt") or bottom
         face_locations = [side, side, top, bottom, side, side]
         existing = locations_by_name.get(base_name)
-        has_differentiated_faces = existing and len({loc.get("texture_key") for loc in existing if loc}) > 1
+        has_differentiated_faces = False
+        if existing and len(existing) >= 6:
+            distinct = {
+                (loc.get("tile_column"), loc.get("tile_row"), loc.get("texture_id"), loc.get("texture_key"))
+                for loc in existing if isinstance(loc, dict)
+            }
+            has_differentiated_faces = len(distinct) > 1
         has_named_variants = any(texture_by_stem.get(f"{base_name}{suffix}") for suffix in ("_side", "_top", "_bottom", "_end"))
         if has_named_variants and not has_differentiated_faces:
             add(base_name, face_locations, material_ids.get(base_name, int(side.get("texture_id", 0))))
 
+    # 3. Direct texture entries represent an all-face block unless already populated
+    for texture_key, location in textures.items():
+        if not isinstance(location, dict):
+            continue
+        stem = _atlas_short_name(texture_key)
+        if stem not in locations_by_name:
+            add(stem, [location] * 6, int(location.get("texture_id", 0)))
+
     return locations_by_name, material_ids
+
+
+def resolve_block_state_face_locations(
+    name: str,
+    props: dict[str, str],
+    mapping: Optional[dict] = None,
+    locations_by_name: Optional[dict] = None,
+) -> list[dict]:
+    """Resolve dynamic state-aware 6-face locations for a block state.
+
+    Order returned: [+X (East), -X (West), +Y (Top), -Y (Bottom), +Z (South), -Z (North)]
+    """
+    if locations_by_name is None:
+        if mapping:
+            locations_by_name, _ = _build_block_face_location_lut(mapping)
+        else:
+            locations_by_name = {}
+
+    if not locations_by_name:
+        return [{}] * 6
+
+    # 1. Furnace, Blast Furnace, Smoker
+    if name in ("furnace", "blast_furnace", "smoker"):
+        is_lit = props.get("lit") == "true"
+        key = f"{name}_front_on" if is_lit else name
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 2. Beehive and Bee Nest
+    if name in ("beehive", "bee_nest"):
+        is_honey = props.get("honey_level") == "5"
+        key = f"{name}_front_honey" if is_honey else name
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 3. Respawn Anchor
+    if name == "respawn_anchor":
+        charges = props.get("charges", "0")
+        if charges not in ("0", 0, ""):
+            key = f"respawn_anchor_side{charges}"
+        else:
+            key = "respawn_anchor_top_off"
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 4. Grass Block, Podzol, Mycelium
+    if name in ("grass_block", "podzol", "mycelium"):
+        snowy = props.get("snowy") == "true"
+        if snowy:
+            if f"{name}[snowy=true]" in locations_by_name:
+                return locations_by_name[f"{name}[snowy=true]"]
+            if "grass_block_snow" in locations_by_name:
+                return locations_by_name["grass_block_snow"]
+        if name in locations_by_name:
+            return locations_by_name[name]
+
+    # 5. Redstone Lamp
+    if name == "redstone_lamp":
+        is_lit = props.get("lit") == "true"
+        key = "redstone_lamp_on" if is_lit else "redstone_lamp"
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 6. Barrel
+    if name == "barrel":
+        is_open = props.get("open") == "true"
+        if is_open and "barrel_top_open" in locations_by_name:
+            return locations_by_name["barrel_top_open"]
+        if "barrel" in locations_by_name:
+            return locations_by_name["barrel"]
+
+    # 7. Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
+    if name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
+        skin_entry = locations_by_name.get(name)
+        skin = skin_entry[0] if skin_entry else {}
+        inside_entry = locations_by_name.get("mushroom_block_inside")
+        inside = inside_entry[0] if inside_entry else skin
+        up = inside if props.get("up") == "false" else skin
+        down = inside if props.get("down") == "false" else skin
+        east = inside if props.get("east") == "false" else skin
+        west = inside if props.get("west") == "false" else skin
+        south = inside if props.get("south") == "false" else skin
+        north = inside if props.get("north") == "false" else skin
+        return [east, west, up, down, south, north]
+
+    # 8. Axis Blocks
+    is_axis_block = "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
+    if is_axis_block and name in locations_by_name:
+        axis = props.get("axis", "y")
+        base_faces = locations_by_name[name]
+        if len(base_faces) >= 6:
+            side_loc = base_faces[0]
+            top_loc = base_faces[2]
+            if axis == "x":
+                return [top_loc, top_loc, side_loc, side_loc, side_loc, side_loc]
+            elif axis == "z":
+                return [side_loc, side_loc, side_loc, side_loc, top_loc, top_loc]
+            else:
+                return [side_loc, side_loc, top_loc, top_loc, side_loc, side_loc]
+
+    # Fallback to direct name in locations_by_name
+    if name in locations_by_name:
+        return locations_by_name[name]
+
+    return [{}] * 6
 
 
 def find_active_atlas_material() -> Optional[bpy.types.Material]:
@@ -334,16 +678,22 @@ def build_block_face_tint_lut(mapping: Optional[dict]) -> dict[str, list[tuple[f
 
     locations_by_name, _ = _build_block_face_location_lut(mapping)
     for name, locations in locations_by_name.items():
-        tint_lut[name] = [
-            (
-                float(location.get("default_base_tint_weight", 0.0)),
-                float(location.get("default_overlay_tint_weight", 0.0)),
-                float(location.get("default_tint_weight", 0.0)),
-                1.0 if location.get("is_hardcoded", False) else 0.0,
-            )
-            if location else (0.0, 0.0, 0.0, 0.0)
-            for location in locations
-        ]
+        short_n = _atlas_short_name(name)
+        if short_n in HARDCODED_TINT_BLOCKS:
+            tint_lut[name] = [HARDCODED_TINT_BLOCKS[short_n]] * 6
+        elif short_n == "grass_block_snow":
+            tint_lut[name] = [(0.0, 0.0, 0.0, 0.0)] * 6
+        else:
+            tint_lut[name] = [
+                (
+                    float(location.get("default_base_tint_weight", 0.0)),
+                    float(location.get("default_overlay_tint_weight", 0.0)),
+                    float(location.get("default_tint_weight", 0.0)),
+                    1.0 if location.get("is_hardcoded", False) else 0.0,
+                )
+                if location else (0.0, 0.0, 0.0, 0.0)
+                for location in locations
+            ]
 
     return tint_lut
 

@@ -112,11 +112,27 @@ YAW_MAP = {
 }
 
 
+# Emissive blocks
+EMISSIVE_BLOCKS = frozenset({
+    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
+    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
+    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
+    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
+})
+
+HARDCODED_TINTS = {
+    "spruce_leaves": (0.38039, 0.60000, 0.38039, 1.0),
+    "birch_leaves": (0.50196, 0.65490, 0.33333, 1.0),
+    "lily_pad": (0.12549, 0.50196, 0.18824, 1.0),
+}
+
+
 class ParsedBlock:
     __slots__ = (
         'full_state', 'block_id', 'namespace', 'name', 'props',
         'block_type', 'template_name', 'rot_euler', 'offset',
-        'tint_color', 'tint_data', 'is_waterlogged', 'is_opaque'
+        'tint_color', 'tint_data', 'is_waterlogged', 'is_opaque',
+        'is_emissive', 'emissive_level'
     )
 
     def __init__(
@@ -134,6 +150,8 @@ class ParsedBlock:
         tint_data: tuple[float, float, float, float],
         is_waterlogged: bool,
         is_opaque: int = 1,
+        is_emissive: int = 0,
+        emissive_level: float = 0.0,
     ):
         self.full_state = full_state
         self.block_id = block_id
@@ -148,10 +166,89 @@ class ParsedBlock:
         self.tint_data = tint_data
         self.is_waterlogged = is_waterlogged
         self.is_opaque = is_opaque
+        self.is_emissive = is_emissive
+        self.emissive_level = emissive_level
 
 
 # In-memory parsing cache to avoid re-parsing identical state strings
 _STATE_PARSE_CACHE: dict[str, ParsedBlock] = {}
+
+
+def atlas_lookup_keys(parsed: ParsedBlock) -> tuple[str, ...]:
+    """Return the mapping keys which can represent this exact block state.
+
+    Resolves state-specific variants (doors, lit furnaces/lamps/torches, snowy grass,
+    honey levels, respawn charges, crop ages, etc.) before falling back to base block names.
+    """
+    keys: list[str] = []
+    name = parsed.name
+    props = parsed.props
+
+    if name.endswith("_door"):
+        half = props.get("half", "lower")
+        keys.append(f"{name}_{'top' if half == 'upper' else 'bottom'}")
+
+    is_lit = props.get("lit") == "true"
+    if is_lit:
+        if name in ("furnace", "blast_furnace", "smoker"):
+            keys.append(f"{name}[lit=true]")
+            keys.append(f"{name}_lit")
+            keys.append(f"{name}_front_on")
+        elif name == "redstone_lamp":
+            keys.append("redstone_lamp[lit=true]")
+            keys.append("redstone_lamp_on")
+        elif name in ("redstone_torch", "redstone_wall_torch"):
+            keys.append(f"{name}[lit=true]")
+            keys.append("redstone_torch")
+        elif name in ("campfire", "soul_campfire"):
+            keys.append(f"{name}[lit=true]")
+            keys.append(f"{name}_fire")
+    else:
+        if name in ("furnace", "blast_furnace", "smoker"):
+            keys.append(f"{name}[lit=false]")
+        elif name in ("redstone_torch", "redstone_wall_torch"):
+            keys.append(f"{name}[lit=false]")
+            keys.append("redstone_torch_off")
+        elif name == "redstone_lamp":
+            keys.append("redstone_lamp[lit=false]")
+            keys.append("redstone_lamp")
+        elif name in ("campfire", "soul_campfire"):
+            keys.append(f"{name}[lit=false]")
+            keys.append(f"{name}_log")
+
+    if name in ("beehive", "bee_nest") and props.get("honey_level") == "5":
+        keys.append(f"{name}[honey_level=5]")
+        keys.append(f"{name}_front_honey")
+
+    if name == "respawn_anchor" and "charges" in props:
+        charges = props.get("charges", "0")
+        keys.append(f"respawn_anchor[charges={charges}]")
+        if charges == "0":
+            keys.append("respawn_anchor_top_off")
+        else:
+            keys.append("respawn_anchor_top")
+            keys.append(f"respawn_anchor_side{charges}")
+
+    if "age" in props:
+        age_val = props["age"]
+        if name == "wheat":
+            keys.append(f"wheat_stage{age_val}")
+        elif name in ("carrots", "potatoes", "beetroots", "sweet_berry_bush"):
+            keys.append(f"{name}_stage{age_val}")
+        elif name == "nether_wart":
+            keys.append(f"nether_wart_stage{age_val}")
+        elif name == "cocoa":
+            keys.append(f"cocoa_stage{age_val}")
+
+    if props.get("snowy") == "true" and name in ("grass_block", "podzol", "mycelium"):
+        keys.append("grass_block_snow")
+
+    keys.extend((name, parsed.block_id, f"minecraft:{name}"))
+    return tuple(dict.fromkeys(keys))
+
+
+# Alias for backward compatibility
+_atlas_lookup_keys = atlas_lookup_keys
 
 
 def parse_and_classify(state_str: str) -> ParsedBlock:
@@ -188,8 +285,22 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         _STATE_PARSE_CACHE[state_str] = parsed
         return parsed
 
-    # 1. Determine Biome Tint
-    if block_id in BIOME_TINT_GRASS:
+    # 1. Determine Biome Tint & Hardcoded Tints
+    snowy = props.get("snowy") == "true"
+    if name in HARDCODED_TINTS:
+        tint_color = HARDCODED_TINTS[name]
+        tint_data = (1.0, 1.0, 1.0, 1.0)
+    elif name == "redstone_wire":
+        power = int(props.get("power", "0")) if "power" in props else 0
+        t = power / 15.0
+        r = 0.3 + 0.7 * t
+        g = 0.0 if power == 0 else 0.15 * t
+        tint_color = (r, g, 0.0, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 1.0)
+    elif snowy and name in ("grass_block", "podzol", "mycelium"):
+        tint_color = (1.0, 1.0, 1.0, 1.0)
+        tint_data = (0.0, 0.0, 0.0, 0.0)
+    elif block_id in BIOME_TINT_GRASS:
         tint_color = (0.35, 0.72, 0.22, 1.0)
         tint_data = (1.0, 1.0, 1.0, 0.0)
     elif block_id in BIOME_TINT_FOLIAGE:
@@ -205,7 +316,38 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     # 2. Check Waterlogged
     is_waterlogged = props.get("waterlogged", "false") == "true"
 
-    # 3. Determine Block Type, Rotation & Template Name
+    # 3. Determine Emissive Status and Level
+    is_emissive = 0
+    emissive_level = 0.0
+    if name in EMISSIVE_BLOCKS or name.endswith("_froglight") or block_id in EMISSIVE_BLOCKS:
+        is_emissive = 1
+        emissive_level = 1.0
+    elif "lit" in props:
+        if props.get("lit") == "true":
+            if name in ("furnace", "blast_furnace", "smoker", "redstone_lamp",
+                        "campfire", "soul_campfire", "redstone_ore", "deepslate_redstone_ore",
+                        "redstone_torch", "redstone_wall_torch"):
+                is_emissive = 1
+                emissive_level = 1.0
+        else:
+            if name in ("redstone_torch", "redstone_wall_torch"):
+                is_emissive = 0
+                emissive_level = 0.0
+    elif name in ("redstone_torch", "redstone_wall_torch"):
+        is_emissive = 1
+        emissive_level = 1.0
+    elif name == "respawn_anchor":
+        charges = int(props.get("charges", "0")) if "charges" in props else 0
+        if charges > 0:
+            is_emissive = 1
+            emissive_level = charges / 4.0
+    elif name == "redstone_wire":
+        power = int(props.get("power", "0")) if "power" in props else 0
+        if power > 0:
+            is_emissive = 1
+            emissive_level = power / 15.0
+
+    # 4. Determine Block Type, Rotation & Template Name
     rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
     off_x, off_y, off_z = 0.0, 0.0, 0.0
     facing = props.get("facing", "north")
@@ -250,7 +392,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         block_type = BlockTypeEnum.FLUID
         template_name = "fluid_plane"
 
-    elif block_id in CROSS_PLANTS or name.endswith("_sapling") or name.endswith("_flower"):
+    elif block_id in CROSS_PLANTS or name.endswith("_sapling") or name.endswith("_flower") or name in ("wheat", "carrots", "potatoes", "beetroots", "sweet_berry_bush", "nether_wart", "cocoa"):
         block_type = BlockTypeEnum.CROSS_PLANT
         template_name = "cross_plant"
 
@@ -292,7 +434,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
             off_z = -0.46875
 
     else:
-        # Standard Cube
+        # Standard Cube (including glazed terracotta, mushroom blocks, etc.)
         block_type = BlockTypeEnum.CUBE
         template_name = "cube"
 
@@ -316,6 +458,8 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         tint_data=tint_data,
         is_waterlogged=is_waterlogged,
         is_opaque=is_opaque,
+        is_emissive=is_emissive,
+        emissive_level=emissive_level,
     )
     _STATE_PARSE_CACHE[state_str] = parsed
     return parsed
@@ -336,6 +480,8 @@ def _make_air(state_str: str) -> ParsedBlock:
         tint_data=(0.0, 0.0, 0.0, 0.0),
         is_waterlogged=False,
         is_opaque=0,
+        is_emissive=0,
+        emissive_level=0.0,
     )
 
 # Alias for backwards compatibility

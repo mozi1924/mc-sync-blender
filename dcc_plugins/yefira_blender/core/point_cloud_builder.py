@@ -9,7 +9,7 @@ import bpy
 import logging
 from typing import NamedTuple, Optional
 from .storage import VoxelStorage, block_key
-from .block_classifier import parse_and_classify, BlockTypeEnum, ParsedBlock
+from .block_classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lookup_keys, _atlas_lookup_keys
 from .template_catalog import get_or_create_template_collection, get_template_index_map
 
 logger = logging.getLogger("Yefira")
@@ -117,6 +117,7 @@ def update_world_point_cloud(
     offsets = []
     material_ids = []
     is_opaque_list = []
+    emissive_list = []
     tint_colors = []
     tint_datas = []
     mc_positions = []
@@ -154,7 +155,7 @@ def update_world_point_cloud(
 
         vertices.append((vx, vy, vz))
         block_states.append(parsed.full_state)
-        # Do not use a point index as a block address.  This value survives
+        # Do not use a point index as a block address. This value survives
         # point-cloud rebuilds and is the canonical DCC-facing identity.
         block_keys.append(block_key(abs_x, abs_y, abs_z))
         block_types.append(parsed.block_type)
@@ -169,6 +170,7 @@ def update_world_point_cloud(
         tint_datas.append(parsed.tint_data)
         mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
         is_opaque_list.append(int(parsed.is_opaque))
+        emissive_list.append(int(parsed.is_emissive))
 
         atlas_keys = _atlas_lookup_keys(parsed)
 
@@ -183,22 +185,15 @@ def update_world_point_cloud(
         material_ids.append(mat_id)
 
         # 6-Face Tile Coordinates Lookup from Face LUT
-        coords = None
-        if block_face_lut:
-            coords = next((block_face_lut[key] for key in atlas_keys if key in block_face_lut), None)
+        default_coord = (mat_id % 256, mat_id // 256)
+        coords = _resolve_face_values(block_face_lut, parsed, default_coord, is_coord=True)
 
-        if coords and len(coords) >= 6:
-            # Face Order: +X (East), -X (West), +Y (Top), -Y (Bottom), +Z (South), -Z (North)
-            e_col, e_row = coords[0]
-            w_col, w_row = coords[1]
-            t_col, t_row = coords[2]
-            b_col, b_row = coords[3]
-            s_col, s_row = coords[4]
-            n_col, n_row = coords[5]
-        else:
-            # Fallback based on mat_id if no face_lut
-            e_col = w_col = t_col = b_col = s_col = n_col = (mat_id % 256)
-            e_row = w_row = t_row = b_row = s_row = n_row = (mat_id // 256)
+        e_col, e_row = coords[0]
+        w_col, w_row = coords[1]
+        t_col, t_row = coords[2]
+        b_col, b_row = coords[3]
+        s_col, s_row = coords[4]
+        n_col, n_row = coords[5]
 
         tile_east.append((float(e_col), float(e_row), 0.0))
         tile_west.append((float(w_col), float(w_row), 0.0))
@@ -207,17 +202,17 @@ def update_world_point_cloud(
         tile_south.append((float(s_col), float(s_row), 0.0))
         tile_north.append((float(n_col), float(n_row), 0.0))
 
-        chunk_ids = _lookup_face_values(block_face_chunk_lut, parsed, 0)
-        texture_ids = _lookup_face_values(block_face_texture_lut, parsed, mat_id)
+        chunk_ids = _resolve_face_values(block_face_chunk_lut, parsed, 0)
+        texture_ids = _resolve_face_values(block_face_texture_lut, parsed, mat_id)
         for face_index in range(6):
             face_chunks[face_index].append(chunk_ids[face_index])
             face_textures[face_index].append(texture_ids[face_index])
-        tint_values = _lookup_face_values(block_face_tint_lut, parsed, (0.0, 0.0, 0.0, 0.0))
+        tint_values = _resolve_face_values(block_face_tint_lut, parsed, (0.0, 0.0, 0.0, 0.0))
         for face_index in range(6):
             face_tint_data[face_index].append(tint_values[face_index])
 
-        anim_timing_values = _lookup_face_values(block_face_anim_timing_lut, parsed, (1.0, 1.0, 0.0, 0.0))
-        anim_frame_size_values = _lookup_face_values(block_face_anim_frame_size_lut, parsed, (float(tile_size), float(tile_size), 0.0, 0.0))
+        anim_timing_values = _resolve_face_values(block_face_anim_timing_lut, parsed, (1.0, 1.0, 0.0, 0.0))
+        anim_frame_size_values = _resolve_face_values(block_face_anim_frame_size_lut, parsed, (float(tile_size), float(tile_size), 0.0, 0.0))
         for face_index in range(6):
             face_anim_timing[face_index].append(anim_timing_values[face_index])
             face_anim_frame_size[face_index].append(anim_frame_size_values[face_index])
@@ -243,6 +238,7 @@ def update_world_point_cloud(
         _write_int_attribute(mesh, "mtk_material_id", material_ids)
         _write_int_attribute(mesh, "is_opaque", is_opaque_list)
         _write_int_attribute(mesh, "mtk_is_opaque", is_opaque_list)
+        _write_int_attribute(mesh, "mtk_emissive", emissive_list)
         # Atlas metadata is emitted as geometry attributes rather than
         # Geometry Nodes modifier inputs.  This makes a material replacement
         # deterministic and removes user-adjustable sync state.
@@ -289,29 +285,163 @@ def update_world_point_cloud(
     )
 
 
-def _lookup_face_values(lut, parsed: ParsedBlock, default) -> list:
-    values = None
-    if lut:
-        values = next((lut[key] for key in _atlas_lookup_keys(parsed) if key in lut), None)
-    if not values or len(values) < 6:
+def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = False) -> list:
+    """Resolve 6-face values (+X, -X, +Y, -Y, +Z, -Z) for a parsed block from a lookup table."""
+    if not lut:
         return [default] * 6
-    return [type(default)(value) if isinstance(default, int) else tuple(value) for value in values[:6]]
+
+    # 1. Direct lookup in LUT via atlas_lookup_keys
+    atlas_keys = _atlas_lookup_keys(parsed)
+    raw = next((lut[key] for key in atlas_keys if key in lut), None)
+    if raw is not None:
+        if isinstance(raw, (list, tuple)) and len(raw) >= 6:
+            if not is_coord or isinstance(raw[0], (list, tuple)):
+                return [type(default)(v) if isinstance(default, int) else tuple(v) for v in raw[:6]]
+
+    # 2. Dynamic state-aware multi-face fallback from single-entry items in lut
+    name = parsed.name
+    props = parsed.props
+    is_lit = props.get("lit") == "true"
+
+    def get_val(k: str):
+        val = lut.get(k)
+        if val is None:
+            return None
+        if isinstance(val, (list, tuple)) and len(val) == 6:
+            if not is_coord or isinstance(val[0], (list, tuple)):
+                return val[0]
+        return val
+
+    # Furnace, Blast Furnace, Smoker
+    if name in ("furnace", "blast_furnace", "smoker"):
+        top = get_val(f"{name}_top") or get_val(f"{name}_bottom") or get_val("furnace_top")
+        bottom = get_val(f"{name}_bottom") or top
+        side = get_val(f"{name}_side") or get_val("furnace_side")
+        front = (get_val(f"{name}_front_on") if is_lit else None) or get_val(f"{name}_front") or side
+        top = top or side or front or default
+        bottom = bottom or top
+        side = side or top
+        front = front or side
+        return [side, side, top, bottom, side, front]
+
+    # Beehive, Bee Nest
+    if name in ("beehive", "bee_nest"):
+        is_honey = props.get("honey_level") == "5"
+        top = get_val(f"{name}_top")
+        bottom = get_val(f"{name}_bottom") or top
+        side = get_val(f"{name}_side")
+        front = (get_val(f"{name}_front_honey") if is_honey else None) or get_val(f"{name}_front") or side
+        top = top or side or front or default
+        bottom = bottom or top
+        side = side or top
+        front = front or side
+        return [side, side, top, bottom, side, front]
+
+    # Respawn Anchor
+    if name == "respawn_anchor":
+        charges = props.get("charges", "0")
+        has_charges = str(charges) not in ("0", "")
+        top = (get_val("respawn_anchor_top") if has_charges else None) or get_val("respawn_anchor_top_off")
+        bottom = get_val("respawn_anchor_bottom") or top
+        side = get_val(f"respawn_anchor_side{charges}") or get_val("respawn_anchor_side0") or top
+        top = top or default
+        bottom = bottom or top
+        side = side or top
+        return [side, side, top, bottom, side, side]
+
+    # Carved Pumpkin, Jack o'Lantern
+    if name in ("carved_pumpkin", "jack_o_lantern"):
+        top = get_val("pumpkin_top")
+        side = get_val("pumpkin_side")
+        front = get_val(name) or side
+        top = top or side or front or default
+        side = side or top
+        front = front or side
+        return [side, side, top, top, side, front]
+
+    # Dispenser, Dropper
+    if name in ("dispenser", "dropper"):
+        top = get_val(f"{name}_top") or get_val("furnace_top")
+        side = get_val(f"{name}_side") or get_val("furnace_side")
+        front = get_val(f"{name}_front") or side
+        top = top or side or front or default
+        side = side or top
+        front = front or side
+        return [side, side, top, top, side, front]
+
+    # Observer
+    if name == "observer":
+        top = get_val("observer_top")
+        side = get_val("observer_side")
+        back = get_val("observer_back") or side
+        front = get_val("observer_front") or side
+        top = top or side or front or default
+        side = side or top
+        back = back or side
+        front = front or side
+        return [side, side, top, side, back, front]
+
+    # Barrel
+    if name == "barrel":
+        is_open = props.get("open") == "true"
+        top = (get_val("barrel_top_open") if is_open else None) or get_val("barrel_top")
+        bottom = get_val("barrel_bottom") or top
+        side = get_val("barrel_side") or top
+        top = top or default
+        bottom = bottom or top
+        side = side or top
+        return [side, side, top, bottom, side, side]
+
+    # Grass Block, Podzol, Mycelium
+    if name in ("grass_block", "podzol", "mycelium"):
+        snowy = props.get("snowy") == "true"
+        top = get_val(f"{name}_top")
+        bottom = get_val("dirt") or top
+        side = (get_val("grass_block_snow") if snowy else None) or get_val(f"{name}_side") or top
+        top = top or default
+        bottom = bottom or top
+        side = side or top
+        return [side, side, top, bottom, side, side]
+
+    # Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
+    if name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
+        skin = get_val(name) or default
+        inside = get_val("mushroom_block_inside") or skin
+        top = inside if props.get("up") == "false" else skin
+        bottom = inside if props.get("down") == "false" else skin
+        east = inside if props.get("east") == "false" else skin
+        west = inside if props.get("west") == "false" else skin
+        south = inside if props.get("south") == "false" else skin
+        north = inside if props.get("north") == "false" else skin
+        return [east, west, top, bottom, south, north]
+
+    # Axis Blocks
+    is_axis_block = "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
+    if is_axis_block:
+        axis = props.get("axis", "y")
+        top_tex = get_val(f"{name}_top") or get_val(f"{name}_end") or get_val(name)
+        side_tex = get_val(f"{name}_side") or get_val(name) or top_tex
+        top_tex = top_tex or side_tex or default
+        side_tex = side_tex or top_tex
+        if axis == "x":
+            return [top_tex, top_tex, side_tex, side_tex, side_tex, side_tex]
+        elif axis == "z":
+            return [side_tex, side_tex, side_tex, side_tex, top_tex, top_tex]
+        else:
+            return [side_tex, side_tex, top_tex, top_tex, side_tex, side_tex]
+
+    # Redstone Lamp
+    if name == "redstone_lamp":
+        lamp = (get_val("redstone_lamp_on") if is_lit else None) or get_val("redstone_lamp") or default
+        return [lamp] * 6
+
+    # Fallback to single entry
+    val = get_val(name) or default
+    return [type(default)(val) if isinstance(default, int) else tuple(val)] * 6
 
 
-def _atlas_lookup_keys(parsed: ParsedBlock) -> tuple[str, ...]:
-    """Return the mapping keys which can represent this exact block state.
-
-    Vanilla door blockstates select ``*_door_bottom`` or ``*_door_top``
-    models; resource packs usually expose those textures rather than a single
-    ``*_door`` texture.  The point cloud retains the full state, so preserve
-    that distinction before falling back to the ordinary block-name aliases.
-    """
-    keys: list[str] = []
-    if parsed.name.endswith("_door"):
-        half = parsed.props.get("half", "lower")
-        keys.append(f"{parsed.name}_{'top' if half == 'upper' else 'bottom'}")
-    keys.extend((parsed.name, parsed.block_id, f"minecraft:{parsed.name}"))
-    return tuple(dict.fromkeys(keys))
+def _lookup_face_values(lut, parsed: ParsedBlock, default) -> list:
+    return _resolve_face_values(lut, parsed, default)
 
 
 def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):

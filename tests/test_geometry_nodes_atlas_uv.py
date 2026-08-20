@@ -51,7 +51,7 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         bpy.context.scene.collection.objects.link(obj)
 
         # Add 2 points: Stone (block_type=0, mat_id=0) and Grass Block (block_type=0, mat_id=42)
-        mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [], [])
+        mesh.from_pydata([(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)], [], [])
         mesh.update()
 
         # Add attributes
