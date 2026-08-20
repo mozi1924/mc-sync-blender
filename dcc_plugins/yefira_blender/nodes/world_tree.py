@@ -46,8 +46,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 19: central attribute contract and Yefira-private face fields.
-WORLD_TREE_SCHEMA_VERSION = 19
+# Schema version 21: correct directional face left/right UV orientation.
+WORLD_TREE_SCHEMA_VERSION = 21
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -311,7 +311,14 @@ def _build_tree_nodes_and_links(
     read_local_uv.inputs["Name"].default_value = LOCAL_UV
     read_local_uv.location = (560, 100)
 
-    # Calculate upright world-aligned UV for Top (+Z) and Bottom (-Z) faces
+    # Keep the local top/bottom textures upright after an instance rotation.
+    #
+    # Vertical-base directional blocks (notably command blocks) use their
+    # local Top/Bottom faces as the directional front/back.  The generic local
+    # UV would rotate their indicators with the instance.  Minecraft instead
+    # keeps those indicators upright: on a vertical face, V follows world Z
+    # and U follows the screen-right tangent of that face.  On a horizontal
+    # face we retain the usual world X/Y mapping.
     read_pos = nodes.new("GeometryNodeInputPosition")
     read_pos.location = (380, -250)
 
@@ -336,18 +343,20 @@ def _build_tree_nodes_and_links(
     add_u.location = (880, -200)
     links.new(sep_rel.outputs["X"], add_u.inputs[0])
 
-    add_v = nodes.new("ShaderNodeMath")
-    add_v.operation = "ADD"
-    add_v.inputs[1].default_value = 0.5
-    add_v.location = (880, -300)
-    links.new(sep_rel.outputs["Y"], add_v.inputs[0])
+    add_v_horizontal = nodes.new("ShaderNodeMath")
+    add_v_horizontal.operation = "ADD"
+    add_v_horizontal.inputs[1].default_value = 0.5
+    add_v_horizontal.location = (880, -300)
+    links.new(sep_rel.outputs["Y"], add_v_horizontal.inputs[0])
 
-    comb_upright_uv = nodes.new("ShaderNodeCombineXYZ")
-    comb_upright_uv.location = (1040, -250)
-    links.new(add_u.outputs["Value"], comb_upright_uv.inputs["X"])
-    links.new(add_v.outputs["Value"], comb_upright_uv.inputs["Y"])
+    comb_horizontal_uv = nodes.new("ShaderNodeCombineXYZ")
+    comb_horizontal_uv.location = (1040, -250)
+    links.new(add_u.outputs["Value"], comb_horizontal_uv.inputs["X"])
+    links.new(add_v_horizontal.outputs["Value"], comb_horizontal_uv.inputs["Y"])
 
-    # Condition: LocalFaceID in (0: Top, 1: Bottom) AND Realized Normal is vertical (|Normal.Z| > 0.5)
+    # Restrict this UV lock to local Top/Bottom (the directional front/back
+    # faces of vertical-base blocks).  ``cmp_nz`` below selects whether that
+    # face is horizontal or vertical in world space.
     cmp_fid = nodes.new("FunctionNodeCompare")
     cmp_fid.data_type = "INT"
     cmp_fid.operation = "LESS_EQUAL"
@@ -362,6 +371,42 @@ def _build_tree_nodes_and_links(
     sep_norm.location = (560, -550)
     links.new(read_realized_norm.outputs["Normal"], sep_norm.inputs["Vector"])
 
+    # ``world_up × normal`` is the screen-right tangent for a vertical face.
+    # Dotting it with the position relative to the block center gives the
+    # horizontal texture coordinate without a per-facing lookup table.
+    world_up = nodes.new("ShaderNodeCombineXYZ")
+    world_up.inputs["Z"].default_value = 1.0
+    world_up.location = (560, -650)
+
+    face_right = nodes.new("ShaderNodeVectorMath")
+    face_right.operation = "CROSS_PRODUCT"
+    face_right.location = (720, -650)
+    links.new(world_up.outputs["Vector"], face_right.inputs[0])
+    links.new(read_realized_norm.outputs["Normal"], face_right.inputs[1])
+
+    vertical_u_dot = nodes.new("ShaderNodeVectorMath")
+    vertical_u_dot.operation = "DOT_PRODUCT"
+    vertical_u_dot.location = (880, -650)
+    links.new(sub_pos.outputs["Vector"], vertical_u_dot.inputs[0])
+    links.new(face_right.outputs["Vector"], vertical_u_dot.inputs[1])
+
+    add_u_vertical = nodes.new("ShaderNodeMath")
+    add_u_vertical.operation = "ADD"
+    add_u_vertical.inputs[1].default_value = 0.5
+    add_u_vertical.location = (1040, -650)
+    links.new(vertical_u_dot.outputs["Value"], add_u_vertical.inputs[0])
+
+    add_v_vertical = nodes.new("ShaderNodeMath")
+    add_v_vertical.operation = "ADD"
+    add_v_vertical.inputs[1].default_value = 0.5
+    add_v_vertical.location = (1040, -750)
+    links.new(sep_rel.outputs["Z"], add_v_vertical.inputs[0])
+
+    comb_vertical_uv = nodes.new("ShaderNodeCombineXYZ")
+    comb_vertical_uv.location = (1200, -650)
+    links.new(add_u_vertical.outputs["Value"], comb_vertical_uv.inputs["X"])
+    links.new(add_v_vertical.outputs["Value"], comb_vertical_uv.inputs["Y"])
+
     abs_nz = nodes.new("ShaderNodeMath")
     abs_nz.operation = "ABSOLUTE"
     abs_nz.location = (720, -550)
@@ -374,18 +419,19 @@ def _build_tree_nodes_and_links(
     cmp_nz.location = (880, -550)
     links.new(abs_nz.outputs["Value"], cmp_nz.inputs["A"])
 
-    bool_upright = nodes.new("FunctionNodeBooleanMath")
-    bool_upright.operation = "AND"
-    bool_upright.location = (1040, -500)
-    links.new(cmp_fid.outputs["Result"], bool_upright.inputs[0])
-    links.new(cmp_nz.outputs["Result"], bool_upright.inputs[1])
+    select_face_plane_uv = nodes.new("GeometryNodeSwitch")
+    select_face_plane_uv.input_type = "VECTOR"
+    select_face_plane_uv.location = (1200, -400)
+    links.new(cmp_nz.outputs["Result"], select_face_plane_uv.inputs["Switch"])
+    links.new(comb_vertical_uv.outputs["Vector"], select_face_plane_uv.inputs["False"])
+    links.new(comb_horizontal_uv.outputs["Vector"], select_face_plane_uv.inputs["True"])
 
     switch_uv_in = nodes.new("GeometryNodeSwitch")
     switch_uv_in.input_type = "VECTOR"
     switch_uv_in.location = (1200, -200)
-    links.new(bool_upright.outputs["Boolean"], switch_uv_in.inputs["Switch"])
+    links.new(cmp_fid.outputs["Result"], switch_uv_in.inputs["Switch"])
     links.new(read_local_uv.outputs["Attribute"], switch_uv_in.inputs["False"])
-    links.new(comb_upright_uv.outputs["Vector"], switch_uv_in.inputs["True"])
+    links.new(select_face_plane_uv.outputs["Output"], switch_uv_in.inputs["True"])
 
     # Link selected local UV into UV calculator
     links.new(switch_uv_in.outputs["Output"], call_uv_calc.inputs["Local UV"])

@@ -155,15 +155,15 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
         import math
         from yefira_blender.core.block_classifier import parse_and_classify
 
-        # 1. Command block (Horizontal-base: North = front)
+        # 1. Command block (Vertical-base: Front points Up before rotation)
         cb_north = parse_and_classify("minecraft:command_block[facing=north]")
-        self.assertEqual(cb_north.rot_euler, (0.0, 0.0, 0.0))
+        self.assertAlmostEqual(cb_north.rot_euler[0], -math.pi / 2.0)
         cb_south = parse_and_classify("minecraft:command_block[facing=south]")
-        self.assertAlmostEqual(cb_south.rot_euler[2], math.pi)
+        self.assertAlmostEqual(cb_south.rot_euler[0], math.pi / 2.0)
         cb_up = parse_and_classify("minecraft:command_block[facing=up]")
-        self.assertAlmostEqual(cb_up.rot_euler[0], math.pi / 2.0)
+        self.assertEqual(cb_up.rot_euler, (0.0, 0.0, 0.0))
         cb_down = parse_and_classify("minecraft:command_block[facing=down]")
-        self.assertAlmostEqual(cb_down.rot_euler[0], -math.pi / 2.0)
+        self.assertAlmostEqual(cb_down.rot_euler[0], math.pi)
 
         # 2. Barrel (Vertical-base: Up = top)
         barrel_up = parse_and_classify("minecraft:barrel[facing=up]")
@@ -185,7 +185,7 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
         log_x = parse_and_classify("minecraft:oak_log[axis=x]")
         self.assertAlmostEqual(log_x.rot_euler[1], math.pi / 2.0)
         log_z = parse_and_classify("minecraft:oak_log[axis=z]")
-        self.assertAlmostEqual(log_z.rot_euler[0], math.pi / 2.0)
+        self.assertAlmostEqual(log_z.rot_euler[0], -math.pi / 2.0)
 
     def test_rotated_cube_face_addressing_uses_local_faces(self):
         """Each world-space face must retain the texture of its pre-rotation face.
