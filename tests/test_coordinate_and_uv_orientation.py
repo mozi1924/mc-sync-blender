@@ -24,7 +24,12 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
     def setUp(self):
         if not HAS_BPY:
             self.skipTest("bpy not available")
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        for obj in list(bpy.data.objects):
+            if obj.name.startswith("Test") or obj.name == "Yefira_World":
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            if mesh.name.startswith("Test") or mesh.name == "Yefira_World_Mesh":
+                bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_point_cloud_coordinate_right_handedness(self):
         from yefira_blender.core.point_cloud_builder import update_world_point_cloud
@@ -99,6 +104,167 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
                 self.assertLessEqual(uv.y, 1.0 + 1e-4)
 
         eval_obj.to_mesh_clear()
+
+    def test_cube_face_uv_no_mirroring(self):
+        from yefira_blender.nodes.groups.cube_surface import get_or_create_cube_surface_group
+
+        tree = get_or_create_cube_surface_group()
+        mesh = bpy.data.meshes.new("TestCubeMesh2")
+        obj = bpy.data.objects.new("TestCubeObj2", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+
+        mod = obj.modifiers.new("GeoNodes", "NODES")
+        mod.node_group = tree
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_obj = obj.evaluated_get(depsgraph)
+        eval_mesh = eval_obj.to_mesh()
+
+        local_uv = eval_mesh.attributes["LocalUV"]
+        cube_norm = eval_mesh.attributes["CubeFaceNorm"]
+
+        for poly in eval_mesh.polygons:
+            fn = cube_norm.data[poly.index].vector
+            for l_idx in poly.loop_indices:
+                vi = eval_mesh.loops[l_idx].vertex_index
+                v_co = eval_mesh.vertices[vi].co
+                uv = local_uv.data[l_idx].vector
+
+                # Test West face (-X)
+                if fn.x < -0.5:
+                    expected_u = 0.5 - v_co.y  # North (+Y) is Left (U=0), South (-Y) is Right (U=1)
+                    expected_v = v_co.z + 0.5
+                    self.assertAlmostEqual(uv.x, expected_u, places=4)
+                    self.assertAlmostEqual(uv.y, expected_v, places=4)
+                # Test East face (+X)
+                elif fn.x > 0.5:
+                    expected_u = v_co.y + 0.5  # South (-Y) is Left (U=0), North (+Y) is Right (U=1)
+                    expected_v = v_co.z + 0.5
+                    self.assertAlmostEqual(uv.x, expected_u, places=4)
+                    self.assertAlmostEqual(uv.y, expected_v, places=4)
+                # Test Bottom face (-Z)
+                elif fn.z < -0.5:
+                    expected_u = v_co.x + 0.5
+                    expected_v = v_co.y + 0.5  # North (+Y) is Top (V=1)
+                    self.assertAlmostEqual(uv.x, expected_u, places=4)
+                    self.assertAlmostEqual(uv.y, expected_v, places=4)
+
+        eval_obj.to_mesh_clear()
+
+    def test_directional_block_rotations(self):
+        import math
+        from yefira_blender.core.block_classifier import parse_and_classify
+
+        # 1. Command block (Horizontal-base: North = front)
+        cb_north = parse_and_classify("minecraft:command_block[facing=north]")
+        self.assertEqual(cb_north.rot_euler, (0.0, 0.0, 0.0))
+        cb_south = parse_and_classify("minecraft:command_block[facing=south]")
+        self.assertAlmostEqual(cb_south.rot_euler[2], math.pi)
+        cb_up = parse_and_classify("minecraft:command_block[facing=up]")
+        self.assertAlmostEqual(cb_up.rot_euler[0], math.pi / 2.0)
+        cb_down = parse_and_classify("minecraft:command_block[facing=down]")
+        self.assertAlmostEqual(cb_down.rot_euler[0], -math.pi / 2.0)
+
+        # 2. Barrel (Vertical-base: Up = top)
+        barrel_up = parse_and_classify("minecraft:barrel[facing=up]")
+        self.assertEqual(barrel_up.rot_euler, (0.0, 0.0, 0.0))
+        barrel_down = parse_and_classify("minecraft:barrel[facing=down]")
+        self.assertAlmostEqual(barrel_down.rot_euler[0], math.pi)
+        barrel_north = parse_and_classify("minecraft:barrel[facing=north]")
+        self.assertAlmostEqual(barrel_north.rot_euler[0], -math.pi / 2.0)
+
+        # 3. Piston (Vertical-base: Up = top)
+        piston_up = parse_and_classify("minecraft:piston[facing=up]")
+        self.assertEqual(piston_up.rot_euler, (0.0, 0.0, 0.0))
+        piston_north = parse_and_classify("minecraft:piston[facing=north]")
+        self.assertAlmostEqual(piston_north.rot_euler[0], -math.pi / 2.0)
+
+        # 4. Axis logs
+        log_y = parse_and_classify("minecraft:oak_log[axis=y]")
+        self.assertEqual(log_y.rot_euler, (0.0, 0.0, 0.0))
+        log_x = parse_and_classify("minecraft:oak_log[axis=x]")
+        self.assertAlmostEqual(log_x.rot_euler[1], math.pi / 2.0)
+        log_z = parse_and_classify("minecraft:oak_log[axis=z]")
+        self.assertAlmostEqual(log_z.rot_euler[0], math.pi / 2.0)
+
+    def test_rotated_cube_face_addressing_uses_local_faces(self):
+        """Each world-space face must retain the texture of its pre-rotation face.
+
+        This guards the critical distinction between the cube's local face
+        identity (used to choose a Minecraft block texture) and its realised
+        world-space polygon normal (used for rendering/culling).
+        """
+        import mathutils
+        from yefira_blender.core.point_cloud_builder import update_world_point_cloud
+        from yefira_blender.core.storage import VoxelStorage
+        from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
+
+        facings = ("north", "east", "south", "west", "up", "down")
+        states = [f"minecraft:command_block[facing={facing}]" for facing in facings]
+        storage = VoxelStorage()
+        # Keep one empty cell between blocks so the culling group does not
+        # remove a face that is needed for this mapping assertion.
+        storage.set_full_snapshot(
+            0, 0, 0, len(facings) * 2, 1, 1,
+            ["minecraft:air"], [0] * (len(facings) * 2),
+        )
+
+        # set_full_snapshot's payload is x-major; write the sparse fixture
+        # explicitly to keep this test independent from its packing details.
+        storage.block_map = {
+            (index * 2, 0, 0): state for index, state in enumerate(states)
+        }
+        face_texture_ids = (101, 102, 103, 104, 105, 106)  # +X, -X, +Y, -Y, +Z, -Z
+        result = update_world_point_cloud(
+            bpy.context, storage, filter_air=True,
+            block_face_texture_lut={"command_block": list(face_texture_ids)},
+        )
+        setup_world_geometry_nodes(result.world_obj)
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_mesh = result.world_obj.evaluated_get(depsgraph).to_mesh()
+        texture_ids = eval_mesh.attributes["mtk_atlas_texture_id"]
+
+        # The face table uses Minecraft axes (+Y = top, +Z = south), while
+        # the generated mesh uses Blender axes (+Z = top, -Y = south).
+        normal_to_texture = {
+            (1, 0, 0): 101, (-1, 0, 0): 102,
+            (0, 0, 1): 103, (0, 0, -1): 104,
+            (0, -1, 0): 105, (0, 1, 0): 106,
+        }
+        for poly in eval_mesh.polygons:
+            # ``poly.normal`` is realised in world space.  Recover the
+            # template-local face by undoing this point's instance rotation;
+            # texture addressing must be based on that local identity.
+            poly_center = sum(
+                (eval_mesh.vertices[index].co for index in poly.vertices),
+                mathutils.Vector(),
+            ) / len(poly.vertices)
+            point_index = min(
+                range(len(result.world_obj.data.vertices)),
+                key=lambda index: (result.world_obj.data.vertices[index].co - poly_center).length_squared,
+            )
+            rotation = result.world_obj.data.attributes["instance_rotation"].data[point_index].vector
+            local = mathutils.Euler(rotation).to_matrix().inverted() @ poly.normal
+            local_key = tuple(int(round(value)) for value in local)
+            self.assertEqual(
+                texture_ids.data[poly.index].value,
+                normal_to_texture[local_key],
+                f"face {poly.index} used a world-space normal instead of local {local_key}",
+            )
+
+        result.world_obj.evaluated_get(depsgraph).to_mesh_clear()
+
+    def test_templates_have_local_uv_and_normals(self):
+        from yefira_blender.core.template_catalog import get_or_create_template_collection
+
+        col = get_or_create_template_collection(bpy.context)
+        self.assertGreater(len(col.objects), 0)
+
+        for obj in col.objects:
+            if obj.type == 'MESH' and obj.data:
+                self.assertIn("CubeFaceNorm", obj.data.attributes, f"Template {obj.name} missing CubeFaceNorm")
+                self.assertIn("LocalUV", obj.data.attributes, f"Template {obj.name} missing LocalUV")
 
 
 if __name__ == "__main__":

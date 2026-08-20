@@ -184,23 +184,18 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             mat_id = int(primary_loc.get("texture_id", 0)) if primary_loc else 0
 
             # Unlit layout: [side, side, top, bottom, side, front]
+            mat_id = material_ids.get(base, int(primary_loc.get("texture_id", 0))) if primary_loc else material_ids.get(base, 0)
             unlit_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_unlit or actual_side]
-            if base not in locations_by_name:
-                add(base, unlit_faces, mat_id)
-            if f"{base}_front" not in locations_by_name:
-                add(f"{base}_front", unlit_faces, mat_id)
-            if f"{base}[lit=false]" not in locations_by_name:
-                add(f"{base}[lit=false]", unlit_faces, mat_id)
+            add(base, unlit_faces, mat_id)
+            add(f"{base}_front", unlit_faces, mat_id)
+            add(f"{base}[lit=false]", unlit_faces, mat_id)
 
             # Lit layout: [side, side, top, bottom, side, front_on]
-            lit_mat_id = int(front_lit.get("texture_id", mat_id)) if front_lit else mat_id
+            lit_mat_id = material_ids.get(f"{base}_front_on", material_ids.get(f"{base}_lit", int(front_lit.get("texture_id", mat_id)))) if front_lit else mat_id
             lit_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_lit or actual_side]
-            if f"{base}_front_on" not in locations_by_name:
-                add(f"{base}_front_on", lit_faces, lit_mat_id)
-            if f"{base}_lit" not in locations_by_name:
-                add(f"{base}_lit", lit_faces, lit_mat_id)
-            if f"{base}[lit=true]" not in locations_by_name:
-                add(f"{base}[lit=true]", lit_faces, lit_mat_id)
+            add(f"{base}_front_on", lit_faces, lit_mat_id)
+            add(f"{base}_lit", lit_faces, lit_mat_id)
+            add(f"{base}[lit=true]", lit_faces, lit_mat_id)
 
     # Beehive and Bee Nest
     for base in ("beehive", "bee_nest"):
@@ -215,20 +210,16 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             actual_top = top_loc or primary_loc
             actual_bottom = bottom_loc or primary_loc
             actual_side = side_loc or primary_loc
-            mat_id = int(primary_loc.get("texture_id", 0)) if primary_loc else 0
+            mat_id = material_ids.get(base, int(primary_loc.get("texture_id", 0))) if primary_loc else material_ids.get(base, 0)
 
             normal_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_unlit or actual_side]
-            if base not in locations_by_name:
-                add(base, normal_faces, mat_id)
-            if f"{base}_front" not in locations_by_name:
-                add(f"{base}_front", normal_faces, mat_id)
+            add(base, normal_faces, mat_id)
+            add(f"{base}_front", normal_faces, mat_id)
 
-            honey_mat_id = int(front_honey.get("texture_id", mat_id)) if front_honey else mat_id
+            honey_mat_id = material_ids.get(f"{base}_front_honey", int(front_honey.get("texture_id", mat_id))) if front_honey else mat_id
             honey_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_honey or actual_side]
-            if f"{base}_front_honey" not in locations_by_name:
-                add(f"{base}_front_honey", honey_faces, honey_mat_id)
-            if f"{base}[honey_level=5]" not in locations_by_name:
-                add(f"{base}[honey_level=5]", honey_faces, honey_mat_id)
+            add(f"{base}_front_honey", honey_faces, honey_mat_id)
+            add(f"{base}[honey_level=5]", honey_faces, honey_mat_id)
 
     # Respawn Anchor
     top_off = get_tex("respawn_anchor_top_off")
@@ -236,27 +227,21 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
     bottom_anchor = get_tex("respawn_anchor_bottom") or top_off
     side0 = get_tex("respawn_anchor_side0") or top_off
     if top_off or top_on or side0:
-        base_mat_id = int((top_off or side0).get("texture_id", 0)) if (top_off or side0) else 0
+        base_mat_id = material_ids.get("respawn_anchor", int((top_off or side0).get("texture_id", 0))) if (top_off or side0) else 0
         off_faces = [side0 or top_off, side0 or top_off, top_off or top_on, bottom_anchor or top_off, side0 or top_off, side0 or top_off]
-        if "respawn_anchor" not in locations_by_name:
-            add("respawn_anchor", off_faces, base_mat_id)
-        if "respawn_anchor_top_off" not in locations_by_name:
-            add("respawn_anchor_top_off", off_faces, base_mat_id)
-        if "respawn_anchor_side0" not in locations_by_name:
-            add("respawn_anchor_side0", off_faces, base_mat_id)
-        if "respawn_anchor[charges=0]" not in locations_by_name:
-            add("respawn_anchor[charges=0]", off_faces, base_mat_id)
+        add("respawn_anchor", off_faces, base_mat_id)
+        add("respawn_anchor_top_off", off_faces, base_mat_id)
+        add("respawn_anchor_side0", off_faces, base_mat_id)
+        add("respawn_anchor[charges=0]", off_faces, base_mat_id)
 
         for charges in range(1, 5):
             side_c = get_tex(f"respawn_anchor_side{charges}") or side0 or top_on
-            c_mat_id = int(side_c.get("texture_id", base_mat_id)) if side_c else base_mat_id
+            c_mat_id = material_ids.get(f"respawn_anchor_side{charges}", int(side_c.get("texture_id", base_mat_id))) if side_c else base_mat_id
             c_faces = [side_c, side_c, top_on or top_off, bottom_anchor or top_off, side_c, side_c]
-            if f"respawn_anchor_side{charges}" not in locations_by_name:
-                add(f"respawn_anchor_side{charges}", c_faces, c_mat_id)
-            if f"respawn_anchor[charges={charges}]" not in locations_by_name:
-                add(f"respawn_anchor[charges={charges}]", c_faces, c_mat_id)
+            add(f"respawn_anchor_side{charges}", c_faces, c_mat_id)
+            add(f"respawn_anchor[charges={charges}]", c_faces, c_mat_id)
         if top_on and "respawn_anchor_top" not in locations_by_name:
-            top_mat_id = int(top_on.get("texture_id", base_mat_id))
+            top_mat_id = material_ids.get("respawn_anchor_top", int(top_on.get("texture_id", base_mat_id)))
             side_max = get_tex("respawn_anchor_side4") or side0 or top_on
             add("respawn_anchor_top", [side_max, side_max, top_on, bottom_anchor or top_off, side_max, side_max], top_mat_id)
 
@@ -264,73 +249,105 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
     pumpkin_top = get_tex("pumpkin_top")
     pumpkin_side = get_tex("pumpkin_side")
     for p_name in ("carved_pumpkin", "jack_o_lantern"):
-        if p_name in locations_by_name:
-            continue
         front_tex = get_tex(p_name)
         if front_tex or pumpkin_side or pumpkin_top:
             top_loc = pumpkin_top or pumpkin_side or front_tex
             side_loc = pumpkin_side or pumpkin_top or front_tex
-            p_mat_id = int((front_tex or side_loc).get("texture_id", 0)) if (front_tex or side_loc) else 0
+            p_mat_id = material_ids.get(p_name, int((front_tex or side_loc).get("texture_id", 0))) if (front_tex or side_loc) else 0
             p_faces = [side_loc, side_loc, top_loc, top_loc, side_loc, front_tex or side_loc]
             add(p_name, p_faces, p_mat_id)
 
     # Dispenser and Dropper
     for base in ("dispenser", "dropper"):
-        if base in locations_by_name:
-            continue
         top_loc = get_tex(f"{base}_top") or get_tex("furnace_top")
+        bottom_loc = get_tex(f"{base}_bottom") or top_loc
         side_loc = get_tex(f"{base}_side") or get_tex("furnace_side")
         front_tex = get_tex(f"{base}_front")
+        front_vert = get_tex(f"{base}_front_vertical") or front_tex
         if front_tex or side_loc or top_loc:
             actual_top = top_loc or side_loc or front_tex
+            actual_bottom = bottom_loc or actual_top
             actual_side = side_loc or top_loc or front_tex
-            d_mat_id = int((front_tex or actual_side).get("texture_id", 0)) if (front_tex or actual_side) else 0
-            d_faces = [actual_side, actual_side, actual_top, actual_top, actual_side, front_tex or actual_side]
+            d_mat_id = material_ids.get(base, int((front_tex or actual_side).get("texture_id", 0))) if (front_tex or actual_side) else 0
+            d_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_tex or actual_side]
+            d_faces_vert = [actual_side, actual_side, actual_top, actual_bottom, actual_side, front_vert or actual_side]
             add(base, d_faces, d_mat_id)
-            if f"{base}_front" not in locations_by_name:
-                add(f"{base}_front", d_faces, d_mat_id)
+            add(f"{base}_front", d_faces, d_mat_id)
+            add(f"{base}_front_vertical", d_faces_vert, d_mat_id)
+            add(f"{base}[facing=up]", d_faces_vert, d_mat_id)
+            add(f"{base}[facing=down]", d_faces_vert, d_mat_id)
 
     # Observer
-    if "observer" not in locations_by_name:
-        obs_top = get_tex("observer_top")
-        obs_side = get_tex("observer_side")
-        obs_back = get_tex("observer_back")
-        obs_front = get_tex("observer_front")
-        if obs_front or obs_side or obs_top:
-            primary = obs_front or obs_side or obs_top
-            actual_top = obs_top or primary
-            actual_side = obs_side or primary
-            actual_back = obs_back or actual_side
-            actual_front = obs_front or primary
-            obs_mat_id = int(primary.get("texture_id", 0)) if primary else 0
-            obs_faces = [actual_side, actual_side, actual_top, actual_side, actual_back, actual_front]
-            add("observer", obs_faces, obs_mat_id)
-            if "observer_front" not in locations_by_name:
-                add("observer_front", obs_faces, obs_mat_id)
-            if "observer_back" not in locations_by_name:
-                add("observer_back", obs_faces, obs_mat_id)
+    obs_top = get_tex("observer_top")
+    obs_side = get_tex("observer_side")
+    obs_back = get_tex("observer_back")
+    obs_back_on = get_tex("observer_back_on") or obs_back
+    obs_front = get_tex("observer_front")
+    if obs_front or obs_side or obs_top:
+        primary = obs_front or obs_side or obs_top
+        actual_top = obs_top or primary
+        actual_bottom = obs_top or primary
+        actual_side = obs_side or primary
+        actual_back = obs_back or actual_side
+        actual_front = obs_front or primary
+        obs_mat_id = material_ids.get("observer", int(primary.get("texture_id", 0))) if primary else 0
+        obs_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_back, actual_front]
+        obs_faces_powered = [actual_side, actual_side, actual_top, actual_bottom, obs_back_on or actual_back, actual_front]
+        add("observer", obs_faces, obs_mat_id)
+        add("observer_front", obs_faces, obs_mat_id)
+        add("observer[powered=false]", obs_faces, obs_mat_id)
+        add("observer_on", obs_faces_powered, obs_mat_id)
+        add("observer[powered=true]", obs_faces_powered, obs_mat_id)
+
+    # Piston and Sticky Piston
+    piston_top = get_tex("piston_top")
+    piston_top_sticky = get_tex("piston_top_sticky") or piston_top
+    piston_bottom = get_tex("piston_bottom") or piston_top
+    piston_side = get_tex("piston_side") or piston_top
+    if piston_top or piston_side or piston_bottom:
+        primary = piston_top or piston_side
+        p_mat_id = material_ids.get("piston", int(primary.get("texture_id", 0))) if primary else 0
+        actual_top = piston_top or primary
+        actual_bottom = piston_bottom or primary
+        actual_side = piston_side or primary
+        p_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, actual_side]
+        sp_faces = [actual_side, actual_side, piston_top_sticky or actual_top, actual_bottom, actual_side, actual_side]
+        add("piston", p_faces, p_mat_id)
+        add("piston_base", p_faces, p_mat_id)
+        add("sticky_piston", sp_faces, material_ids.get("sticky_piston", p_mat_id))
+
+    # Command blocks
+    for cb in ("command_block", "chain_command_block", "repeating_command_block"):
+        front = get_tex(f"{cb}_front")
+        back = get_tex(f"{cb}_back")
+        side = get_tex(f"{cb}_side")
+        cond = get_tex(f"{cb}_conditional") or side
+        if front or side:
+            primary = front or side
+            cb_mat_id = material_ids.get(cb, int(primary.get("texture_id", 0))) if primary else 0
+            cb_faces = [side or primary, side or primary, side or primary, side or primary, back or side or primary, front or primary]
+            cb_cond_faces = [cond or primary, cond or primary, cond or primary, cond or primary, back or side or primary, front or primary]
+            add(cb, cb_faces, cb_mat_id)
+            add(f"{cb}[conditional=false]", cb_faces, cb_mat_id)
+            add(f"{cb}[conditional=true]", cb_cond_faces, cb_mat_id)
 
     # Barrel
-    if "barrel" not in locations_by_name:
-        barrel_top = get_tex("barrel_top")
-        barrel_top_open = get_tex("barrel_top_open") or barrel_top
-        barrel_bottom = get_tex("barrel_bottom") or barrel_top
-        barrel_side = get_tex("barrel_side") or barrel_top
-        if barrel_top or barrel_side:
-            primary = barrel_top or barrel_side
-            b_mat_id = int(primary.get("texture_id", 0)) if primary else 0
-            barrel_faces = [barrel_side or primary, barrel_side or primary, barrel_top or primary, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
-            add("barrel", barrel_faces, b_mat_id)
-            if "barrel_top" not in locations_by_name:
-                add("barrel_top", barrel_faces, b_mat_id)
-            if "barrel_bottom" not in locations_by_name:
-                add("barrel_bottom", barrel_faces, b_mat_id)
-            if "barrel_side" not in locations_by_name:
-                add("barrel_side", barrel_faces, b_mat_id)
-            if barrel_top_open and "barrel_top_open" not in locations_by_name:
-                open_faces = [barrel_side or primary, barrel_side or primary, barrel_top_open, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
-                add("barrel_top_open", open_faces, b_mat_id)
-                add("barrel[open=true]", open_faces, b_mat_id)
+    barrel_top = get_tex("barrel_top")
+    barrel_top_open = get_tex("barrel_top_open") or barrel_top
+    barrel_bottom = get_tex("barrel_bottom") or barrel_top
+    barrel_side = get_tex("barrel_side") or barrel_top
+    if barrel_top or barrel_side:
+        primary = barrel_top or barrel_side
+        b_mat_id = material_ids.get("barrel", int(primary.get("texture_id", 0))) if primary else 0
+        barrel_faces = [barrel_side or primary, barrel_side or primary, barrel_top or primary, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
+        open_faces = [barrel_side or primary, barrel_side or primary, barrel_top_open or primary, barrel_bottom or primary, barrel_side or primary, barrel_side or primary]
+        add("barrel", barrel_faces, b_mat_id)
+        add("barrel_top", barrel_faces, b_mat_id)
+        add("barrel_bottom", barrel_faces, b_mat_id)
+        add("barrel_side", barrel_faces, b_mat_id)
+        add("barrel[open=false]", barrel_faces, b_mat_id)
+        add("barrel[open=true]", open_faces, b_mat_id)
+        add("barrel_top_open", open_faces, b_mat_id)
 
     # Grass block, Podzol, Mycelium
     dirt_loc = get_tex("dirt")
@@ -342,30 +359,27 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             actual_top = top_loc or side_loc
             actual_bottom = dirt_loc or actual_top
             actual_side = side_loc or actual_top
-            g_mat_id = int((side_loc or top_loc).get("texture_id", 0)) if (side_loc or top_loc) else 0
+            g_mat_id = material_ids.get(base, int((side_loc or top_loc).get("texture_id", 0))) if (side_loc or top_loc) else 0
             g_faces = [actual_side, actual_side, actual_top, actual_bottom, actual_side, actual_side]
-            if base not in locations_by_name:
-                add(base, g_faces, g_mat_id)
-            if f"{base}_top" not in locations_by_name:
-                add(f"{base}_top", g_faces, g_mat_id)
-            if f"{base}_side" not in locations_by_name:
-                add(f"{base}_side", g_faces, g_mat_id)
-            if snow_side and f"{base}[snowy=true]" not in locations_by_name:
+            add(base, g_faces, g_mat_id)
+            add(f"{base}_top", g_faces, g_mat_id)
+            add(f"{base}_side", g_faces, g_mat_id)
+            if snow_side:
                 snow_faces = [snow_side, snow_side, actual_top, actual_bottom, snow_side, snow_side]
                 add(f"{base}[snowy=true]", snow_faces, g_mat_id)
-                if base == "grass_block" and "grass_block_snow" not in locations_by_name:
+                if base == "grass_block":
                     add("grass_block_snow", snow_faces, g_mat_id)
 
     # Redstone Lamp
     lamp_off = get_tex("redstone_lamp")
     lamp_on = get_tex("redstone_lamp_on")
     if lamp_off or lamp_on:
-        if lamp_off and "redstone_lamp" not in locations_by_name:
-            off_id = int(lamp_off.get("texture_id", 0))
+        if lamp_off:
+            off_id = material_ids.get("redstone_lamp", int(lamp_off.get("texture_id", 0)))
             add("redstone_lamp", [lamp_off] * 6, off_id)
             add("redstone_lamp[lit=false]", [lamp_off] * 6, off_id)
-        if lamp_on and "redstone_lamp_on" not in locations_by_name:
-            on_id = int(lamp_on.get("texture_id", 0))
+        if lamp_on:
+            on_id = material_ids.get("redstone_lamp_on", int(lamp_on.get("texture_id", 0)))
             add("redstone_lamp_on", [lamp_on] * 6, on_id)
             add("redstone_lamp[lit=true]", [lamp_on] * 6, on_id)
 
@@ -382,7 +396,7 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             side_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
 
             if "command_block" in block_name:
-                face_locations = [side_loc, side_loc, front_loc or found_loc, back_loc or side_loc, side_loc, side_loc]
+                face_locations = [side_loc, side_loc, side_loc, side_loc, back_loc or side_loc, front_loc or found_loc]
             elif "piston" in block_name:
                 face_locations = [side_loc, side_loc, top_loc or found_loc, bottom_loc or side_loc, side_loc, side_loc]
             else:
@@ -503,7 +517,27 @@ def resolve_block_state_face_locations(
         if "barrel" in locations_by_name:
             return locations_by_name["barrel"]
 
-    # 7. Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
+    # 7. Command Blocks
+    if "command_block" in name:
+        is_cond = props.get("conditional") == "true"
+        key = f"{name}[conditional=true]" if is_cond else f"{name}[conditional=false]"
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 8. Dispenser and Dropper
+    if name in ("dispenser", "dropper"):
+        facing = props.get("facing", "north")
+        if facing in ("up", "down") and f"{name}_front_vertical" in locations_by_name:
+            return locations_by_name[f"{name}_front_vertical"]
+
+    # 9. Observer
+    if name == "observer":
+        is_powered = props.get("powered") == "true"
+        key = "observer_on" if is_powered else "observer"
+        if key in locations_by_name:
+            return locations_by_name[key]
+
+    # 10. Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
     if name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
         skin_entry = locations_by_name.get(name)
         skin = skin_entry[0] if skin_entry else {}
@@ -516,21 +550,6 @@ def resolve_block_state_face_locations(
         south = inside if props.get("south") == "false" else skin
         north = inside if props.get("north") == "false" else skin
         return [east, west, up, down, south, north]
-
-    # 8. Axis Blocks
-    is_axis_block = "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
-    if is_axis_block and name in locations_by_name:
-        axis = props.get("axis", "y")
-        base_faces = locations_by_name[name]
-        if len(base_faces) >= 6:
-            side_loc = base_faces[0]
-            top_loc = base_faces[2]
-            if axis == "x":
-                return [top_loc, top_loc, side_loc, side_loc, side_loc, side_loc]
-            elif axis == "z":
-                return [side_loc, side_loc, side_loc, side_loc, top_loc, top_loc]
-            else:
-                return [side_loc, side_loc, top_loc, top_loc, side_loc, side_loc]
 
     # Fallback to direct name in locations_by_name
     if name in locations_by_name:

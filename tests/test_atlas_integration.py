@@ -304,7 +304,7 @@ class TestYefiraAtlasIntegration(unittest.TestCase):
         self.assertEqual(face_lut["observer"][0], (16, 0))  # +X: side
         self.assertEqual(face_lut["observer"][1], (16, 0))  # -X: side
         self.assertEqual(face_lut["observer"][2], (15, 0))  # +Y: top
-        self.assertEqual(face_lut["observer"][3], (16, 0))  # -Y: side
+        self.assertEqual(face_lut["observer"][3], (15, 0))  # -Y: top/bottom
         self.assertEqual(face_lut["observer"][4], (17, 0))  # +Z: back
         self.assertEqual(face_lut["observer"][5], (18, 0))  # -Z: front
 

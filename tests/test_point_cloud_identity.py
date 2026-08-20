@@ -28,7 +28,12 @@ class TestPointCloudIdentity(unittest.TestCase):
     def setUp(self):
         if not HAS_BPY:
             self.skipTest("bpy module not available")
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        for obj in list(bpy.data.objects):
+            if obj.name.startswith("Test") or obj.name == "Yefira_World":
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            if mesh.name.startswith("Test") or mesh.name == "Yefira_World_Mesh":
+                bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_mc_block_key_is_absolute_and_independent_of_point_index(self):
         storage = VoxelStorage()

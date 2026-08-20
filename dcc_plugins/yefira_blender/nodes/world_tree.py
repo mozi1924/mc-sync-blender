@@ -37,8 +37,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 15: right-handed coordinate standard (North = +Y, South = -Y).
-WORLD_TREE_SCHEMA_VERSION = 15
+# Schema version 16: right-handed coordinate standard & directional UV/orientation fixes.
+WORLD_TREE_SCHEMA_VERSION = 16
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 

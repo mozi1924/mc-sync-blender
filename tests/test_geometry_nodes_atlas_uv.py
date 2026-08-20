@@ -41,8 +41,15 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("bpy module not available")
 
-        # Clear scene
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        for obj in list(bpy.data.objects):
+            if obj.name.startswith("Test") or obj.name == "Yefira_World":
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            if mesh.name.startswith("Test") or mesh.name == "Yefira_World_Mesh":
+                bpy.data.meshes.remove(mesh, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            if mat.name.startswith("mtk:minecraft:atlas_chunk") or mat.name.startswith("Test"):
+                bpy.data.materials.remove(mat, do_unlink=True)
 
     def test_setup_world_geometry_nodes_and_uv_tree(self):
         # 1. Create Point Cloud mesh object

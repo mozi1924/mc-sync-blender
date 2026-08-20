@@ -92,6 +92,48 @@ def get_template_index_map(col: bpy.types.Collection) -> dict[str, int]:
     return mapping
 
 
+def _attach_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = False) -> None:
+    """Attach CubeFaceNorm (FACE domain) and LocalUV (CORNER domain) attributes to a template mesh."""
+    norm_attr = mesh.attributes.get("CubeFaceNorm")
+    if not norm_attr:
+        norm_attr = mesh.attributes.new(name="CubeFaceNorm", type="FLOAT_VECTOR", domain="FACE")
+
+    luv_attr = mesh.attributes.get("LocalUV")
+    if not luv_attr:
+        luv_attr = mesh.attributes.new(name="LocalUV", type="FLOAT_VECTOR", domain="CORNER")
+
+    mesh.update()
+
+    for poly in mesh.polygons:
+        fn = poly.normal
+        norm_attr.data[poly.index].vector = (0.0, 1.0, 0.0) if is_cross_plant else (fn.x, fn.y, fn.z)
+        for loop_idx in poly.loop_indices:
+            vi = mesh.loops[loop_idx].vertex_index
+            v_co = mesh.vertices[vi].co
+            x, y, z = v_co.x, v_co.y, v_co.z
+            if is_cross_plant:
+                u = 1.0 if (x > 0.0 or (y > 0.0 and x >= 0.0)) else 0.0
+                v = z + 0.5
+            else:
+                if fn.z > 0.5:     # Top (+Z)
+                    u, v = x + 0.5, y + 0.5
+                elif fn.z < -0.5:  # Bottom (-Z)
+                    u, v = x + 0.5, y + 0.5
+                elif fn.y > 0.5:   # North (+Y)
+                    u, v = 0.5 - x, z + 0.5
+                elif fn.y < -0.5:  # South (-Y)
+                    u, v = x + 0.5, z + 0.5
+                elif fn.x > 0.5:   # East (+X)
+                    u, v = y + 0.5, z + 0.5
+                elif fn.x < -0.5:  # West (-X)
+                    u, v = 0.5 - y, z + 0.5
+                else:
+                    u, v = x + 0.5, z + 0.5
+            luv_attr.data[loop_idx].vector = (min(max(float(u), 0.0), 1.0), min(max(float(v), 0.0), 1.0), 0.0)
+
+    mesh.update()
+
+
 def _ensure_template_box(
     col: bpy.types.Collection,
     name: str,
@@ -115,7 +157,11 @@ def _ensure_template_box(
         ]
         mesh.from_pydata(v, [], f)
         mesh.update()
+        _attach_template_attributes(mesh)
         obj = bpy.data.objects.new(name, mesh)
+    else:
+        if obj.data and ("LocalUV" not in obj.data.attributes or "CubeFaceNorm" not in obj.data.attributes):
+            _attach_template_attributes(obj.data)
 
     obj.use_fake_user = True
     if obj.data:
@@ -145,6 +191,7 @@ def _populate_default_templates(col: bpy.types.Collection):
         ]
         stair_mesh.from_pydata(v, [], f)
         stair_mesh.update()
+        _attach_template_attributes(stair_mesh)
         stair_obj = bpy.data.objects.new("stairs_straight", stair_mesh)
         stair_obj.use_fake_user = True
     else:
@@ -152,6 +199,8 @@ def _populate_default_templates(col: bpy.types.Collection):
         stair_obj.use_fake_user = True
         if stair_obj.data:
             stair_obj.data.use_fake_user = True
+            if "LocalUV" not in stair_obj.data.attributes or "CubeFaceNorm" not in stair_obj.data.attributes:
+                _attach_template_attributes(stair_obj.data)
 
     if stair_obj.name not in col.objects:
         col.objects.link(stair_obj)
@@ -174,6 +223,7 @@ def _populate_default_templates(col: bpy.types.Collection):
         ]
         plant_mesh.from_pydata(v, [], f)
         plant_mesh.update()
+        _attach_template_attributes(plant_mesh, is_cross_plant=True)
         plant_obj = bpy.data.objects.new("cross_plant", plant_mesh)
         plant_obj.use_fake_user = True
     else:
@@ -181,6 +231,8 @@ def _populate_default_templates(col: bpy.types.Collection):
         plant_obj.use_fake_user = True
         if plant_obj.data:
             plant_obj.data.use_fake_user = True
+            if "LocalUV" not in plant_obj.data.attributes or "CubeFaceNorm" not in plant_obj.data.attributes:
+                _attach_template_attributes(plant_obj.data, is_cross_plant=True)
 
     if plant_obj.name not in col.objects:
         col.objects.link(plant_obj)

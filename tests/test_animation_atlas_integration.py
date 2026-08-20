@@ -20,6 +20,7 @@ from yefira_blender.materials.atlas_integration import (
     build_block_face_atlas_ids,
     build_block_face_anim_lut,
     extract_atlas_parameters,
+    setup_material_slots_for_object,
 )
 from yefira_blender.core.storage import VoxelStorage
 from yefira_blender.core.point_cloud_builder import update_world_point_cloud
@@ -177,6 +178,7 @@ class TestAnimationAtlasIntegration(unittest.TestCase):
         )
 
         self.assertIsNotNone(build_res.world_obj)
+        setup_material_slots_for_object(build_res.world_obj, mat0, self.mock_mapping)
         setup_world_geometry_nodes(build_res.world_obj)
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
