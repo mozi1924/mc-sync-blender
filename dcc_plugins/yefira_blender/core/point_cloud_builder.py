@@ -148,9 +148,12 @@ def update_world_point_cloud(
             continue
 
         # Metric 1:1 Scale & Centering
-        # Blender X = MC X, Blender Y = MC Z, Blender Z = MC Y
+        # Standard right-handed transform (det = +1, Rx(-90)):
+        # Blender X = MC X (East = +X, West = -X)
+        # Blender Y = -MC Z (North = +Y, South = -Y)
+        # Blender Z = MC Y (Up = +Z, Down = -Z)
         vx = (abs_x - min_x) - size_x / 2.0 + 0.5
-        vy = (abs_z - min_z) - size_z / 2.0 + 0.5
+        vy = -((abs_z - min_z) - size_z / 2.0 + 0.5)
         vz = (abs_y - min_y) + 0.5
 
         vertices.append((vx, vy, vz))

@@ -360,9 +360,9 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         elif facing == "down":
             rot_x, rot_y, rot_z = math.radians(180), 0.0, 0.0
         elif facing == "north":
-            rot_x, rot_y, rot_z = math.radians(90), 0.0, 0.0
-        elif facing == "south":
             rot_x, rot_y, rot_z = math.radians(-90), 0.0, 0.0
+        elif facing == "south":
+            rot_x, rot_y, rot_z = math.radians(90), 0.0, 0.0
         elif facing == "west":
             rot_x, rot_y, rot_z = 0.0, math.radians(-90), 0.0
         elif facing == "east":
@@ -374,19 +374,19 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         elif axis == "z":
             rot_x = math.radians(90)
     else:
-        # Standard horizontal-base blocks (Base template points NORTH at -Y in Blender)
+        # Standard horizontal-base blocks (Base template points NORTH at +Y in Blender)
         if facing == "north":
             rot_z = 0.0
         elif facing == "south":
             rot_z = math.radians(180)
         elif facing == "east":
-            rot_z = math.radians(90)
-        elif facing == "west":
             rot_z = math.radians(-90)
+        elif facing == "west":
+            rot_z = math.radians(90)
         elif facing == "up":
-            rot_x = math.radians(-90)
-        elif facing == "down":
             rot_x = math.radians(90)
+        elif facing == "down":
+            rot_x = math.radians(-90)
 
     if block_id in FLUID_BLOCKS:
         block_type = BlockTypeEnum.FLUID

@@ -6,7 +6,7 @@ import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
 
 GROUP_NAME_CUBE_SURFACE = "Yefira_Cube_Surface"
-CUBE_SURFACE_VERSION = 3
+CUBE_SURFACE_VERSION = 4
 
 
 def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
@@ -68,7 +68,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     bottom = compare("Z", "LESS_THAN", 300)
     east = compare("X", "GREATER_THAN", 200)
     west = compare("X", "LESS_THAN", 100)
-    north = compare("Y", "LESS_THAN", 0)
+    north = compare("Y", "GREATER_THAN", 0)
 
     def offset(axis: str, operation: str, y: float):
         node = nodes.new("ShaderNodeMath")
@@ -94,9 +94,9 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
         links.new(true_value, node.inputs[3])
         return node.outputs[0]
 
-    # Local V: Default (sides) -> plus_z, Bottom -> plus_y, Top -> minus_y
-    v_side_or_bottom = mix(bottom, plus_z, plus_y, -60, 320)
-    local_v = mix(top, v_side_or_bottom, minus_y, 120, 320)
+    # Local V: Default (sides) -> plus_z, Bottom -> minus_y, Top -> plus_y
+    v_side_or_bottom = mix(bottom, plus_z, minus_y, -60, 320)
+    local_v = mix(top, v_side_or_bottom, plus_y, 120, 320)
 
     # Local U: Default (South/Top/Bottom) -> plus_x, North -> minus_x, West -> plus_y, East -> minus_y
     u_side_or_north = mix(north, plus_x, minus_x, -60, 100)

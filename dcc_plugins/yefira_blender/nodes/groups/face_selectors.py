@@ -8,7 +8,7 @@ from ..core import ensure_gn_group, ensure_socket, finalize_group
 GROUP_NAME_FACE_SELECTOR_VECTOR = "Yefira_Face_Selector_Vector"
 GROUP_NAME_FACE_SELECTOR_INT = "Yefira_Face_Selector_Int"
 GROUP_NAME_FACE_SELECTOR_COLOR = "Yefira_Face_Selector_Color"
-FACE_SELECTOR_VERSION = 2
+FACE_SELECTOR_VERSION = 3
 
 
 def get_or_create_face_selector_vector_group() -> bpy.types.GeometryNodeTree:
@@ -18,8 +18,8 @@ def get_or_create_face_selector_vector_group() -> bpy.types.GeometryNodeTree:
         return tree
 
     ensure_socket(tree, "Normal", "INPUT", "NodeSocketVector")
-    ensure_socket(tree, "South (+Y)", "INPUT", "NodeSocketVector")
-    ensure_socket(tree, "North (-Y)", "INPUT", "NodeSocketVector")
+    ensure_socket(tree, "North (+Y)", "INPUT", "NodeSocketVector")
+    ensure_socket(tree, "South (-Y)", "INPUT", "NodeSocketVector")
     ensure_socket(tree, "East (+X)", "INPUT", "NodeSocketVector")
     ensure_socket(tree, "West (-X)", "INPUT", "NodeSocketVector")
     ensure_socket(tree, "Bottom (-Z)", "INPUT", "NodeSocketVector")
@@ -36,11 +36,11 @@ def get_or_create_face_selector_vector_group() -> bpy.types.GeometryNodeTree:
     sep_norm.location = (-320, 150)
     links.new(gin.outputs["Normal"], sep_norm.inputs["Vector"])
 
-    cmp_north = nodes.new("FunctionNodeCompare")
-    cmp_north.data_type, cmp_north.operation = "FLOAT", "LESS_THAN"
-    cmp_north.inputs["B"].default_value = -0.5
-    cmp_north.location = (-140, 240)
-    links.new(sep_norm.outputs["Y"], cmp_north.inputs["A"])
+    cmp_south = nodes.new("FunctionNodeCompare")
+    cmp_south.data_type, cmp_south.operation = "FLOAT", "LESS_THAN"
+    cmp_south.inputs["B"].default_value = -0.5
+    cmp_south.location = (-140, 240)
+    links.new(sep_norm.outputs["Y"], cmp_south.inputs["A"])
 
     cmp_east = nodes.new("FunctionNodeCompare")
     cmp_east.data_type, cmp_east.operation = "FLOAT", "GREATER_THAN"
@@ -68,9 +68,9 @@ def get_or_create_face_selector_vector_group() -> bpy.types.GeometryNodeTree:
 
     m1 = nodes.new("ShaderNodeMix")
     m1.data_type, m1.location = "VECTOR", (60, 180)
-    links.new(cmp_north.outputs["Result"], m1.inputs[0])
-    links.new(gin.outputs["South (+Y)"], m1.inputs[4])
-    links.new(gin.outputs["North (-Y)"], m1.inputs[5])
+    links.new(cmp_south.outputs["Result"], m1.inputs[0])
+    links.new(gin.outputs["North (+Y)"], m1.inputs[4])
+    links.new(gin.outputs["South (-Y)"], m1.inputs[5])
 
     m2 = nodes.new("ShaderNodeMix")
     m2.data_type, m2.location = "VECTOR", (220, 120)
@@ -107,8 +107,8 @@ def get_or_create_face_selector_int_group() -> bpy.types.GeometryNodeTree:
         return tree
 
     ensure_socket(tree, "Normal", "INPUT", "NodeSocketVector")
-    ensure_socket(tree, "South (+Y)", "INPUT", "NodeSocketInt", default_value=0)
-    ensure_socket(tree, "North (-Y)", "INPUT", "NodeSocketInt", default_value=0)
+    ensure_socket(tree, "North (+Y)", "INPUT", "NodeSocketInt", default_value=0)
+    ensure_socket(tree, "South (-Y)", "INPUT", "NodeSocketInt", default_value=0)
     ensure_socket(tree, "East (+X)", "INPUT", "NodeSocketInt", default_value=0)
     ensure_socket(tree, "West (-X)", "INPUT", "NodeSocketInt", default_value=0)
     ensure_socket(tree, "Bottom (-Z)", "INPUT", "NodeSocketInt", default_value=0)
@@ -125,11 +125,11 @@ def get_or_create_face_selector_int_group() -> bpy.types.GeometryNodeTree:
     sep_norm.location = (-320, 150)
     links.new(gin.outputs["Normal"], sep_norm.inputs["Vector"])
 
-    cmp_north = nodes.new("FunctionNodeCompare")
-    cmp_north.data_type, cmp_north.operation = "FLOAT", "LESS_THAN"
-    cmp_north.inputs["B"].default_value = -0.5
-    cmp_north.location = (-140, 240)
-    links.new(sep_norm.outputs["Y"], cmp_north.inputs["A"])
+    cmp_south = nodes.new("FunctionNodeCompare")
+    cmp_south.data_type, cmp_south.operation = "FLOAT", "LESS_THAN"
+    cmp_south.inputs["B"].default_value = -0.5
+    cmp_south.location = (-140, 240)
+    links.new(sep_norm.outputs["Y"], cmp_south.inputs["A"])
 
     cmp_east = nodes.new("FunctionNodeCompare")
     cmp_east.data_type, cmp_east.operation = "FLOAT", "GREATER_THAN"
@@ -164,7 +164,7 @@ def get_or_create_face_selector_int_group() -> bpy.types.GeometryNodeTree:
         links.new(true_socket, sw.inputs["True"])
         return sw.outputs["Output"]
 
-    v1 = make_switch(cmp_north, gin.outputs["South (+Y)"], gin.outputs["North (-Y)"], 60, 180)
+    v1 = make_switch(cmp_south, gin.outputs["North (+Y)"], gin.outputs["South (-Y)"], 60, 180)
     v2 = make_switch(cmp_east, v1, gin.outputs["East (+X)"], 220, 120)
     v3 = make_switch(cmp_west, v2, gin.outputs["West (-X)"], 380, 60)
     v4 = make_switch(cmp_bottom, v3, gin.outputs["Bottom (-Z)"], 540, 0)
@@ -181,8 +181,8 @@ def get_or_create_face_selector_color_group() -> bpy.types.GeometryNodeTree:
         return tree
 
     ensure_socket(tree, "Normal", "INPUT", "NodeSocketVector")
-    ensure_socket(tree, "South (+Y)", "INPUT", "NodeSocketColor")
-    ensure_socket(tree, "North (-Y)", "INPUT", "NodeSocketColor")
+    ensure_socket(tree, "North (+Y)", "INPUT", "NodeSocketColor")
+    ensure_socket(tree, "South (-Y)", "INPUT", "NodeSocketColor")
     ensure_socket(tree, "East (+X)", "INPUT", "NodeSocketColor")
     ensure_socket(tree, "West (-X)", "INPUT", "NodeSocketColor")
     ensure_socket(tree, "Bottom (-Z)", "INPUT", "NodeSocketColor")
@@ -199,11 +199,11 @@ def get_or_create_face_selector_color_group() -> bpy.types.GeometryNodeTree:
     sep_norm.location = (-320, 150)
     links.new(gin.outputs["Normal"], sep_norm.inputs["Vector"])
 
-    cmp_north = nodes.new("FunctionNodeCompare")
-    cmp_north.data_type, cmp_north.operation = "FLOAT", "LESS_THAN"
-    cmp_north.inputs["B"].default_value = -0.5
-    cmp_north.location = (-140, 240)
-    links.new(sep_norm.outputs["Y"], cmp_north.inputs["A"])
+    cmp_south = nodes.new("FunctionNodeCompare")
+    cmp_south.data_type, cmp_south.operation = "FLOAT", "LESS_THAN"
+    cmp_south.inputs["B"].default_value = -0.5
+    cmp_south.location = (-140, 240)
+    links.new(sep_norm.outputs["Y"], cmp_south.inputs["A"])
 
     cmp_east = nodes.new("FunctionNodeCompare")
     cmp_east.data_type, cmp_east.operation = "FLOAT", "GREATER_THAN"
@@ -231,9 +231,9 @@ def get_or_create_face_selector_color_group() -> bpy.types.GeometryNodeTree:
 
     m1 = nodes.new("ShaderNodeMix")
     m1.data_type, m1.location = "RGBA", (60, 180)
-    links.new(cmp_north.outputs["Result"], m1.inputs[0])
-    links.new(gin.outputs["South (+Y)"], m1.inputs[6])
-    links.new(gin.outputs["North (-Y)"], m1.inputs[7])
+    links.new(cmp_south.outputs["Result"], m1.inputs[0])
+    links.new(gin.outputs["North (+Y)"], m1.inputs[6])
+    links.new(gin.outputs["South (-Y)"], m1.inputs[7])
 
     m2 = nodes.new("ShaderNodeMix")
     m2.data_type, m2.location = "RGBA", (220, 120)

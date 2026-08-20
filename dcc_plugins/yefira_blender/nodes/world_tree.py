@@ -37,8 +37,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 14: transparency-aware hidden face culling and vertex merging node group.
-WORLD_TREE_SCHEMA_VERSION = 14
+# Schema version 15: right-handed coordinate standard (North = +Y, South = -Y).
+WORLD_TREE_SCHEMA_VERSION = 15
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -260,8 +260,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "mtk_tile_bottom"),
         ("East (+X)", "mtk_tile_east"),
         ("West (-X)", "mtk_tile_west"),
-        ("South (+Y)", "mtk_tile_south"),
-        ("North (-Y)", "mtk_tile_north"),
+        ("North (+Y)", "mtk_tile_north"),
+        ("South (-Y)", "mtk_tile_south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_VECTOR"
@@ -281,8 +281,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "bottom"),
         ("East (+X)", "east"),
         ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "INT"
@@ -360,8 +360,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "bottom"),
         ("East (+X)", "east"),
         ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
@@ -398,8 +398,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "bottom"),
         ("East (+X)", "east"),
         ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "INT"
@@ -427,8 +427,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "bottom"),
         ("East (+X)", "east"),
         ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
@@ -456,8 +456,8 @@ def _build_tree_nodes_and_links(
         ("Bottom (-Z)", "bottom"),
         ("East (+X)", "east"),
         ("West (-X)", "west"),
-        ("South (+Y)", "south"),
-        ("North (-Y)", "north"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
