@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Final
 
 
-CONTRACT_VERSION: Final = 2
+CONTRACT_VERSION: Final = 3
 FACES: Final = ("east", "west", "top", "bottom", "south", "north")
 
 # Yefira-private point-cloud and procedural-template fields.
@@ -25,6 +25,8 @@ BLOCK_KEY: Final = "yefira_block_key"
 CUBE_FACE_NORMAL: Final = "yefira_cube_face_normal"
 LOCAL_FACE_ID: Final = "yefira_local_face_id"
 LOCAL_UV: Final = "yefira_local_uv"
+# Per-point opt-in for the vanilla command-block top/bottom V correction.
+DIRECTIONAL_FACE_V_FLIP: Final = "yefira_directional_face_v_flip"
 
 # Stable MoziToolKit interchange fields.  These names intentionally remain
 # unchanged so either add-on can update or consume a point cloud independently.
@@ -75,6 +77,7 @@ ATLAS_FLOAT_ATTRIBUTES: Final = (
 # empty update or a contract migration.
 POINT_ATTRIBUTE_NAMES: Final = frozenset((
     BLOCK_TYPE, TEMPLATE_INDEX, INSTANCE_ROTATION, BLOCK_CENTER, MC_POSITION,
+    DIRECTIONAL_FACE_V_FLIP,
     BLOCK_STATE, BLOCK_KEY, MTK_MATERIAL_ID, MTK_IS_OPAQUE, MTK_EMISSIVE,
     *ATLAS_FLOAT_ATTRIBUTES, *FACE_TILE_ATTRIBUTES, *FACE_CHUNK_ATTRIBUTES,
     *FACE_TEXTURE_ATTRIBUTES, *FACE_TINT_ATTRIBUTES,
@@ -95,7 +98,8 @@ LEGACY_TEMPLATE_ATTRIBUTE_NAMES: Final = frozenset((
 ))
 
 INSTANCE_TRANSFER_SPECS: Final = (
-    *((name, "INT") for name in (BLOCK_TYPE, MTK_MATERIAL_ID, MTK_IS_OPAQUE,
+    *((name, "INT") for name in (BLOCK_TYPE, DIRECTIONAL_FACE_V_FLIP,
+                                  MTK_MATERIAL_ID, MTK_IS_OPAQUE,
                                   *FACE_CHUNK_ATTRIBUTES, *FACE_TEXTURE_ATTRIBUTES)),
     *((name, "FLOAT_VECTOR") for name in (BLOCK_CENTER, *FACE_TILE_ATTRIBUTES)),
     *((name, "FLOAT") for name in ATLAS_FLOAT_ATTRIBUTES),

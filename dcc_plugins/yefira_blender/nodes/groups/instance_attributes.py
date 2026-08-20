@@ -7,7 +7,7 @@ from ..core import ensure_gn_group, ensure_socket, finalize_group
 from ...core.attributes import INSTANCE_TRANSFER_SPECS
 
 GROUP_NAME_INSTANCE_ATTRIBUTES = "Yefira_Transfer_Instance_Attributes"
-INSTANCE_ATTRIBUTES_VERSION = 6
+INSTANCE_ATTRIBUTES_VERSION = 7
 
 
 def get_or_create_instance_attribute_transfer_group() -> bpy.types.GeometryNodeTree:

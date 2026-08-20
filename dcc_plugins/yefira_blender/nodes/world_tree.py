@@ -22,7 +22,8 @@ from ..materials.atlas_integration import (
     setup_material_slots_for_object,
 )
 from ..core.attributes import (
-    BLOCK_CENTER, BLOCK_TYPE, INSTANCE_ROTATION, LOCAL_FACE_ID, LOCAL_UV,
+    BLOCK_CENTER, BLOCK_TYPE, DIRECTIONAL_FACE_V_FLIP, INSTANCE_ROTATION,
+    LOCAL_FACE_ID, LOCAL_UV,
     MTK_ANIM_ATLAS_HEIGHT, MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT,
     MTK_ANIM_FRAME_SIZE, MTK_ANIM_FRAME_WIDTH, MTK_ANIM_TIMING,
     MTK_ATLAS_CHUNK_ID, MTK_ATLAS_HEIGHT,
@@ -46,8 +47,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 21: correct directional face left/right UV orientation.
-WORLD_TREE_SCHEMA_VERSION = 21
+# Schema version 22: command-block top/bottom V correction.
+WORLD_TREE_SCHEMA_VERSION = 22
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -354,6 +355,39 @@ def _build_tree_nodes_and_links(
     links.new(add_u.outputs["Value"], comb_horizontal_uv.inputs["X"])
     links.new(add_v_horizontal.outputs["Value"], comb_horizontal_uv.inputs["Y"])
 
+    # Vanilla command blocks flip the vertical texture axis on their front
+    # and back faces when those faces point up/down.  Keep this opt-in so
+    # ordinary cube top/bottom textures retain their existing orientation.
+    flip_v_horizontal = nodes.new("ShaderNodeMath")
+    flip_v_horizontal.operation = "SUBTRACT"
+    flip_v_horizontal.inputs[0].default_value = 0.5
+    flip_v_horizontal.location = (1040, -330)
+    links.new(sep_rel.outputs["Y"], flip_v_horizontal.inputs[1])
+
+    comb_horizontal_uv_flipped = nodes.new("ShaderNodeCombineXYZ")
+    comb_horizontal_uv_flipped.location = (1200, -300)
+    links.new(add_u.outputs["Value"], comb_horizontal_uv_flipped.inputs["X"])
+    links.new(flip_v_horizontal.outputs["Value"], comb_horizontal_uv_flipped.inputs["Y"])
+
+    read_directional_face_v_flip = nodes.new("GeometryNodeInputNamedAttribute")
+    read_directional_face_v_flip.data_type = "INT"
+    read_directional_face_v_flip.inputs["Name"].default_value = DIRECTIONAL_FACE_V_FLIP
+    read_directional_face_v_flip.location = (720, -330)
+
+    cmp_directional_face_v_flip = nodes.new("FunctionNodeCompare")
+    cmp_directional_face_v_flip.data_type = "INT"
+    cmp_directional_face_v_flip.operation = "GREATER_THAN"
+    cmp_directional_face_v_flip.inputs["B"].default_value = 0
+    cmp_directional_face_v_flip.location = (880, -330)
+    links.new(read_directional_face_v_flip.outputs["Attribute"], cmp_directional_face_v_flip.inputs["A"])
+
+    select_horizontal_uv = nodes.new("GeometryNodeSwitch")
+    select_horizontal_uv.input_type = "VECTOR"
+    select_horizontal_uv.location = (1360, -300)
+    links.new(cmp_directional_face_v_flip.outputs["Result"], select_horizontal_uv.inputs["Switch"])
+    links.new(comb_horizontal_uv.outputs["Vector"], select_horizontal_uv.inputs["False"])
+    links.new(comb_horizontal_uv_flipped.outputs["Vector"], select_horizontal_uv.inputs["True"])
+
     # Restrict this UV lock to local Top/Bottom (the directional front/back
     # faces of vertical-base blocks).  ``cmp_nz`` below selects whether that
     # face is horizontal or vertical in world space.
@@ -424,7 +458,7 @@ def _build_tree_nodes_and_links(
     select_face_plane_uv.location = (1200, -400)
     links.new(cmp_nz.outputs["Result"], select_face_plane_uv.inputs["Switch"])
     links.new(comb_vertical_uv.outputs["Vector"], select_face_plane_uv.inputs["False"])
-    links.new(comb_horizontal_uv.outputs["Vector"], select_face_plane_uv.inputs["True"])
+    links.new(select_horizontal_uv.outputs["Output"], select_face_plane_uv.inputs["True"])
 
     switch_uv_in = nodes.new("GeometryNodeSwitch")
     switch_uv_in.input_type = "VECTOR"

@@ -13,6 +13,7 @@ from .block_classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, at
 from .template_catalog import get_or_create_template_collection, get_template_index_map
 from .attributes import (
     BLOCK_CENTER, BLOCK_KEY, BLOCK_STATE, BLOCK_TYPE, CONTRACT_VERSION,
+    DIRECTIONAL_FACE_V_FLIP,
     FACES, INSTANCE_ROTATION, MC_POSITION, MTK_ANIM_ATLAS_HEIGHT,
     MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT, MTK_ANIM_FRAME_WIDTH,
     MTK_ATLAS_HEIGHT, MTK_ATLAS_WIDTH, MTK_BIOME_TINT_COLOR,
@@ -123,6 +124,7 @@ def update_world_point_cloud(
     block_types = []
     instance_indices = []
     rotations = []
+    directional_face_v_flips = []
     material_ids = []
     is_opaque_list = []
     emissive_list = []
@@ -176,6 +178,9 @@ def update_world_point_cloud(
         instance_indices.append(tmpl_idx)
 
         rotations.append(parsed.rot_euler)
+        directional_face_v_flips.append(int(parsed.name in (
+            "command_block", "chain_command_block", "repeating_command_block",
+        )))
         tint_colors.append(parsed.tint_color)
         tint_datas.append(parsed.tint_data)
         mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
@@ -264,6 +269,7 @@ def update_world_point_cloud(
         _write_float_attribute(mesh, MTK_ANIM_FRAME_WIDTH, [float(anim_frame_width)] * num_pts)
         _write_float_attribute(mesh, MTK_ANIM_FRAME_HEIGHT, [float(anim_frame_height)] * num_pts)
         _write_float_vector_attribute(mesh, INSTANCE_ROTATION, rotations)
+        _write_int_attribute(mesh, DIRECTIONAL_FACE_V_FLIP, directional_face_v_flips)
         _write_float_vector_attribute(mesh, BLOCK_CENTER, vertices)
         _write_float_vector_attribute(mesh, MC_POSITION, mc_positions)
         for face, values in zip(FACES, (tile_east, tile_west, tile_top, tile_bottom, tile_south, tile_north)):

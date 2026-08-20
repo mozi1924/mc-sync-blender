@@ -219,11 +219,14 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
             bpy.context, storage, filter_air=True,
             block_face_texture_lut={"command_block": list(face_texture_ids)},
         )
+        command_face_v_flip = result.world_obj.data.attributes["yefira_directional_face_v_flip"]
+        self.assertTrue(all(value.value == 1 for value in command_face_v_flip.data))
         setup_world_geometry_nodes(result.world_obj)
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         eval_mesh = result.world_obj.evaluated_get(depsgraph).to_mesh()
         texture_ids = eval_mesh.attributes["mtk_atlas_texture_id"]
+        self.assertIn("yefira_directional_face_v_flip", eval_mesh.attributes)
 
         # The face table uses Minecraft axes (+Y = top, +Z = south), while
         # the generated mesh uses Blender axes (+Z = top, -Y = south).
