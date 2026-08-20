@@ -37,8 +37,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 16: right-handed coordinate standard & directional UV/orientation fixes.
-WORLD_TREE_SCHEMA_VERSION = 16
+# Schema version 17: LocalFaceID-driven attribute selection & vertical-base orientation fixes.
+WORLD_TREE_SCHEMA_VERSION = 17
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -242,18 +242,18 @@ def _build_tree_nodes_and_links(
     realize_node.location = (380, 100)
     links.new(join_node.outputs["Geometry"], realize_node.inputs["Geometry"])
 
-    # Read Realized Face Normal
-    read_face_norm = nodes.new("GeometryNodeInputNamedAttribute")
-    read_face_norm.data_type = "FLOAT_VECTOR"
-    read_face_norm.inputs["Name"].default_value = "CubeFaceNorm"
-    read_face_norm.location = (380, -100)
+    # Read Realized LocalFaceID (INT on FACE domain)
+    read_face_id = nodes.new("GeometryNodeInputNamedAttribute")
+    read_face_id.data_type = "INT"
+    read_face_id.inputs["Name"].default_value = "LocalFaceID"
+    read_face_id.location = (380, -100)
 
     # --- SUBGROUP: SELECT FACE TILE (VECTOR) ---
     call_tile_selector = nodes.new("GeometryNodeGroup")
     call_tile_selector.node_tree = group_vec_selector
     call_tile_selector.name = "Select Face Tile"
     call_tile_selector.location = (760, 500)
-    links.new(read_face_norm.outputs["Attribute"], call_tile_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_tile_selector.inputs["Face ID"])
 
     for index, (socket_name, attr_name) in enumerate((
         ("Top (+Z)", "mtk_tile_top"),
@@ -274,7 +274,7 @@ def _build_tree_nodes_and_links(
     call_chunk_selector.node_tree = group_int_selector
     call_chunk_selector.name = "Select Face Chunk ID"
     call_chunk_selector.location = (760, 260)
-    links.new(read_face_norm.outputs["Attribute"], call_chunk_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_chunk_selector.inputs["Face ID"])
 
     for index, (socket_name, face) in enumerate((
         ("Top (+Z)", "top"),
@@ -353,7 +353,7 @@ def _build_tree_nodes_and_links(
     call_tint_selector.node_tree = group_color_selector
     call_tint_selector.name = "Select Biome Tint Data"
     call_tint_selector.location = (760, -100)
-    links.new(read_face_norm.outputs["Attribute"], call_tint_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_tint_selector.inputs["Face ID"])
 
     for index, (socket_name, face) in enumerate((
         ("Top (+Z)", "top"),
@@ -391,7 +391,7 @@ def _build_tree_nodes_and_links(
     call_texture_selector.node_tree = group_int_selector
     call_texture_selector.name = "Select Face Texture ID"
     call_texture_selector.location = (760, -600)
-    links.new(read_face_norm.outputs["Attribute"], call_texture_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_texture_selector.inputs["Face ID"])
 
     for index, (socket_name, face) in enumerate((
         ("Top (+Z)", "top"),
@@ -420,7 +420,7 @@ def _build_tree_nodes_and_links(
     call_timing_selector.node_tree = group_color_selector
     call_timing_selector.name = "Select Face Anim Timing"
     call_timing_selector.location = (760, -850)
-    links.new(read_face_norm.outputs["Attribute"], call_timing_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_timing_selector.inputs["Face ID"])
 
     for index, (socket_name, face) in enumerate((
         ("Top (+Z)", "top"),
@@ -449,7 +449,7 @@ def _build_tree_nodes_and_links(
     call_size_selector.node_tree = group_color_selector
     call_size_selector.name = "Select Face Anim Frame Size"
     call_size_selector.location = (760, -1100)
-    links.new(read_face_norm.outputs["Attribute"], call_size_selector.inputs["Normal"])
+    links.new(read_face_id.outputs["Attribute"], call_size_selector.inputs["Face ID"])
 
     for index, (socket_name, face) in enumerate((
         ("Top (+Z)", "top"),

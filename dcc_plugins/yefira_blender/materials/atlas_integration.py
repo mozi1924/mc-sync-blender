@@ -316,7 +316,7 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         add("piston_base", p_faces, p_mat_id)
         add("sticky_piston", sp_faces, material_ids.get("sticky_piston", p_mat_id))
 
-    # Command blocks
+    # Command blocks (Vertical-base: Top=Front, Bottom=Back, 4 Sides=Side)
     for cb in ("command_block", "chain_command_block", "repeating_command_block"):
         front = get_tex(f"{cb}_front")
         back = get_tex(f"{cb}_back")
@@ -325,8 +325,8 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
         if front or side:
             primary = front or side
             cb_mat_id = material_ids.get(cb, int(primary.get("texture_id", 0))) if primary else 0
-            cb_faces = [side or primary, side or primary, side or primary, side or primary, back or side or primary, front or primary]
-            cb_cond_faces = [cond or primary, cond or primary, cond or primary, cond or primary, back or side or primary, front or primary]
+            cb_faces = [side or primary, side or primary, front or primary, back or side or primary, side or primary, side or primary]
+            cb_cond_faces = [cond or primary, cond or primary, front or primary, back or side or primary, cond or primary, cond or primary]
             add(cb, cb_faces, cb_mat_id)
             add(f"{cb}[conditional=false]", cb_faces, cb_mat_id)
             add(f"{cb}[conditional=true]", cb_cond_faces, cb_mat_id)
@@ -396,7 +396,7 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             side_loc = next((texture_by_stem.get(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
 
             if "command_block" in block_name:
-                face_locations = [side_loc, side_loc, side_loc, side_loc, back_loc or side_loc, front_loc or found_loc]
+                face_locations = [side_loc, side_loc, front_loc or found_loc, back_loc or side_loc, side_loc, side_loc]
             elif "piston" in block_name:
                 face_locations = [side_loc, side_loc, top_loc or found_loc, bottom_loc or side_loc, side_loc, side_loc]
             else:

@@ -6,14 +6,14 @@ import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
 
 GROUP_NAME_CUBE_SURFACE = "Yefira_Cube_Surface"
-CUBE_SURFACE_VERSION = 5
+CUBE_SURFACE_VERSION = 6
 
 
 def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     """
-    Build a standard 1x1x1 Minecraft cube and attach stable face normal/local UV fields.
+    Build a standard 1x1x1 Minecraft cube and attach stable face normal, LocalFaceID, and local UV fields.
     Outputs:
-        - Geometry: Mesh with 'CubeFaceNorm' on FACE domain and 'LocalUV' on CORNER domain.
+        - Geometry: Mesh with 'CubeFaceNorm' and 'LocalFaceID' on FACE domain and 'LocalUV' on CORNER domain.
     """
     tree, needs_build = ensure_gn_group(GROUP_NAME_CUBE_SURFACE, CUBE_SURFACE_VERSION)
     if not needs_build:
@@ -39,7 +39,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     links.new(cube.outputs["Mesh"], store_normal.inputs["Geometry"])
     links.new(normal.outputs["Normal"], store_normal.inputs["Value"])
 
-    # 3. Position and Face Normal Deconstruction for 6-Face Local UV calculation
+    # 3. Position and Face Normal Deconstruction for 6-Face LocalFaceID and Local UV calculation
     position = nodes.new("GeometryNodeInputPosition")
     position.location = (-650, 480)
     separate_pos = nodes.new("ShaderNodeSeparateXYZ")
@@ -69,6 +69,34 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     east = compare("X", "GREATER_THAN", 200)
     west = compare("X", "LESS_THAN", 100)
     north = compare("Y", "GREATER_THAN", 0)
+
+    # LocalFaceID integer mapping:
+    # 0: Top (+Z), 1: Bottom (-Z), 2: North (+Y), 3: South (-Y), 4: East (+X), 5: West (-X)
+    def make_int_switch(compare_node, false_val: int, true_val: int, x: float, y: float, false_socket=None):
+        sw = nodes.new("GeometryNodeSwitch")
+        sw.input_type = "INT"
+        sw.location = (x, y)
+        links.new(compare_node.outputs["Result"], sw.inputs["Switch"])
+        if false_socket is not None:
+            links.new(false_socket, sw.inputs["False"])
+        else:
+            sw.inputs["False"].default_value = false_val
+        sw.inputs["True"].default_value = true_val
+        return sw.outputs["Output"]
+
+    # Chain switches for Face ID: default 3 (South) -> 2 (North) -> 4 (East) -> 5 (West) -> 1 (Bottom) -> 0 (Top)
+    fid_north = make_int_switch(north, 3, 2, -60, -500)
+    fid_east = make_int_switch(east, 0, 4, 100, -500, false_socket=fid_north)
+    fid_west = make_int_switch(west, 0, 5, 260, -500, false_socket=fid_east)
+    fid_bottom = make_int_switch(bottom, 0, 1, 420, -500, false_socket=fid_west)
+    fid_final = make_int_switch(top, 0, 0, 580, -500, false_socket=fid_bottom)
+
+    store_face_id = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_face_id.data_type, store_face_id.domain = "INT", "FACE"
+    store_face_id.inputs["Name"].default_value = "LocalFaceID"
+    store_face_id.location = (-260, 0)
+    links.new(store_normal.outputs["Geometry"], store_face_id.inputs["Geometry"])
+    links.new(fid_final, store_face_id.inputs["Value"])
 
     def offset(axis: str, operation: str, y: float):
         node = nodes.new("ShaderNodeMath")
@@ -113,7 +141,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     store_uv.data_type, store_uv.domain = "FLOAT_VECTOR", "CORNER"
     store_uv.inputs["Name"].default_value = "LocalUV"
     store_uv.location = (660, 0)
-    links.new(store_normal.outputs["Geometry"], store_uv.inputs["Geometry"])
+    links.new(store_face_id.outputs["Geometry"], store_uv.inputs["Geometry"])
     links.new(combine.outputs["Vector"], store_uv.inputs["Value"])
 
     # 5. Output

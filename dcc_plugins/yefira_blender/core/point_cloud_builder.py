@@ -418,20 +418,14 @@ def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = Fal
         north = inside if props.get("north") == "false" else skin
         return [east, west, top, bottom, south, north]
 
-    # Axis Blocks
+    # Axis Blocks (Local Base: Top/Bottom=Top/End texture, Sides=Side/Bark texture)
     is_axis_block = "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
     if is_axis_block:
-        axis = props.get("axis", "y")
         top_tex = get_val(f"{name}_top") or get_val(f"{name}_end") or get_val(name)
         side_tex = get_val(f"{name}_side") or get_val(name) or top_tex
         top_tex = top_tex or side_tex or default
         side_tex = side_tex or top_tex
-        if axis == "x":
-            return [top_tex, top_tex, side_tex, side_tex, side_tex, side_tex]
-        elif axis == "z":
-            return [side_tex, side_tex, side_tex, side_tex, top_tex, top_tex]
-        else:
-            return [side_tex, side_tex, top_tex, top_tex, side_tex, side_tex]
+        return [side_tex, side_tex, top_tex, top_tex, side_tex, side_tex]
 
     # Redstone Lamp
     if name == "redstone_lamp":

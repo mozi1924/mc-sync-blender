@@ -353,7 +353,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     facing = props.get("facing", "north")
     axis = props.get("axis", "y")
 
-    if name in ("piston", "sticky_piston", "piston_head", "barrel"):
+    if name in ("piston", "sticky_piston", "piston_head", "barrel", "command_block", "chain_command_block", "repeating_command_block"):
         # Vertical-base blocks (Base template naturally points UP at +Z in Blender)
         if facing == "up":
             rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
@@ -367,14 +367,16 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
             rot_x, rot_y, rot_z = 0.0, math.radians(-90), 0.0
         elif facing == "east":
             rot_x, rot_y, rot_z = 0.0, math.radians(90), 0.0
-    elif "axis" in props:
+    elif "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block")):
         # Axis-aligned blocks (Logs, Pillars, Basalt, Hay, Bone)
         if axis == "x":
             rot_y = math.radians(90)
         elif axis == "z":
-            rot_x = math.radians(90)
+            rot_x = math.radians(-90)
+        else:
+            rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
     else:
-        # Standard horizontal-base blocks (Base template points NORTH at +Y in Blender: command_block, furnace, dispenser, dropper, observer, etc.)
+        # Standard horizontal-base blocks (Base template points NORTH at +Y in Blender: furnace, dispenser, dropper, observer, etc.)
         if facing == "north":
             rot_z = 0.0
         elif facing == "south":
