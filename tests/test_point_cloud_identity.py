@@ -46,7 +46,7 @@ class TestPointCloudIdentity(unittest.TestCase):
 
         result = update_world_point_cloud(bpy.context, storage, filter_air=True)
         self.assertEqual(result.point_count, 2)
-        attr = result.world_obj.data.attributes["mc_block_key"]
+        attr = result.world_obj.data.attributes["yefira_block_key"]
         self.assertEqual(attr.domain, "POINT")
         self.assertEqual({entry.value.decode("utf-8") for entry in attr.data}, {"-1,10,3", "0,10,3"})
 
@@ -55,7 +55,7 @@ class TestPointCloudIdentity(unittest.TestCase):
         # the MC coordinate, not a transient point index.
         self.assertTrue(storage.apply_delta_update(-1, 10, 3, [(-1, 10, 3, "minecraft:air")]))
         result = update_world_point_cloud(bpy.context, storage, filter_air=True)
-        attr = result.world_obj.data.attributes["mc_block_key"]
+        attr = result.world_obj.data.attributes["yefira_block_key"]
         self.assertEqual(result.point_count, 1)
         self.assertEqual(attr.data[0].value.decode("utf-8"), "0,10,3")
 
@@ -80,7 +80,7 @@ class TestPointCloudIdentity(unittest.TestCase):
             block_face_texture_lut={"spruce_door_bottom": [961] * 6, "spruce_door_top": [962] * 6},
         )
         mesh = result.world_obj.data
-        states = mesh.attributes["block_state"].data
+        states = mesh.attributes["yefira_block_state"].data
         tiles = mesh.attributes["mtk_tile_top"].data
         texture_ids = mesh.attributes["mtk_texture_top"].data
         values = {

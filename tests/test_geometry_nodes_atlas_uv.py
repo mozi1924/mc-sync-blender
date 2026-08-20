@@ -62,7 +62,7 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
         mesh.update()
 
         # Add attributes
-        attr_type = mesh.attributes.new(name="block_type", type="INT", domain="POINT")
+        attr_type = mesh.attributes.new(name="yefira_block_type", type="INT", domain="POINT")
         attr_type.data[0].value = 0
         attr_type.data[1].value = 0
 
@@ -140,7 +140,7 @@ class TestGeometryNodesAtlasUV(unittest.TestCase):
             for node in cube_groups[0].node_tree.nodes
             if node.type == "STORE_NAMED_ATTRIBUTE" and "Name" in node.inputs
         ]
-        self.assertIn("LocalUV", cube_store_names)
+        self.assertIn("yefira_local_uv", cube_store_names)
 
         # 5. Evaluate evaluated dependency graph (ensure no crashes or invalid sockets)
         depsgraph = bpy.context.evaluated_depsgraph_get()

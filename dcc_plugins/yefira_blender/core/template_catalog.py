@@ -8,10 +8,22 @@ from __future__ import annotations
 import bpy
 import logging
 from typing import Optional
+from .attributes import (
+    CUBE_FACE_NORMAL, LEGACY_TEMPLATE_ATTRIBUTE_NAMES, LOCAL_FACE_ID, LOCAL_UV,
+)
 
 logger = logging.getLogger("Yefira")
 
 TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
+
+
+def _template_needs_attribute_migration(mesh: bpy.types.Mesh) -> bool:
+    return (
+        LOCAL_UV not in mesh.attributes
+        or LOCAL_FACE_ID not in mesh.attributes
+        or CUBE_FACE_NORMAL not in mesh.attributes
+        or any(name in mesh.attributes for name in LEGACY_TEMPLATE_ATTRIBUTE_NAMES)
+    )
 
 
 def get_or_create_template_collection(context: bpy.types.Context) -> bpy.types.Collection:
@@ -93,18 +105,22 @@ def get_template_index_map(col: bpy.types.Collection) -> dict[str, int]:
 
 
 def _attach_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = False) -> None:
-    """Attach CubeFaceNorm, LocalFaceID (FACE domain) and LocalUV (CORNER domain) attributes to a template mesh."""
-    norm_attr = mesh.attributes.get("CubeFaceNorm")
+    """Attach Yefira-private face-normal, ID and UV fields to a template mesh."""
+    for name in LEGACY_TEMPLATE_ATTRIBUTE_NAMES:
+        attr = mesh.attributes.get(name)
+        if attr is not None:
+            mesh.attributes.remove(attr)
+    norm_attr = mesh.attributes.get(CUBE_FACE_NORMAL)
     if not norm_attr:
-        norm_attr = mesh.attributes.new(name="CubeFaceNorm", type="FLOAT_VECTOR", domain="FACE")
+        norm_attr = mesh.attributes.new(name=CUBE_FACE_NORMAL, type="FLOAT_VECTOR", domain="FACE")
 
-    fid_attr = mesh.attributes.get("LocalFaceID")
+    fid_attr = mesh.attributes.get(LOCAL_FACE_ID)
     if not fid_attr:
-        fid_attr = mesh.attributes.new(name="LocalFaceID", type="INT", domain="FACE")
+        fid_attr = mesh.attributes.new(name=LOCAL_FACE_ID, type="INT", domain="FACE")
 
-    luv_attr = mesh.attributes.get("LocalUV")
+    luv_attr = mesh.attributes.get(LOCAL_UV)
     if not luv_attr:
-        luv_attr = mesh.attributes.new(name="LocalUV", type="FLOAT_VECTOR", domain="CORNER")
+        luv_attr = mesh.attributes.new(name=LOCAL_UV, type="FLOAT_VECTOR", domain="CORNER")
 
     mesh.update()
 
@@ -182,7 +198,7 @@ def _ensure_template_box(
         _attach_template_attributes(mesh)
         obj = bpy.data.objects.new(name, mesh)
     else:
-        if obj.data and ("LocalUV" not in obj.data.attributes or "LocalFaceID" not in obj.data.attributes):
+        if obj.data and _template_needs_attribute_migration(obj.data):
             _attach_template_attributes(obj.data)
 
     obj.use_fake_user = True
@@ -221,7 +237,7 @@ def _populate_default_templates(col: bpy.types.Collection):
         stair_obj.use_fake_user = True
         if stair_obj.data:
             stair_obj.data.use_fake_user = True
-            if "LocalUV" not in stair_obj.data.attributes or "LocalFaceID" not in stair_obj.data.attributes:
+            if _template_needs_attribute_migration(stair_obj.data):
                 _attach_template_attributes(stair_obj.data)
 
     if stair_obj.name not in col.objects:
@@ -253,7 +269,7 @@ def _populate_default_templates(col: bpy.types.Collection):
         plant_obj.use_fake_user = True
         if plant_obj.data:
             plant_obj.data.use_fake_user = True
-            if "LocalUV" not in plant_obj.data.attributes or "LocalFaceID" not in plant_obj.data.attributes:
+            if _template_needs_attribute_migration(plant_obj.data):
                 _attach_template_attributes(plant_obj.data, is_cross_plant=True)
 
     if stair_obj.name not in col.objects:
@@ -285,7 +301,7 @@ def _populate_default_templates(col: bpy.types.Collection):
         plant_obj.use_fake_user = True
         if plant_obj.data:
             plant_obj.data.use_fake_user = True
-            if "LocalUV" not in plant_obj.data.attributes or "CubeFaceNorm" not in plant_obj.data.attributes:
+            if _template_needs_attribute_migration(plant_obj.data):
                 _attach_template_attributes(plant_obj.data, is_cross_plant=True)
 
     if plant_obj.name not in col.objects:

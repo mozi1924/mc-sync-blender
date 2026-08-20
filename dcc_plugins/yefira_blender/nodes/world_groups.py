@@ -13,13 +13,20 @@ from .groups import (
     GROUP_NAME_CUBE_SURFACE,
     GROUP_NAME_INSTANCE_ATTRIBUTES,
 )
-from .groups.instance_attributes import (
-    FACE_NAMES,
-    FACE_TILE_ATTRIBUTES,
-    FACE_INT_ATTRIBUTES,
+# Attribute names are owned by the central contract, not by the transfer-node
+# implementation.  Keep this module's historical exports for callers that
+# still import them from ``world_groups``.
+from ..core.attributes import (
     ATLAS_FLOAT_ATTRIBUTES,
+    FACE_CHUNK_ATTRIBUTES,
+    FACE_TEXTURE_ATTRIBUTES,
+    FACE_TILE_ATTRIBUTES,
     FACE_TINT_ATTRIBUTES,
+    FACES,
 )
+
+FACE_NAMES = FACES
+FACE_INT_ATTRIBUTES = (*FACE_CHUNK_ATTRIBUTES, *FACE_TEXTURE_ATTRIBUTES)
 
 __all__ = (
     "ensure_socket",

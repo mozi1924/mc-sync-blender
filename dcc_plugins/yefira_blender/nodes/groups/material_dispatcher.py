@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Optional
 import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group, prune_unlinked_nodes
+from ...core.attributes import MTK_ATLAS_CHUNK_ID
 
 GROUP_NAME_MATERIAL_DISPATCHER = "Yefira_Material_Dispatcher"
 MATERIAL_DISPATCHER_VERSION = 1
@@ -71,7 +72,7 @@ def get_or_create_material_dispatcher_group(
     if other_chunk_ids:
         read_chunk_id = nodes.new("GeometryNodeInputNamedAttribute")
         read_chunk_id.data_type = "INT"
-        read_chunk_id.inputs["Name"].default_value = "mtk_atlas_chunk_id"
+        read_chunk_id.inputs["Name"].default_value = MTK_ATLAS_CHUNK_ID
         read_chunk_id.location = (0, -220)
 
         for cid in other_chunk_ids:

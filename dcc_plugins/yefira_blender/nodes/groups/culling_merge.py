@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
+from ...core.attributes import BLOCK_TYPE, MTK_IS_OPAQUE, MTK_MATERIAL_ID
 
 GROUP_NAME_CULLING_MERGE = "Yefira_Culling_And_Merge"
-CULLING_MERGE_VERSION = 1
+CULLING_MERGE_VERSION = 2
 
 
 def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
@@ -97,7 +98,7 @@ def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
     # 6a. Sample block_type (must be 0 = Cube to occlude)
     read_type_in = nodes.new("GeometryNodeInputNamedAttribute")
     read_type_in.data_type = "INT"
-    read_type_in.inputs["Name"].default_value = "block_type"
+    read_type_in.inputs["Name"].default_value = BLOCK_TYPE
     read_type_in.location = (-380, 50)
 
     sample_type = nodes.new("GeometryNodeSampleIndex")
@@ -122,10 +123,10 @@ def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
     links.new(cmp_dist.outputs["Result"], valid_cube_neigh.inputs[0])
     links.new(cmp_neigh_cube.outputs["Result"], valid_cube_neigh.inputs[1])
 
-    # 6b. Sample Neighbor is_opaque
+    # 6b. Sample neighbor opacity from the MTK interchange field.
     read_op_in = nodes.new("GeometryNodeInputNamedAttribute")
     read_op_in.data_type = "INT"
-    read_op_in.inputs["Name"].default_value = "is_opaque"
+    read_op_in.inputs["Name"].default_value = MTK_IS_OPAQUE
     read_op_in.location = (-380, -100)
 
     sample_neigh_op = nodes.new("GeometryNodeSampleIndex")
@@ -146,7 +147,7 @@ def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
     # 6c. Sample Neighbor mtk_material_id
     read_mat_in = nodes.new("GeometryNodeInputNamedAttribute")
     read_mat_in.data_type = "INT"
-    read_mat_in.inputs["Name"].default_value = "mtk_material_id"
+    read_mat_in.inputs["Name"].default_value = MTK_MATERIAL_ID
     read_mat_in.location = (-380, -250)
 
     sample_neigh_mat = nodes.new("GeometryNodeSampleIndex")
@@ -160,7 +161,7 @@ def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
     # 7. Read Self Attributes on Realized Mesh Face
     read_self_op = nodes.new("GeometryNodeInputNamedAttribute")
     read_self_op.data_type = "INT"
-    read_self_op.inputs["Name"].default_value = "is_opaque"
+    read_self_op.inputs["Name"].default_value = MTK_IS_OPAQUE
     read_self_op.location = (-180, -400)
 
     cmp_self_op = nodes.new("FunctionNodeCompare")
@@ -172,7 +173,7 @@ def get_or_create_culling_merge_group() -> bpy.types.GeometryNodeTree:
 
     read_self_mat = nodes.new("GeometryNodeInputNamedAttribute")
     read_self_mat.data_type = "INT"
-    read_self_mat.inputs["Name"].default_value = "mtk_material_id"
+    read_self_mat.inputs["Name"].default_value = MTK_MATERIAL_ID
     read_self_mat.location = (-180, -550)
 
     cmp_same_mat = nodes.new("FunctionNodeCompare")

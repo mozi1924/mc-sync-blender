@@ -50,7 +50,7 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
         mesh = res.world_obj.data
         self.assertEqual(len(mesh.vertices), 27)
 
-        mc_pos_attr = mesh.attributes["mc_pos"]
+        mc_pos_attr = mesh.attributes["yefira_mc_position"]
 
         # Check vertex mapping
         for i, vert in enumerate(mesh.vertices):
@@ -85,11 +85,11 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
         self.assertEqual(len(eval_mesh.polygons), 6)
         self.assertEqual(len(eval_mesh.loops), 24)
 
-        self.assertIn("LocalUV", eval_mesh.attributes)
-        self.assertIn("CubeFaceNorm", eval_mesh.attributes)
+        self.assertIn("yefira_local_uv", eval_mesh.attributes)
+        self.assertIn("yefira_cube_face_normal", eval_mesh.attributes)
 
-        local_uv = eval_mesh.attributes["LocalUV"]
-        cube_norm = eval_mesh.attributes["CubeFaceNorm"]
+        local_uv = eval_mesh.attributes["yefira_local_uv"]
+        cube_norm = eval_mesh.attributes["yefira_cube_face_normal"]
 
         # Check each polygon
         for poly in eval_mesh.polygons:
@@ -120,8 +120,8 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
         eval_obj = obj.evaluated_get(depsgraph)
         eval_mesh = eval_obj.to_mesh()
 
-        local_uv = eval_mesh.attributes["LocalUV"]
-        cube_norm = eval_mesh.attributes["CubeFaceNorm"]
+        local_uv = eval_mesh.attributes["yefira_local_uv"]
+        cube_norm = eval_mesh.attributes["yefira_cube_face_normal"]
 
         for poly in eval_mesh.polygons:
             fn = cube_norm.data[poly.index].vector
@@ -244,7 +244,7 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
                 range(len(result.world_obj.data.vertices)),
                 key=lambda index: (result.world_obj.data.vertices[index].co - poly_center).length_squared,
             )
-            rotation = result.world_obj.data.attributes["instance_rotation"].data[point_index].vector
+            rotation = result.world_obj.data.attributes["yefira_instance_rotation"].data[point_index].vector
             local = mathutils.Euler(rotation).to_matrix().inverted() @ poly.normal
             local_key = tuple(int(round(value)) for value in local)
             self.assertEqual(
@@ -263,8 +263,8 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
 
         for obj in col.objects:
             if obj.type == 'MESH' and obj.data:
-                self.assertIn("CubeFaceNorm", obj.data.attributes, f"Template {obj.name} missing CubeFaceNorm")
-                self.assertIn("LocalUV", obj.data.attributes, f"Template {obj.name} missing LocalUV")
+                self.assertIn("yefira_cube_face_normal", obj.data.attributes, f"Template {obj.name} missing yefira_cube_face_normal")
+                self.assertIn("yefira_local_uv", obj.data.attributes, f"Template {obj.name} missing yefira_local_uv")
 
 
 if __name__ == "__main__":

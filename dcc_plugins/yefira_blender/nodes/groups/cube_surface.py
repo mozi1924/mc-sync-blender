@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
+from ...core.attributes import CUBE_FACE_NORMAL, LOCAL_FACE_ID, LOCAL_UV
 
 GROUP_NAME_CUBE_SURFACE = "Yefira_Cube_Surface"
-CUBE_SURFACE_VERSION = 6
+CUBE_SURFACE_VERSION = 7
 
 
 def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     """
-    Build a standard 1x1x1 Minecraft cube and attach stable face normal, LocalFaceID, and local UV fields.
-    Outputs:
-        - Geometry: Mesh with 'CubeFaceNorm' and 'LocalFaceID' on FACE domain and 'LocalUV' on CORNER domain.
+    Build a standard 1x1x1 Minecraft cube and attach Yefira-private face fields.
     """
     tree, needs_build = ensure_gn_group(GROUP_NAME_CUBE_SURFACE, CUBE_SURFACE_VERSION)
     if not needs_build:
@@ -34,7 +33,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     store_normal = nodes.new("GeometryNodeStoreNamedAttribute")
     store_normal.data_type = "FLOAT_VECTOR"
     store_normal.domain = "FACE"
-    store_normal.inputs["Name"].default_value = "CubeFaceNorm"
+    store_normal.inputs["Name"].default_value = CUBE_FACE_NORMAL
     store_normal.location = (-460, 0)
     links.new(cube.outputs["Mesh"], store_normal.inputs["Geometry"])
     links.new(normal.outputs["Normal"], store_normal.inputs["Value"])
@@ -49,7 +48,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     # Read Face Normal stored on FACE domain (interpolated to CORNER cleanly)
     read_face_norm = nodes.new("GeometryNodeInputNamedAttribute")
     read_face_norm.data_type = "FLOAT_VECTOR"
-    read_face_norm.inputs["Name"].default_value = "CubeFaceNorm"
+    read_face_norm.inputs["Name"].default_value = CUBE_FACE_NORMAL
     read_face_norm.location = (-650, 250)
 
     separate_normal = nodes.new("ShaderNodeSeparateXYZ")
@@ -93,7 +92,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
 
     store_face_id = nodes.new("GeometryNodeStoreNamedAttribute")
     store_face_id.data_type, store_face_id.domain = "INT", "FACE"
-    store_face_id.inputs["Name"].default_value = "LocalFaceID"
+    store_face_id.inputs["Name"].default_value = LOCAL_FACE_ID
     store_face_id.location = (-260, 0)
     links.new(store_normal.outputs["Geometry"], store_face_id.inputs["Geometry"])
     links.new(fid_final, store_face_id.inputs["Value"])
@@ -139,7 +138,7 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
     # 4. Store LocalUV on CORNER domain
     store_uv = nodes.new("GeometryNodeStoreNamedAttribute")
     store_uv.data_type, store_uv.domain = "FLOAT_VECTOR", "CORNER"
-    store_uv.inputs["Name"].default_value = "LocalUV"
+    store_uv.inputs["Name"].default_value = LOCAL_UV
     store_uv.location = (660, 0)
     links.new(store_face_id.outputs["Geometry"], store_uv.inputs["Geometry"])
     links.new(combine.outputs["Vector"], store_uv.inputs["Value"])

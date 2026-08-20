@@ -21,6 +21,15 @@ from ..materials.atlas_integration import (
     get_or_create_atlas_material,
     setup_material_slots_for_object,
 )
+from ..core.attributes import (
+    BLOCK_CENTER, BLOCK_TYPE, INSTANCE_ROTATION, LOCAL_FACE_ID, LOCAL_UV,
+    MTK_ANIM_ATLAS_HEIGHT, MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT,
+    MTK_ANIM_FRAME_SIZE, MTK_ANIM_FRAME_WIDTH, MTK_ANIM_TIMING,
+    MTK_ATLAS_CHUNK_ID, MTK_ATLAS_HEIGHT,
+    MTK_ATLAS_TEXTURE_ID, MTK_BIOME_TINT_DATA, MTK_TILE_SIZE,
+    MTK_TILES_PER_ROW, MTK_UV_ROTATION, MTK_UV_TILING_TRANSFORM,
+    TEMPLATE_INDEX, UV_MAP, face_attribute,
+)
 from .core import ensure_socket, prune_unlinked_nodes
 from .groups import (
     get_or_create_atlas_uv_calculator_group,
@@ -37,8 +46,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 18: Upright Top/Bottom face UV orientation & LocalFaceID dispatch.
-WORLD_TREE_SCHEMA_VERSION = 18
+# Schema version 19: central attribute contract and Yefira-private face fields.
+WORLD_TREE_SCHEMA_VERSION = 19
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -161,17 +170,17 @@ def _build_tree_nodes_and_links(
     # 3. Named Attribute Readers from Point Cloud
     attr_type = nodes.new("GeometryNodeInputNamedAttribute")
     attr_type.data_type = "INT"
-    attr_type.inputs["Name"].default_value = "block_type"
+    attr_type.inputs["Name"].default_value = BLOCK_TYPE
     attr_type.location = (-800, -100)
 
     attr_idx = nodes.new("GeometryNodeInputNamedAttribute")
     attr_idx.data_type = "INT"
-    attr_idx.inputs["Name"].default_value = "instance_index"
+    attr_idx.inputs["Name"].default_value = TEMPLATE_INDEX
     attr_idx.location = (-800, -250)
 
     attr_rot = nodes.new("GeometryNodeInputNamedAttribute")
     attr_rot.data_type = "FLOAT_VECTOR"
-    attr_rot.inputs["Name"].default_value = "instance_rotation"
+    attr_rot.inputs["Name"].default_value = INSTANCE_ROTATION
     attr_rot.location = (-800, -400)
 
     # 4. Compare block_type == 0 (Cubes)
@@ -245,7 +254,7 @@ def _build_tree_nodes_and_links(
     # Read Realized LocalFaceID (INT on FACE domain)
     read_face_id = nodes.new("GeometryNodeInputNamedAttribute")
     read_face_id.data_type = "INT"
-    read_face_id.inputs["Name"].default_value = "LocalFaceID"
+    read_face_id.inputs["Name"].default_value = LOCAL_FACE_ID
     read_face_id.location = (380, -100)
 
     # --- SUBGROUP: SELECT FACE TILE (VECTOR) ---
@@ -256,12 +265,12 @@ def _build_tree_nodes_and_links(
     links.new(read_face_id.outputs["Attribute"], call_tile_selector.inputs["Face ID"])
 
     for index, (socket_name, attr_name) in enumerate((
-        ("Top (+Z)", "mtk_tile_top"),
-        ("Bottom (-Z)", "mtk_tile_bottom"),
-        ("East (+X)", "mtk_tile_east"),
-        ("West (-X)", "mtk_tile_west"),
-        ("North (+Y)", "mtk_tile_north"),
-        ("South (-Y)", "mtk_tile_south"),
+        ("Top (+Z)", face_attribute("tile", "top")),
+        ("Bottom (-Z)", face_attribute("tile", "bottom")),
+        ("East (+X)", face_attribute("tile", "east")),
+        ("West (-X)", face_attribute("tile", "west")),
+        ("North (+Y)", face_attribute("tile", "north")),
+        ("South (-Y)", face_attribute("tile", "south")),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_VECTOR"
@@ -286,7 +295,7 @@ def _build_tree_nodes_and_links(
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "INT"
-        reader.inputs["Name"].default_value = f"mtk_chunk_{face}"
+        reader.inputs["Name"].default_value = face_attribute("chunk", face)
         reader.location = (560, 320 - index * 40)
         links.new(reader.outputs["Attribute"], call_chunk_selector.inputs[socket_name])
 
@@ -299,7 +308,7 @@ def _build_tree_nodes_and_links(
 
     read_local_uv = nodes.new("GeometryNodeInputNamedAttribute")
     read_local_uv.data_type = "FLOAT_VECTOR"
-    read_local_uv.inputs["Name"].default_value = "LocalUV"
+    read_local_uv.inputs["Name"].default_value = LOCAL_UV
     read_local_uv.location = (560, 100)
 
     # Calculate upright world-aligned UV for Top (+Z) and Bottom (-Z) faces
@@ -308,7 +317,7 @@ def _build_tree_nodes_and_links(
 
     read_block_center = nodes.new("GeometryNodeInputNamedAttribute")
     read_block_center.data_type = "FLOAT_VECTOR"
-    read_block_center.inputs["Name"].default_value = "block_center"
+    read_block_center.inputs["Name"].default_value = BLOCK_CENTER
     read_block_center.location = (380, -380)
 
     sub_pos = nodes.new("ShaderNodeVectorMath")
@@ -385,13 +394,13 @@ def _build_tree_nodes_and_links(
     links.new(call_chunk_selector.outputs["Selected"], call_uv_calc.inputs["Chunk ID"])
 
     for index, (socket_name, attr_name) in enumerate((
-        ("Tiles Per Row", "mtk_tiles_per_row"),
-        ("Tile Size", "mtk_tile_size"),
-        ("Atlas Height", "mtk_atlas_height"),
-        ("Anim Atlas Width", "mtk_anim_atlas_width"),
-        ("Anim Atlas Height", "mtk_anim_atlas_height"),
-        ("Anim Frame Width", "mtk_anim_frame_width"),
-        ("Anim Frame Height", "mtk_anim_frame_height"),
+        ("Tiles Per Row", MTK_TILES_PER_ROW),
+        ("Tile Size", MTK_TILE_SIZE),
+        ("Atlas Height", MTK_ATLAS_HEIGHT),
+        ("Anim Atlas Width", MTK_ANIM_ATLAS_WIDTH),
+        ("Anim Atlas Height", MTK_ANIM_ATLAS_HEIGHT),
+        ("Anim Frame Width", MTK_ANIM_FRAME_WIDTH),
+        ("Anim Frame Height", MTK_ANIM_FRAME_HEIGHT),
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT"
@@ -403,7 +412,7 @@ def _build_tree_nodes_and_links(
     store_uv_final = nodes.new("GeometryNodeStoreNamedAttribute")
     store_uv_final.data_type = "FLOAT_VECTOR"
     store_uv_final.domain = "CORNER"
-    store_uv_final.inputs["Name"].default_value = "UVMap"
+    store_uv_final.inputs["Name"].default_value = UV_MAP
     store_uv_final.location = (1180, 100)
     links.new(realize_node.outputs["Geometry"], store_uv_final.inputs["Geometry"])
     links.new(call_uv_calc.outputs["Atlas UV"], store_uv_final.inputs["Value"])
@@ -412,7 +421,7 @@ def _build_tree_nodes_and_links(
     store_tiling = nodes.new("GeometryNodeStoreNamedAttribute")
     store_tiling.data_type = "FLOAT_COLOR"
     store_tiling.domain = "CORNER"
-    store_tiling.inputs["Name"].default_value = "mtk_uv_tiling_transform"
+    store_tiling.inputs["Name"].default_value = MTK_UV_TILING_TRANSFORM
     store_tiling.inputs["Value"].default_value = (1.0, 1.0, 0.0, 0.0)
     store_tiling.location = (1360, 100)
     links.new(store_uv_final.outputs["Geometry"], store_tiling.inputs["Geometry"])
@@ -421,7 +430,7 @@ def _build_tree_nodes_and_links(
     store_rot = nodes.new("GeometryNodeStoreNamedAttribute")
     store_rot.data_type = "FLOAT"
     store_rot.domain = "CORNER"
-    store_rot.inputs["Name"].default_value = "mtk_uv_rotation"
+    store_rot.inputs["Name"].default_value = MTK_UV_ROTATION
     store_rot.inputs["Value"].default_value = 0.0
     store_rot.location = (1540, 100)
     links.new(store_tiling.outputs["Geometry"], store_rot.inputs["Geometry"])
@@ -443,14 +452,14 @@ def _build_tree_nodes_and_links(
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
-        reader.inputs["Name"].default_value = f"mtk_tint_data_{face}"
+        reader.inputs["Name"].default_value = face_attribute("tint_data", face)
         reader.location = (560, -30 - index * 40)
         links.new(reader.outputs["Attribute"], call_tint_selector.inputs[socket_name])
 
     store_tint_data = nodes.new("GeometryNodeStoreNamedAttribute")
     store_tint_data.data_type = "FLOAT_COLOR"
     store_tint_data.domain = "FACE"
-    store_tint_data.inputs["Name"].default_value = "mtk_biome_tint_data"
+    store_tint_data.inputs["Name"].default_value = MTK_BIOME_TINT_DATA
     store_tint_data.location = (1720, 100)
     links.new(store_rot.outputs["Geometry"], store_tint_data.inputs["Geometry"])
     links.new(call_tint_selector.outputs["Selected"], store_tint_data.inputs["Value"])
@@ -459,7 +468,7 @@ def _build_tree_nodes_and_links(
     store_chunk_id = nodes.new("GeometryNodeStoreNamedAttribute")
     store_chunk_id.data_type = "INT"
     store_chunk_id.domain = "FACE"
-    store_chunk_id.inputs["Name"].default_value = "mtk_atlas_chunk_id"
+    store_chunk_id.inputs["Name"].default_value = MTK_ATLAS_CHUNK_ID
     store_chunk_id.location = (1900, 100)
     links.new(store_tint_data.outputs["Geometry"], store_chunk_id.inputs["Geometry"])
     links.new(call_chunk_selector.outputs["Selected"], store_chunk_id.inputs["Value"])
@@ -481,14 +490,14 @@ def _build_tree_nodes_and_links(
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "INT"
-        reader.inputs["Name"].default_value = f"mtk_texture_{face}"
+        reader.inputs["Name"].default_value = face_attribute("texture", face)
         reader.location = (560, -530 - index * 40)
         links.new(reader.outputs["Attribute"], call_texture_selector.inputs[socket_name])
 
     store_texture_id = nodes.new("GeometryNodeStoreNamedAttribute")
     store_texture_id.data_type = "INT"
     store_texture_id.domain = "FACE"
-    store_texture_id.inputs["Name"].default_value = "mtk_atlas_texture_id"
+    store_texture_id.inputs["Name"].default_value = MTK_ATLAS_TEXTURE_ID
     store_texture_id.location = (2080, 100)
     links.new(store_chunk_id.outputs["Geometry"], store_texture_id.inputs["Geometry"])
     links.new(call_texture_selector.outputs["Selected"], store_texture_id.inputs["Value"])
@@ -510,14 +519,14 @@ def _build_tree_nodes_and_links(
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
-        reader.inputs["Name"].default_value = f"mtk_anim_timing_{face}"
+        reader.inputs["Name"].default_value = face_attribute("anim_timing", face)
         reader.location = (560, -780 - index * 40)
         links.new(reader.outputs["Attribute"], call_timing_selector.inputs[socket_name])
 
     store_timing = nodes.new("GeometryNodeStoreNamedAttribute")
     store_timing.data_type = "FLOAT_COLOR"
     store_timing.domain = "FACE"
-    store_timing.inputs["Name"].default_value = "mtk_anim_timing"
+    store_timing.inputs["Name"].default_value = MTK_ANIM_TIMING
     store_timing.location = (2260, 100)
     links.new(store_texture_id.outputs["Geometry"], store_timing.inputs["Geometry"])
     links.new(call_timing_selector.outputs["Selected"], store_timing.inputs["Value"])
@@ -539,14 +548,14 @@ def _build_tree_nodes_and_links(
     )):
         reader = nodes.new("GeometryNodeInputNamedAttribute")
         reader.data_type = "FLOAT_COLOR"
-        reader.inputs["Name"].default_value = f"mtk_anim_frame_size_{face}"
+        reader.inputs["Name"].default_value = face_attribute("anim_frame_size", face)
         reader.location = (560, -1030 - index * 40)
         links.new(reader.outputs["Attribute"], call_size_selector.inputs[socket_name])
 
     store_size = nodes.new("GeometryNodeStoreNamedAttribute")
     store_size.data_type = "FLOAT_COLOR"
     store_size.domain = "FACE"
-    store_size.inputs["Name"].default_value = "mtk_anim_frame_size"
+    store_size.inputs["Name"].default_value = MTK_ANIM_FRAME_SIZE
     store_size.location = (2440, 100)
     links.new(store_timing.outputs["Geometry"], store_size.inputs["Geometry"])
     links.new(call_size_selector.outputs["Selected"], store_size.inputs["Value"])

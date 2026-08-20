@@ -11,6 +11,15 @@ from typing import NamedTuple, Optional
 from .storage import VoxelStorage, block_key
 from .block_classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lookup_keys, _atlas_lookup_keys
 from .template_catalog import get_or_create_template_collection, get_template_index_map
+from .attributes import (
+    BLOCK_CENTER, BLOCK_KEY, BLOCK_STATE, BLOCK_TYPE, CONTRACT_VERSION,
+    FACES, INSTANCE_ROTATION, MC_POSITION, MTK_ANIM_ATLAS_HEIGHT,
+    MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT, MTK_ANIM_FRAME_WIDTH,
+    MTK_ATLAS_HEIGHT, MTK_ATLAS_WIDTH, MTK_BIOME_TINT_COLOR,
+    MTK_BIOME_TINT_DATA, MTK_EMISSIVE, MTK_IS_OPAQUE, MTK_MATERIAL_ID,
+    MTK_TILE_SIZE, MTK_TILES_PER_ROW, TEMPLATE_INDEX, clear_point_attributes,
+    face_attribute,
+)
 
 logger = logging.getLogger("Yefira")
 
@@ -114,7 +123,6 @@ def update_world_point_cloud(
     block_types = []
     instance_indices = []
     rotations = []
-    offsets = []
     material_ids = []
     is_opaque_list = []
     emissive_list = []
@@ -168,7 +176,6 @@ def update_world_point_cloud(
         instance_indices.append(tmpl_idx)
 
         rotations.append(parsed.rot_euler)
-        offsets.append(parsed.offset)
         tint_colors.append(parsed.tint_color)
         tint_datas.append(parsed.tint_data)
         mc_positions.append((float(abs_x), float(abs_y), float(abs_z)))
@@ -232,53 +239,49 @@ def update_world_point_cloud(
     mesh.clear_geometry()
     mesh.from_pydata(vertices, [], [])
     mesh.update()
+    # Geometry clearing does not remove Blender attributes.  Clear the whole
+    # declared source schema so a rebuild cannot leave dead fields behind.
+    clear_point_attributes(mesh)
+    mesh["yefira:attribute_contract"] = CONTRACT_VERSION
 
     num_pts = len(vertices)
     if num_pts > 0:
         # 2. Fast Attribute Writes
-        _write_int_attribute(mesh, "block_type", block_types)
-        _write_int_attribute(mesh, "instance_index", instance_indices)
-        _write_int_attribute(mesh, "mtk_material_id", material_ids)
-        _write_int_attribute(mesh, "is_opaque", is_opaque_list)
-        _write_int_attribute(mesh, "mtk_is_opaque", is_opaque_list)
-        _write_int_attribute(mesh, "mtk_emissive", emissive_list)
+        _write_int_attribute(mesh, BLOCK_TYPE, block_types)
+        _write_int_attribute(mesh, TEMPLATE_INDEX, instance_indices)
+        _write_int_attribute(mesh, MTK_MATERIAL_ID, material_ids)
+        _write_int_attribute(mesh, MTK_IS_OPAQUE, is_opaque_list)
+        _write_int_attribute(mesh, MTK_EMISSIVE, emissive_list)
         # Atlas metadata is emitted as geometry attributes rather than
         # Geometry Nodes modifier inputs.  This makes a material replacement
         # deterministic and removes user-adjustable sync state.
-        _write_float_attribute(mesh, "mtk_atlas_width", [float(atlas_width)] * num_pts)
-        _write_float_attribute(mesh, "mtk_atlas_height", [float(atlas_height)] * num_pts)
-        _write_float_attribute(mesh, "mtk_tile_size", [float(tile_size)] * num_pts)
-        _write_float_attribute(mesh, "mtk_tiles_per_row", [float(tiles_per_row)] * num_pts)
-        _write_float_attribute(mesh, "mtk_anim_atlas_width", [float(anim_atlas_width)] * num_pts)
-        _write_float_attribute(mesh, "mtk_anim_atlas_height", [float(anim_atlas_height)] * num_pts)
-        _write_float_attribute(mesh, "mtk_anim_frame_width", [float(anim_frame_width)] * num_pts)
-        _write_float_attribute(mesh, "mtk_anim_frame_height", [float(anim_frame_height)] * num_pts)
-        _write_float_vector_attribute(mesh, "instance_rotation", rotations)
-        _write_float_vector_attribute(mesh, "instance_offset", offsets)
-        _write_float_vector_attribute(mesh, "block_center", vertices)
-        _write_float_vector_attribute(mesh, "mc_pos", mc_positions)
-        _write_float_vector_attribute(mesh, "mtk_tile_east", tile_east)
-        _write_float_vector_attribute(mesh, "mtk_tile_west", tile_west)
-        _write_float_vector_attribute(mesh, "mtk_tile_top", tile_top)
-        _write_float_vector_attribute(mesh, "mtk_tile_bottom", tile_bottom)
-        _write_float_vector_attribute(mesh, "mtk_tile_south", tile_south)
-        _write_float_vector_attribute(mesh, "mtk_tile_north", tile_north)
-        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_chunks):
-            _write_int_attribute(mesh, f"mtk_chunk_{name}", values)
-        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_textures):
-            _write_int_attribute(mesh, f"mtk_texture_{name}", values)
-        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_tint_data):
-            _write_float_color_attribute(mesh, f"mtk_tint_data_{name}", values)
-        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_anim_timing):
-            _write_float_color_attribute(mesh, f"mtk_anim_timing_{name}", values)
-        for name, values in zip(("east", "west", "top", "bottom", "south", "north"), face_anim_frame_size):
-            _write_float_color_attribute(mesh, f"mtk_anim_frame_size_{name}", values)
-        _write_float_color_attribute(mesh, "mtk_biome_tint_color", tint_colors)
-        _write_float_color_attribute(mesh, "mtk_biome_tint_data", tint_datas)
-        _write_float_color_attribute(mesh, "mtk_uv_tiling_transform", [(1.0, 1.0, 0.0, 0.0)] * num_pts)
-        _write_float_attribute(mesh, "mtk_uv_rotation", [0.0] * num_pts)
-        _write_string_attribute(mesh, "block_state", block_states)
-        _write_string_attribute(mesh, "mc_block_key", block_keys)
+        _write_float_attribute(mesh, MTK_ATLAS_WIDTH, [float(atlas_width)] * num_pts)
+        _write_float_attribute(mesh, MTK_ATLAS_HEIGHT, [float(atlas_height)] * num_pts)
+        _write_float_attribute(mesh, MTK_TILE_SIZE, [float(tile_size)] * num_pts)
+        _write_float_attribute(mesh, MTK_TILES_PER_ROW, [float(tiles_per_row)] * num_pts)
+        _write_float_attribute(mesh, MTK_ANIM_ATLAS_WIDTH, [float(anim_atlas_width)] * num_pts)
+        _write_float_attribute(mesh, MTK_ANIM_ATLAS_HEIGHT, [float(anim_atlas_height)] * num_pts)
+        _write_float_attribute(mesh, MTK_ANIM_FRAME_WIDTH, [float(anim_frame_width)] * num_pts)
+        _write_float_attribute(mesh, MTK_ANIM_FRAME_HEIGHT, [float(anim_frame_height)] * num_pts)
+        _write_float_vector_attribute(mesh, INSTANCE_ROTATION, rotations)
+        _write_float_vector_attribute(mesh, BLOCK_CENTER, vertices)
+        _write_float_vector_attribute(mesh, MC_POSITION, mc_positions)
+        for face, values in zip(FACES, (tile_east, tile_west, tile_top, tile_bottom, tile_south, tile_north)):
+            _write_float_vector_attribute(mesh, face_attribute("tile", face), values)
+        for face, values in zip(FACES, face_chunks):
+            _write_int_attribute(mesh, face_attribute("chunk", face), values)
+        for face, values in zip(FACES, face_textures):
+            _write_int_attribute(mesh, face_attribute("texture", face), values)
+        for face, values in zip(FACES, face_tint_data):
+            _write_float_color_attribute(mesh, face_attribute("tint_data", face), values)
+        for face, values in zip(FACES, face_anim_timing):
+            _write_float_color_attribute(mesh, face_attribute("anim_timing", face), values)
+        for face, values in zip(FACES, face_anim_frame_size):
+            _write_float_color_attribute(mesh, face_attribute("anim_frame_size", face), values)
+        _write_float_color_attribute(mesh, MTK_BIOME_TINT_COLOR, tint_colors)
+        _write_float_color_attribute(mesh, MTK_BIOME_TINT_DATA, tint_datas)
+        _write_string_attribute(mesh, BLOCK_STATE, block_states)
+        _write_string_attribute(mesh, BLOCK_KEY, block_keys)
 
     return PointCloudBuildResult(
         world_obj=obj,
