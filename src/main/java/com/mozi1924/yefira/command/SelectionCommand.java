@@ -36,7 +36,30 @@ public class SelectionCommand {
                 .executes(SelectionCommand::refreshSnapshot))
             .then(Commands.literal("status")
                 .executes(SelectionCommand::showStatus))
+            .then(Commands.literal("dump_directional_models")
+                .executes(SelectionCommand::dumpDirectionalModels))
         );
+    }
+
+    private static int dumpDirectionalModels(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        java.util.Map<String, com.mozi1924.yefira.encoder.BlockStateModelData> models = com.mozi1924.yefira.encoder.BlockModelExtractor.getAllDirectionalModels();
+        StringBuilder sb = new StringBuilder("{\n");
+        int count = 0;
+        for (java.util.Map.Entry<String, com.mozi1924.yefira.encoder.BlockStateModelData> entry : models.entrySet()) {
+            if (count > 0) sb.append(",\n");
+            sb.append("  \"").append(entry.getKey().replace("\"", "\\\"")).append("\": ").append(entry.getValue().toJson());
+            count++;
+        }
+        sb.append("\n}");
+        try {
+            java.nio.file.Path outPath = java.nio.file.Paths.get("directional_models_dump.json");
+            java.nio.file.Files.writeString(outPath, sb.toString());
+            source.sendSuccess(() -> Component.literal("§a[Yefira] Dumped " + models.size() + " directional models to " + outPath.toAbsolutePath()), true);
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c[Yefira] Failed to dump models: " + e.getMessage()));
+        }
+        return count;
     }
 
     private static int setPos1Current(CommandContext<CommandSourceStack> ctx) {

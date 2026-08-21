@@ -193,35 +193,49 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
         float minV = Math.min(Math.min(nv[0], nv[1]), Math.min(nv[2], nv[3]));
         float maxV = Math.max(Math.max(nv[0], nv[1]), Math.max(nv[2], nv[3]));
 
-        // Calculate UV rotation: Find which face corner (s, t) holds the sprite top-left (minU, minV)
-        int bestIdx = 0;
-        float bestDist = Float.MAX_VALUE;
+        // Calculate UV rotation: Vector from Bottom of texture (minU, maxV) to Top of texture (minU, minV)
+        int idxTL = 0;
+        float distTL = Float.MAX_VALUE;
+        int idxBL = 0;
+        float distBL = Float.MAX_VALUE;
+
         for (int v = 0; v < 4; v++) {
-            float du = nu[v] - minU;
-            float dv = nv[v] - minV;
-            float dist = du * du + dv * dv;
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestIdx = v;
+            float duTL = nu[v] - minU;
+            float dvTL = nv[v] - minV;
+            float dTL = duTL * duTL + dvTL * dvTL;
+            if (dTL < distTL) {
+                distTL = dTL;
+                idxTL = v;
+            }
+
+            float duBL = nu[v] - minU;
+            float dvBL = nv[v] - maxV;
+            float dBL = duBL * duBL + dvBL * dvBL;
+            if (dBL < distBL) {
+                distBL = dBL;
+                idxBL = v;
             }
         }
 
-        float bestS = s[bestIdx];
-        float bestT = t[bestIdx];
+        // Texture UP vector in (s, t) face space
+        float ds = s[idxTL] - s[idxBL];
+        float dt = t[idxTL] - t[idxBL];
 
         float uvRot = 0.0f;
-        if (bestS <= 0.5f && bestT <= 0.5f) {
-            // Top-Left corner -> 0 deg
-            uvRot = 0.0f;
-        } else if (bestS > 0.5f && bestT <= 0.5f) {
-            // Top-Right corner -> 90 deg clockwise
-            uvRot = 90.0f;
-        } else if (bestS > 0.5f && bestT > 0.5f) {
-            // Bottom-Right corner -> 180 deg
-            uvRot = 180.0f;
+        if (Math.abs(ds) > Math.abs(dt)) {
+            // Horizontal dominant
+            if (ds > 0.0f) {
+                uvRot = 90.0f; // Points Right -> 90 deg clockwise
+            } else {
+                uvRot = 270.0f; // Points Left -> 270 deg clockwise
+            }
         } else {
-            // Bottom-Left corner -> 270 deg clockwise
-            uvRot = 270.0f;
+            // Vertical dominant
+            if (dt > 0.0f) {
+                uvRot = 180.0f; // Points Down -> 180 deg upside-down
+            } else {
+                uvRot = 0.0f; // Points Up -> 0 deg normal
+            }
         }
 
         return new BlockFaceData(spriteName, uvRot, new float[]{minU, minV, maxU, maxV}, tintIndex);

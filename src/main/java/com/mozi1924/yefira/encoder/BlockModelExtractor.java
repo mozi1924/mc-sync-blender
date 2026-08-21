@@ -30,6 +30,27 @@ public class BlockModelExtractor {
         return CACHE.computeIfAbsent(state, BlockModelExtractor::extractInternal);
     }
 
+    public static Map<String, BlockStateModelData> getAllDirectionalModels() {
+        Map<String, BlockStateModelData> result = new java.util.LinkedHashMap<>();
+        for (net.minecraft.world.level.block.Block block : BuiltInRegistries.BLOCK) {
+            for (BlockState state : block.getStateDefinition().getPossibleStates()) {
+                boolean isDirectional = false;
+                for (Property<?> prop : state.getProperties()) {
+                    String propName = prop.getName();
+                    if (propName.equals("facing") || propName.equals("axis") || propName.equals("orientation") || propName.equals("half") || propName.equals("type") || propName.equals("part")) {
+                        isDirectional = true;
+                        break;
+                    }
+                }
+                if (isDirectional) {
+                    String key = BlockDataEncoder.serializeBlockState(state);
+                    result.put(key, get(state));
+                }
+            }
+        }
+        return result;
+    }
+
     private static BlockStateModelData extractInternal(BlockState state) {
         if (customProvider != null) {
             try {

@@ -100,6 +100,17 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
             if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
                 sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
             }
+        } else if ("DUMP_MODELS".equalsIgnoreCase(message.trim())) {
+            java.util.Map<String, com.mozi1924.yefira.encoder.BlockStateModelData> models = com.mozi1924.yefira.encoder.BlockModelExtractor.getAllDirectionalModels();
+            StringBuilder sb = new StringBuilder("DUMP_MODELS:{\n");
+            int count = 0;
+            for (java.util.Map.Entry<String, com.mozi1924.yefira.encoder.BlockStateModelData> entry : models.entrySet()) {
+                if (count > 0) sb.append(",\n");
+                sb.append("  \"").append(entry.getKey().replace("\"", "\\\"")).append("\": ").append(entry.getValue().toJson());
+                count++;
+            }
+            sb.append("\n}");
+            conn.send(sb.toString());
         }
     }
 
