@@ -7,7 +7,7 @@ from ..core import ensure_gn_group, ensure_socket, finalize_group
 from ...core.attributes import CUBE_FACE_NORMAL, LOCAL_FACE_ID, LOCAL_UV
 
 GROUP_NAME_CUBE_SURFACE = "Yefira_Cube_Surface"
-CUBE_SURFACE_VERSION = 7
+CUBE_SURFACE_VERSION = 8
 
 
 def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
@@ -121,8 +121,8 @@ def get_or_create_cube_surface_group() -> bpy.types.GeometryNodeTree:
         links.new(true_value, node.inputs[3])
         return node.outputs[0]
 
-    # Local V: Default (sides) -> plus_z, Bottom -> plus_y, Top -> plus_y
-    v_side_or_bottom = mix(bottom, plus_z, plus_y, -60, 320)
+    # Local V: Default (sides) -> plus_z, Bottom -> minus_y, Top -> plus_y
+    v_side_or_bottom = mix(bottom, plus_z, minus_y, -60, 320)
     local_v = mix(top, v_side_or_bottom, plus_y, 120, 320)
 
     # Local U: Default (South/Top/Bottom) -> plus_x, North -> minus_x, West -> minus_y, East -> plus_y

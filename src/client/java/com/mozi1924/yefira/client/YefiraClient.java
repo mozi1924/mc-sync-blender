@@ -2,7 +2,9 @@ package com.mozi1924.yefira.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mozi1924.yefira.Yefira;
+import com.mozi1924.yefira.client.model.ClientBlockModelProvider;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
+import com.mozi1924.yefira.encoder.BlockModelExtractor;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionManager;
 import com.mozi1924.yefira.selection.SelectionStorageManager;
@@ -29,6 +31,9 @@ public class YefiraClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		// Register Client Block Model Provider
+		BlockModelExtractor.setProvider(new ClientBlockModelProvider());
+
 		// Register key bindings
 		keyPos1 = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 			"key.yefira.pos1",

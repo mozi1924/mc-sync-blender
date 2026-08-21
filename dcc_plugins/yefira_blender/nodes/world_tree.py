@@ -36,6 +36,7 @@ from .groups import (
     get_or_create_atlas_uv_calculator_group,
     get_or_create_cube_surface_group,
     get_or_create_face_selector_color_group,
+    get_or_create_face_selector_float_group,
     get_or_create_face_selector_int_group,
     get_or_create_face_selector_vector_group,
     get_or_create_instance_attribute_transfer_group,
@@ -47,8 +48,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 22: command-block top/bottom V correction.
-WORLD_TREE_SCHEMA_VERSION = 22
+# Schema version 24: Direct world-face alignment for standard cubes and clockwise UV rotation.
+WORLD_TREE_SCHEMA_VERSION = 24
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -156,6 +157,7 @@ def _build_tree_nodes_and_links(
     group_vec_selector = get_or_create_face_selector_vector_group()
     group_int_selector = get_or_create_face_selector_int_group()
     group_color_selector = get_or_create_face_selector_color_group()
+    group_float_selector = get_or_create_face_selector_float_group()
     group_uv_calc = get_or_create_atlas_uv_calculator_group()
     group_cube_surface = get_or_create_cube_surface_group()
     group_attribute_transfer = get_or_create_instance_attribute_transfer_group()
@@ -209,7 +211,7 @@ def _build_tree_nodes_and_links(
     iop_cube.location = (-200, 250)
     links.new(sep_geo.outputs["Selection"], iop_cube.inputs["Points"])
     links.new(cube_surface.outputs["Geometry"], iop_cube.inputs["Instance"])
-    links.new(attr_rot.outputs["Attribute"], iop_cube.inputs["Rotation"])
+    # Note: Standard cubes are axis-aligned; per-face orientations are baked into 6-face attributes
 
     transfer_cube_attributes = nodes.new("GeometryNodeGroup")
     transfer_cube_attributes.node_tree = group_attribute_transfer
@@ -304,171 +306,198 @@ def _build_tree_nodes_and_links(
     call_uv_calc = nodes.new("GeometryNodeGroup")
     call_uv_calc.node_tree = group_uv_calc
     call_uv_calc.name = "Calculate Atlas UV"
-    call_uv_calc.location = (960, 300)
+    call_uv_calc.location = (2800, 300)
     links.new(call_tile_selector.outputs["Selected"], call_uv_calc.inputs["Target Tile"])
 
+    # --- SUBGROUP: SELECT FACE UV ROTATION (FLOAT) ---
+    call_uv_rot_selector = nodes.new("GeometryNodeGroup")
+    call_uv_rot_selector.node_tree = group_float_selector
+    call_uv_rot_selector.name = "Select Face UV Rotation"
+    call_uv_rot_selector.location = (760, 20)
+    links.new(read_face_id.outputs["Attribute"], call_uv_rot_selector.inputs["Face ID"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "FLOAT"
+        reader.inputs["Name"].default_value = face_attribute("uv_rot", face)
+        reader.location = (560, 40 - index * 35)
+        links.new(reader.outputs["Attribute"], call_uv_rot_selector.inputs[socket_name])
+
+    # --- SUBGROUP: SELECT FACE UV BOUNDS (COLOR) ---
+    call_uv_bounds_selector = nodes.new("GeometryNodeGroup")
+    call_uv_bounds_selector.node_tree = group_color_selector
+    call_uv_bounds_selector.name = "Select Face UV Bounds"
+    call_uv_bounds_selector.location = (760, -220)
+    links.new(read_face_id.outputs["Attribute"], call_uv_bounds_selector.inputs["Face ID"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "FLOAT_COLOR"
+        reader.inputs["Name"].default_value = face_attribute("uv_bounds", face)
+        reader.location = (560, -200 - index * 35)
+        links.new(reader.outputs["Attribute"], call_uv_bounds_selector.inputs[socket_name])
+
+    # Read Realized LocalUV (FLOAT_VECTOR on CORNER domain)
     read_local_uv = nodes.new("GeometryNodeInputNamedAttribute")
     read_local_uv.data_type = "FLOAT_VECTOR"
     read_local_uv.inputs["Name"].default_value = LOCAL_UV
-    read_local_uv.location = (560, 100)
+    read_local_uv.location = (760, -450)
 
-    # Keep the local top/bottom textures upright after an instance rotation.
-    #
-    # Vertical-base directional blocks (notably command blocks) use their
-    # local Top/Bottom faces as the directional front/back.  The generic local
-    # UV would rotate their indicators with the instance.  Minecraft instead
-    # keeps those indicators upright: on a vertical face, V follows world Z
-    # and U follows the screen-right tangent of that face.  On a horizontal
-    # face we retain the usual world X/Y mapping.
-    read_pos = nodes.new("GeometryNodeInputPosition")
-    read_pos.location = (380, -250)
+    sep_local_uv = nodes.new("ShaderNodeSeparateXYZ")
+    sep_local_uv.location = (940, -450)
+    links.new(read_local_uv.outputs["Attribute"], sep_local_uv.inputs["Vector"])
 
-    read_block_center = nodes.new("GeometryNodeInputNamedAttribute")
-    read_block_center.data_type = "FLOAT_VECTOR"
-    read_block_center.inputs["Name"].default_value = BLOCK_CENTER
-    read_block_center.location = (380, -380)
+    # Compute rotated (u, v) variants:
+    # 0 deg:   (u, v)
+    # 90 deg:  (v, 1.0 - u)
+    # 180 deg: (1.0 - u, 1.0 - v)
+    # 270 deg: (1.0 - v, u)
+    one_minus_u = nodes.new("ShaderNodeMath")
+    one_minus_u.operation = "SUBTRACT"
+    one_minus_u.inputs[0].default_value = 1.0
+    one_minus_u.location = (1100, -420)
+    links.new(sep_local_uv.outputs["X"], one_minus_u.inputs[1])
 
-    sub_pos = nodes.new("ShaderNodeVectorMath")
-    sub_pos.operation = "SUBTRACT"
-    sub_pos.location = (560, -250)
-    links.new(read_pos.outputs["Position"], sub_pos.inputs[0])
-    links.new(read_block_center.outputs["Attribute"], sub_pos.inputs[1])
+    one_minus_v = nodes.new("ShaderNodeMath")
+    one_minus_v.operation = "SUBTRACT"
+    one_minus_v.inputs[0].default_value = 1.0
+    one_minus_v.location = (1100, -520)
+    links.new(sep_local_uv.outputs["Y"], one_minus_v.inputs[1])
 
-    sep_rel = nodes.new("ShaderNodeSeparateXYZ")
-    sep_rel.location = (720, -250)
-    links.new(sub_pos.outputs["Vector"], sep_rel.inputs["Vector"])
+    comb_0 = nodes.new("ShaderNodeCombineXYZ")
+    comb_0.location = (1260, -360)
+    links.new(sep_local_uv.outputs["X"], comb_0.inputs["X"])
+    links.new(sep_local_uv.outputs["Y"], comb_0.inputs["Y"])
 
-    add_u = nodes.new("ShaderNodeMath")
-    add_u.operation = "ADD"
-    add_u.inputs[1].default_value = 0.5
-    add_u.location = (880, -200)
-    links.new(sep_rel.outputs["X"], add_u.inputs[0])
+    comb_90 = nodes.new("ShaderNodeCombineXYZ")
+    comb_90.location = (1260, -460)
+    links.new(one_minus_v.outputs["Value"], comb_90.inputs["X"])
+    links.new(sep_local_uv.outputs["X"], comb_90.inputs["Y"])
 
-    add_v_horizontal = nodes.new("ShaderNodeMath")
-    add_v_horizontal.operation = "ADD"
-    add_v_horizontal.inputs[1].default_value = 0.5
-    add_v_horizontal.location = (880, -300)
-    links.new(sep_rel.outputs["Y"], add_v_horizontal.inputs[0])
+    comb_180 = nodes.new("ShaderNodeCombineXYZ")
+    comb_180.location = (1260, -560)
+    links.new(one_minus_u.outputs["Value"], comb_180.inputs["X"])
+    links.new(one_minus_v.outputs["Value"], comb_180.inputs["Y"])
 
-    comb_horizontal_uv = nodes.new("ShaderNodeCombineXYZ")
-    comb_horizontal_uv.location = (1040, -250)
-    links.new(add_u.outputs["Value"], comb_horizontal_uv.inputs["X"])
-    links.new(add_v_horizontal.outputs["Value"], comb_horizontal_uv.inputs["Y"])
+    comb_270 = nodes.new("ShaderNodeCombineXYZ")
+    comb_270.location = (1260, -660)
+    links.new(sep_local_uv.outputs["Y"], comb_270.inputs["X"])
+    links.new(one_minus_u.outputs["Value"], comb_270.inputs["Y"])
 
-    # Vanilla command blocks flip the vertical texture axis on their front
-    # and back faces when those faces point up/down.  Keep this opt-in so
-    # ordinary cube top/bottom textures retain their existing orientation.
-    flip_v_horizontal = nodes.new("ShaderNodeMath")
-    flip_v_horizontal.operation = "SUBTRACT"
-    flip_v_horizontal.inputs[0].default_value = 0.5
-    flip_v_horizontal.location = (1040, -330)
-    links.new(sep_rel.outputs["Y"], flip_v_horizontal.inputs[1])
+    # Rotation selection switches
+    cmp_rot_225 = nodes.new("FunctionNodeCompare")
+    cmp_rot_225.data_type = "FLOAT"
+    cmp_rot_225.operation = "GREATER_THAN"
+    cmp_rot_225.inputs["B"].default_value = 225.0
+    cmp_rot_225.location = (1100, -660)
+    links.new(call_uv_rot_selector.outputs["Selected"], cmp_rot_225.inputs["A"])
 
-    comb_horizontal_uv_flipped = nodes.new("ShaderNodeCombineXYZ")
-    comb_horizontal_uv_flipped.location = (1200, -300)
-    links.new(add_u.outputs["Value"], comb_horizontal_uv_flipped.inputs["X"])
-    links.new(flip_v_horizontal.outputs["Value"], comb_horizontal_uv_flipped.inputs["Y"])
+    sw_rot_270 = nodes.new("GeometryNodeSwitch")
+    sw_rot_270.input_type = "VECTOR"
+    sw_rot_270.location = (1440, -560)
+    links.new(cmp_rot_225.outputs["Result"], sw_rot_270.inputs["Switch"])
+    links.new(comb_180.outputs["Vector"], sw_rot_270.inputs["False"])
+    links.new(comb_270.outputs["Vector"], sw_rot_270.inputs["True"])
 
-    read_directional_face_v_flip = nodes.new("GeometryNodeInputNamedAttribute")
-    read_directional_face_v_flip.data_type = "INT"
-    read_directional_face_v_flip.inputs["Name"].default_value = DIRECTIONAL_FACE_V_FLIP
-    read_directional_face_v_flip.location = (720, -330)
+    cmp_rot_135 = nodes.new("FunctionNodeCompare")
+    cmp_rot_135.data_type = "FLOAT"
+    cmp_rot_135.operation = "GREATER_THAN"
+    cmp_rot_135.inputs["B"].default_value = 135.0
+    cmp_rot_135.location = (1100, -760)
+    links.new(call_uv_rot_selector.outputs["Selected"], cmp_rot_135.inputs["A"])
 
-    cmp_directional_face_v_flip = nodes.new("FunctionNodeCompare")
-    cmp_directional_face_v_flip.data_type = "INT"
-    cmp_directional_face_v_flip.operation = "GREATER_THAN"
-    cmp_directional_face_v_flip.inputs["B"].default_value = 0
-    cmp_directional_face_v_flip.location = (880, -330)
-    links.new(read_directional_face_v_flip.outputs["Attribute"], cmp_directional_face_v_flip.inputs["A"])
+    sw_rot_180 = nodes.new("GeometryNodeSwitch")
+    sw_rot_180.input_type = "VECTOR"
+    sw_rot_180.location = (1600, -460)
+    links.new(cmp_rot_135.outputs["Result"], sw_rot_180.inputs["Switch"])
+    links.new(comb_90.outputs["Vector"], sw_rot_180.inputs["False"])
+    links.new(sw_rot_270.outputs["Output"], sw_rot_180.inputs["True"])
 
-    select_horizontal_uv = nodes.new("GeometryNodeSwitch")
-    select_horizontal_uv.input_type = "VECTOR"
-    select_horizontal_uv.location = (1360, -300)
-    links.new(cmp_directional_face_v_flip.outputs["Result"], select_horizontal_uv.inputs["Switch"])
-    links.new(comb_horizontal_uv.outputs["Vector"], select_horizontal_uv.inputs["False"])
-    links.new(comb_horizontal_uv_flipped.outputs["Vector"], select_horizontal_uv.inputs["True"])
+    cmp_rot_45 = nodes.new("FunctionNodeCompare")
+    cmp_rot_45.data_type = "FLOAT"
+    cmp_rot_45.operation = "GREATER_THAN"
+    cmp_rot_45.inputs["B"].default_value = 45.0
+    cmp_rot_45.location = (1100, -860)
+    links.new(call_uv_rot_selector.outputs["Selected"], cmp_rot_45.inputs["A"])
 
-    # Restrict this UV lock to local Top/Bottom (the directional front/back
-    # faces of vertical-base blocks).  ``cmp_nz`` below selects whether that
-    # face is horizontal or vertical in world space.
-    cmp_fid = nodes.new("FunctionNodeCompare")
-    cmp_fid.data_type = "INT"
-    cmp_fid.operation = "LESS_EQUAL"
-    cmp_fid.inputs["B"].default_value = 1
-    cmp_fid.location = (560, -450)
-    links.new(read_face_id.outputs["Attribute"], cmp_fid.inputs["A"])
+    sw_rot_final = nodes.new("GeometryNodeSwitch")
+    sw_rot_final.input_type = "VECTOR"
+    sw_rot_final.location = (1760, -360)
+    links.new(cmp_rot_45.outputs["Result"], sw_rot_final.inputs["Switch"])
+    links.new(comb_0.outputs["Vector"], sw_rot_final.inputs["False"])
+    links.new(sw_rot_180.outputs["Output"], sw_rot_final.inputs["True"])
 
-    read_realized_norm = nodes.new("GeometryNodeInputNormal")
-    read_realized_norm.location = (380, -550)
+    # Separate rotated UV
+    sep_rot_uv = nodes.new("ShaderNodeSeparateXYZ")
+    sep_rot_uv.location = (1920, -360)
+    links.new(sw_rot_final.outputs["Output"], sep_rot_uv.inputs["Vector"])
 
-    sep_norm = nodes.new("ShaderNodeSeparateXYZ")
-    sep_norm.location = (560, -550)
-    links.new(read_realized_norm.outputs["Normal"], sep_norm.inputs["Vector"])
+    # Separate UV Bounds (FLOAT_COLOR: R=u_min, G=v_min, B=u_max, A=v_max)
+    sep_bounds = nodes.new("FunctionNodeSeparateColor")
+    sep_bounds.location = (1920, -560)
+    links.new(call_uv_bounds_selector.outputs["Selected"], sep_bounds.inputs["Color"])
 
-    # ``world_up × normal`` is the screen-right tangent for a vertical face.
-    # Dotting it with the position relative to the block center gives the
-    # horizontal texture coordinate without a per-facing lookup table.
-    world_up = nodes.new("ShaderNodeCombineXYZ")
-    world_up.inputs["Z"].default_value = 1.0
-    world_up.location = (560, -650)
+    # du = u_max - u_min, dv = v_max - v_min
+    sub_du = nodes.new("ShaderNodeMath")
+    sub_du.operation = "SUBTRACT"
+    sub_du.location = (2080, -500)
+    links.new(sep_bounds.outputs["Blue"], sub_du.inputs[0])
+    links.new(sep_bounds.outputs["Red"], sub_du.inputs[1])
 
-    face_right = nodes.new("ShaderNodeVectorMath")
-    face_right.operation = "CROSS_PRODUCT"
-    face_right.location = (720, -650)
-    links.new(world_up.outputs["Vector"], face_right.inputs[0])
-    links.new(read_realized_norm.outputs["Normal"], face_right.inputs[1])
+    sub_dv = nodes.new("ShaderNodeMath")
+    sub_dv.operation = "SUBTRACT"
+    sub_dv.location = (2080, -620)
+    links.new(sep_bounds.outputs["Alpha"], sub_dv.inputs[0])
+    links.new(sep_bounds.outputs["Green"], sub_dv.inputs[1])
 
-    vertical_u_dot = nodes.new("ShaderNodeVectorMath")
-    vertical_u_dot.operation = "DOT_PRODUCT"
-    vertical_u_dot.location = (880, -650)
-    links.new(sub_pos.outputs["Vector"], vertical_u_dot.inputs[0])
-    links.new(face_right.outputs["Vector"], vertical_u_dot.inputs[1])
+    # u_final = u_min + u_rot * du
+    mul_u = nodes.new("ShaderNodeMath")
+    mul_u.operation = "MULTIPLY"
+    mul_u.location = (2240, -400)
+    links.new(sep_rot_uv.outputs["X"], mul_u.inputs[0])
+    links.new(sub_du.outputs["Value"], mul_u.inputs[1])
 
-    add_u_vertical = nodes.new("ShaderNodeMath")
-    add_u_vertical.operation = "ADD"
-    add_u_vertical.inputs[1].default_value = 0.5
-    add_u_vertical.location = (1040, -650)
-    links.new(vertical_u_dot.outputs["Value"], add_u_vertical.inputs[0])
+    add_u_final = nodes.new("ShaderNodeMath")
+    add_u_final.operation = "ADD"
+    add_u_final.location = (2400, -400)
+    links.new(sep_bounds.outputs["Red"], add_u_final.inputs[0])
+    links.new(mul_u.outputs["Value"], add_u_final.inputs[1])
 
-    add_v_vertical = nodes.new("ShaderNodeMath")
-    add_v_vertical.operation = "ADD"
-    add_v_vertical.inputs[1].default_value = 0.5
-    add_v_vertical.location = (1040, -750)
-    links.new(sep_rel.outputs["Z"], add_v_vertical.inputs[0])
+    # v_final = v_min + v_rot * dv
+    mul_v = nodes.new("ShaderNodeMath")
+    mul_v.operation = "MULTIPLY"
+    mul_v.location = (2240, -520)
+    links.new(sep_rot_uv.outputs["Y"], mul_v.inputs[0])
+    links.new(sub_dv.outputs["Value"], mul_v.inputs[1])
 
-    comb_vertical_uv = nodes.new("ShaderNodeCombineXYZ")
-    comb_vertical_uv.location = (1200, -650)
-    links.new(add_u_vertical.outputs["Value"], comb_vertical_uv.inputs["X"])
-    links.new(add_v_vertical.outputs["Value"], comb_vertical_uv.inputs["Y"])
+    add_v_final = nodes.new("ShaderNodeMath")
+    add_v_final.operation = "ADD"
+    add_v_final.location = (2400, -520)
+    links.new(sep_bounds.outputs["Green"], add_v_final.inputs[0])
+    links.new(mul_v.outputs["Value"], add_v_final.inputs[1])
 
-    abs_nz = nodes.new("ShaderNodeMath")
-    abs_nz.operation = "ABSOLUTE"
-    abs_nz.location = (720, -550)
-    links.new(sep_norm.outputs["Z"], abs_nz.inputs[0])
+    # Final adjusted local UV
+    comb_local_uv_final = nodes.new("ShaderNodeCombineXYZ")
+    comb_local_uv_final.location = (2560, -460)
+    links.new(add_u_final.outputs["Value"], comb_local_uv_final.inputs["X"])
+    links.new(add_v_final.outputs["Value"], comb_local_uv_final.inputs["Y"])
 
-    cmp_nz = nodes.new("FunctionNodeCompare")
-    cmp_nz.data_type = "FLOAT"
-    cmp_nz.operation = "GREATER_THAN"
-    cmp_nz.inputs["B"].default_value = 0.5
-    cmp_nz.location = (880, -550)
-    links.new(abs_nz.outputs["Value"], cmp_nz.inputs["A"])
-
-    select_face_plane_uv = nodes.new("GeometryNodeSwitch")
-    select_face_plane_uv.input_type = "VECTOR"
-    select_face_plane_uv.location = (1200, -400)
-    links.new(cmp_nz.outputs["Result"], select_face_plane_uv.inputs["Switch"])
-    links.new(comb_vertical_uv.outputs["Vector"], select_face_plane_uv.inputs["False"])
-    links.new(select_horizontal_uv.outputs["Output"], select_face_plane_uv.inputs["True"])
-
-    switch_uv_in = nodes.new("GeometryNodeSwitch")
-    switch_uv_in.input_type = "VECTOR"
-    switch_uv_in.location = (1200, -200)
-    links.new(cmp_fid.outputs["Result"], switch_uv_in.inputs["Switch"])
-    links.new(read_local_uv.outputs["Attribute"], switch_uv_in.inputs["False"])
-    links.new(select_face_plane_uv.outputs["Output"], switch_uv_in.inputs["True"])
-
-    # Link selected local UV into UV calculator
-    links.new(switch_uv_in.outputs["Output"], call_uv_calc.inputs["Local UV"])
+    # Link into Atlas UV Calculator
+    links.new(comb_local_uv_final.outputs["Vector"], call_uv_calc.inputs["Local UV"])
 
     # Link Chunk ID into UV calculator
     links.new(call_chunk_selector.outputs["Selected"], call_uv_calc.inputs["Chunk ID"])

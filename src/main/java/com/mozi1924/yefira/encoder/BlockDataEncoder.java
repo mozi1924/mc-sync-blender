@@ -109,9 +109,9 @@ public class BlockDataEncoder {
                 for (int z = 0; z < sizeZ; z++) {
                     mutablePos.set(min.getX() + x, min.getY() + y, min.getZ() + z);
                     BlockState state = level.getBlockState(mutablePos);
-                    String stateStr = serializeBlockState(state);
+                    String encodedEntry = BlockModelExtractor.get(state).toJson();
 
-                    int paletteIdx = paletteMap.computeIfAbsent(stateStr, k -> {
+                    int paletteIdx = paletteMap.computeIfAbsent(encodedEntry, k -> {
                         int newIdx = palette.size();
                         palette.add(k);
                         return newIdx;
@@ -192,8 +192,8 @@ public class BlockDataEncoder {
                 writeShortLE(out, relY);
                 writeShortLE(out, relZ);
 
-                String stateStr = serializeBlockState(change.state());
-                byte[] bytes = stateStr.getBytes(StandardCharsets.UTF_8);
+                String encodedEntry = BlockModelExtractor.get(change.state()).toJson();
+                byte[] bytes = encodedEntry.getBytes(StandardCharsets.UTF_8);
                 writeShortLE(out, bytes.length);
                 out.write(bytes);
             }
@@ -266,9 +266,9 @@ public class BlockDataEncoder {
                 for (int z = 0; z < sizeZ; z++) {
                     mutablePos.set(startX + x, startY + y, startZ + z);
                     BlockState state = level.getBlockState(mutablePos);
-                    String stateStr = serializeBlockState(state);
+                    String encodedEntry = BlockModelExtractor.get(state).toJson();
 
-                    int paletteIdx = paletteMap.computeIfAbsent(stateStr, k -> {
+                    int paletteIdx = paletteMap.computeIfAbsent(encodedEntry, k -> {
                         int newIdx = palette.size();
                         palette.add(k);
                         return newIdx;

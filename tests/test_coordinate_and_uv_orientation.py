@@ -145,7 +145,7 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
                 # Test Bottom face (-Z)
                 elif fn.z < -0.5:
                     expected_u = v_co.x + 0.5
-                    expected_v = v_co.y + 0.5  # North (+Y) is Top (V=1)
+                    expected_v = 0.5 - v_co.y  # South (-Y) is Top (V=1)
                     self.assertAlmostEqual(uv.x, expected_u, places=4)
                     self.assertAlmostEqual(uv.y, expected_v, places=4)
 
@@ -219,14 +219,11 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
             bpy.context, storage, filter_air=True,
             block_face_texture_lut={"command_block": list(face_texture_ids)},
         )
-        command_face_v_flip = result.world_obj.data.attributes["yefira_directional_face_v_flip"]
-        self.assertTrue(all(value.value == 1 for value in command_face_v_flip.data))
         setup_world_geometry_nodes(result.world_obj)
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         eval_mesh = result.world_obj.evaluated_get(depsgraph).to_mesh()
         texture_ids = eval_mesh.attributes["mtk_atlas_texture_id"]
-        self.assertIn("yefira_directional_face_v_flip", eval_mesh.attributes)
 
         # The face table uses Minecraft axes (+Y = top, +Z = south), while
         # the generated mesh uses Blender axes (+Z = top, -Y = south).
@@ -236,24 +233,11 @@ class TestCoordinateAndUVOrientation(unittest.TestCase):
             (0, -1, 0): 105, (0, 1, 0): 106,
         }
         for poly in eval_mesh.polygons:
-            # ``poly.normal`` is realised in world space.  Recover the
-            # template-local face by undoing this point's instance rotation;
-            # texture addressing must be based on that local identity.
-            poly_center = sum(
-                (eval_mesh.vertices[index].co for index in poly.vertices),
-                mathutils.Vector(),
-            ) / len(poly.vertices)
-            point_index = min(
-                range(len(result.world_obj.data.vertices)),
-                key=lambda index: (result.world_obj.data.vertices[index].co - poly_center).length_squared,
-            )
-            rotation = result.world_obj.data.attributes["yefira_instance_rotation"].data[point_index].vector
-            local = mathutils.Euler(rotation).to_matrix().inverted() @ poly.normal
-            local_key = tuple(int(round(value)) for value in local)
+            poly_key = tuple(int(round(value)) for value in poly.normal)
             self.assertEqual(
                 texture_ids.data[poly.index].value,
-                normal_to_texture[local_key],
-                f"face {poly.index} used a world-space normal instead of local {local_key}",
+                normal_to_texture[poly_key],
+                f"face {poly.index} used {poly_key}",
             )
 
         result.world_obj.evaluated_get(depsgraph).to_mesh_clear()

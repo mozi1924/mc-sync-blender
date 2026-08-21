@@ -80,6 +80,9 @@ def update_world_point_cloud(
     block_face_tint_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
     block_face_anim_timing_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
     block_face_anim_frame_size_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
+    block_face_uv_rot_lut: Optional[dict[str, list[float]]] = None,
+    block_face_uv_bounds_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
+    atlas_mapping_textures: Optional[dict[str, Any]] = None,
     atlas_width: float = 1024.0,
     atlas_height: float = 1024.0,
     tile_size: float = 16.0,
@@ -91,7 +94,7 @@ def update_world_point_cloud(
 ) -> PointCloudBuildResult:
     """
     Constructs or updates the Yefira_World mesh object from storage voxels in Blender C++.
-    Writes structured attributes including 6-face Atlas tile coordinates and animation metadata.
+    Writes structured attributes including 6-face Atlas tile coordinates, UV rotations, and animation metadata.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return PointCloudBuildResult(None, 0, 0, 0, 0)
@@ -144,15 +147,38 @@ def update_world_point_cloud(
     face_tint_data = [[] for _ in range(6)]
     face_anim_timing = [[] for _ in range(6)]
     face_anim_frame_size = [[] for _ in range(6)]
+    face_uv_rot = [[] for _ in range(6)]
+    face_uv_bounds = [[] for _ in range(6)]
 
     palette_mat_cache = {}
     cubes_count = 0
     props_count = 0
     fluids_count = 0
 
+    import json
+
     # Fast iteration over voxel map
     for (abs_x, abs_y, abs_z), state_str in block_map.items():
-        parsed: ParsedBlock = parse_and_classify(state_str)
+        json_obj = None
+        if state_str and state_str.startswith("{") and state_str.endswith("}"):
+            try:
+                json_obj = json.loads(state_str)
+            except Exception:
+                json_obj = None
+
+        if json_obj and isinstance(json_obj, dict):
+            raw_state = json_obj.get("state", state_str)
+            parsed: ParsedBlock = parse_and_classify(raw_state)
+            if "type" in json_obj:
+                parsed.block_type = int(json_obj["type"])
+            if "opaque" in json_obj:
+                parsed.is_opaque = int(json_obj["opaque"])
+            if "emissive" in json_obj:
+                parsed.is_emissive = int(json_obj["emissive"])
+            if "emissive_level" in json_obj:
+                parsed.emissive_level = float(json_obj["emissive_level"])
+        else:
+            parsed: ParsedBlock = parse_and_classify(state_str)
 
         if filter_air and parsed.block_type == BlockTypeEnum.AIR:
             continue
@@ -199,38 +225,102 @@ def update_world_point_cloud(
             mat_id = palette_mat_cache[parsed.name]
         material_ids.append(mat_id)
 
-        # 6-Face Tile Coordinates Lookup from Face LUT
-        default_coord = (mat_id % 256, mat_id // 256)
-        coords = _resolve_face_values(block_face_lut, parsed, default_coord, is_coord=True)
+        json_faces = json_obj.get("faces") if json_obj and isinstance(json_obj, dict) else None
+        if json_faces and isinstance(json_faces, dict):
+            for face_idx, face_name in enumerate(FACES):
+                f_data = json_faces.get(face_name, {})
+                tex_name = f_data.get("tex", "")
+                uv_r = float(f_data.get("rot", 0.0))
+                uv_b = tuple(f_data.get("uv", [0.0, 0.0, 1.0, 1.0]))
+                tint_idx = int(f_data.get("tint", -1))
 
-        e_col, e_row = coords[0]
-        w_col, w_row = coords[1]
-        t_col, t_row = coords[2]
-        b_col, b_row = coords[3]
-        s_col, s_row = coords[4]
-        n_col, n_row = coords[5]
+                loc = None
+                if atlas_mapping_textures:
+                    short_n = tex_name.split(":", 1)[-1]
+                    if short_n.startswith("block/"):
+                        short_n = short_n[6:]
+                    loc = atlas_mapping_textures.get(tex_name) or atlas_mapping_textures.get(short_n) or atlas_mapping_textures.get(f"minecraft:{short_n}") or atlas_mapping_textures.get(f"minecraft:block/{short_n}")
 
-        tile_east.append((float(e_col), float(e_row), 0.0))
-        tile_west.append((float(w_col), float(w_row), 0.0))
-        tile_top.append((float(t_col), float(t_row), 0.0))
-        tile_bottom.append((float(b_col), float(b_row), 0.0))
-        tile_south.append((float(s_col), float(s_row), 0.0))
-        tile_north.append((float(n_col), float(n_row), 0.0))
+                col = float(loc.get("tile_column", 0)) if loc else 0.0
+                row = float(loc.get("tile_row", 0)) if loc else 0.0
+                cid = int(loc.get("chunk_id", 0)) if loc else 0
+                tid = int(loc.get("texture_id", mat_id)) if loc else mat_id
 
-        chunk_ids = _resolve_face_values(block_face_chunk_lut, parsed, 0)
-        texture_ids = _resolve_face_values(block_face_texture_lut, parsed, mat_id)
-        for face_index in range(6):
-            face_chunks[face_index].append(chunk_ids[face_index])
-            face_textures[face_index].append(texture_ids[face_index])
-        tint_values = _resolve_face_values(block_face_tint_lut, parsed, (0.0, 0.0, 0.0, 0.0))
-        for face_index in range(6):
-            face_tint_data[face_index].append(tint_values[face_index])
+                if loc and loc.get("kind") == "animation":
+                    px = int(loc.get("pixel_x", 0))
+                    fw = max(1, int(loc.get("frame_width", 16)))
+                    col = float(px // fw)
+                    row = 0.0
 
-        anim_timing_values = _resolve_face_values(block_face_anim_timing_lut, parsed, (1.0, 1.0, 0.0, 0.0))
-        anim_frame_size_values = _resolve_face_values(block_face_anim_frame_size_lut, parsed, (float(tile_size), float(tile_size), 0.0, 0.0))
-        for face_index in range(6):
-            face_anim_timing[face_index].append(anim_timing_values[face_index])
-            face_anim_frame_size[face_index].append(anim_frame_size_values[face_index])
+                if face_idx == 0: tile_east.append((col, row, 0.0))
+                elif face_idx == 1: tile_west.append((col, row, 0.0))
+                elif face_idx == 2: tile_top.append((col, row, 0.0))
+                elif face_idx == 3: tile_bottom.append((col, row, 0.0))
+                elif face_idx == 4: tile_south.append((col, row, 0.0))
+                elif face_idx == 5: tile_north.append((col, row, 0.0))
+
+                face_chunks[face_idx].append(cid)
+                face_textures[face_idx].append(tid)
+
+                if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
+                    base_w = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
+                    over_w = float(loc.get("default_overlay_tint_weight", 0.0)) if loc else 0.0
+                    tint_w = float(loc.get("default_tint_weight", 1.0)) if loc else 1.0
+                    is_h = 1.0 if loc and loc.get("is_hardcoded", False) else 0.0
+                    face_tint_data[face_idx].append((base_w, over_w, tint_w, is_h))
+                else:
+                    face_tint_data[face_idx].append((0.0, 0.0, 0.0, 0.0))
+
+                f_count = float(loc.get("frame_count", 1)) if loc else 1.0
+                f_time = float(loc.get("frametime", 1)) if loc else 1.0
+                interp = 1.0 if loc and loc.get("interpolate", False) else 0.0
+                face_anim_timing[face_idx].append((f_count, f_time, interp, 0.0))
+
+                fw = float(loc.get("frame_width", tile_size)) if loc else float(tile_size)
+                fh = float(loc.get("frame_height", tile_size)) if loc else float(tile_size)
+                face_anim_frame_size[face_idx].append((fw, fh, 0.0, 0.0))
+
+                face_uv_rot[face_idx].append(uv_r)
+                face_uv_bounds[face_idx].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
+        else:
+            # 6-Face Tile Coordinates Lookup from Face LUT
+            default_coord = (mat_id % 256, mat_id // 256)
+            coords = _resolve_face_values(block_face_lut, parsed, default_coord, is_coord=True)
+
+            e_col, e_row = coords[0]
+            w_col, w_row = coords[1]
+            t_col, t_row = coords[2]
+            b_col, b_row = coords[3]
+            s_col, s_row = coords[4]
+            n_col, n_row = coords[5]
+
+            tile_east.append((float(e_col), float(e_row), 0.0))
+            tile_west.append((float(w_col), float(w_row), 0.0))
+            tile_top.append((float(t_col), float(t_row), 0.0))
+            tile_bottom.append((float(b_col), float(b_row), 0.0))
+            tile_south.append((float(s_col), float(s_row), 0.0))
+            tile_north.append((float(n_col), float(n_row), 0.0))
+
+            chunk_ids = _resolve_face_values(block_face_chunk_lut, parsed, 0)
+            texture_ids = _resolve_face_values(block_face_texture_lut, parsed, mat_id)
+            for face_index in range(6):
+                face_chunks[face_index].append(chunk_ids[face_index])
+                face_textures[face_index].append(texture_ids[face_index])
+            tint_values = _resolve_face_values(block_face_tint_lut, parsed, (0.0, 0.0, 0.0, 0.0))
+            for face_index in range(6):
+                face_tint_data[face_index].append(tint_values[face_index])
+
+            anim_timing_values = _resolve_face_values(block_face_anim_timing_lut, parsed, (1.0, 1.0, 0.0, 0.0))
+            anim_frame_size_values = _resolve_face_values(block_face_anim_frame_size_lut, parsed, (float(tile_size), float(tile_size), 0.0, 0.0))
+            for face_index in range(6):
+                face_anim_timing[face_index].append(anim_timing_values[face_index])
+                face_anim_frame_size[face_index].append(anim_frame_size_values[face_index])
+
+            rot_values = _resolve_face_values(block_face_uv_rot_lut, parsed, 0.0)
+            bounds_values = _resolve_face_values(block_face_uv_bounds_lut, parsed, (0.0, 0.0, 1.0, 1.0))
+            for face_index in range(6):
+                face_uv_rot[face_index].append(float(rot_values[face_index]))
+                face_uv_bounds[face_index].append(tuple(bounds_values[face_index]))
 
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:
@@ -284,6 +374,10 @@ def update_world_point_cloud(
             _write_float_color_attribute(mesh, face_attribute("anim_timing", face), values)
         for face, values in zip(FACES, face_anim_frame_size):
             _write_float_color_attribute(mesh, face_attribute("anim_frame_size", face), values)
+        for face, values in zip(FACES, face_uv_rot):
+            _write_float_attribute(mesh, face_attribute("uv_rot", face), values)
+        for face, values in zip(FACES, face_uv_bounds):
+            _write_float_color_attribute(mesh, face_attribute("uv_bounds", face), values)
         _write_float_color_attribute(mesh, MTK_BIOME_TINT_COLOR, tint_colors)
         _write_float_color_attribute(mesh, MTK_BIOME_TINT_DATA, tint_datas)
         _write_string_attribute(mesh, BLOCK_STATE, block_states)

@@ -752,6 +752,45 @@ def build_block_face_anim_lut(
     return timing_lut, frame_size_lut
 
 
+def build_block_face_uv_rot_lut(mapping: Optional[dict]) -> dict[str, list[float]]:
+    """Build per-face UV rotation LUT in degrees (0, 90, 180, 270)."""
+    rot_lut: dict[str, list[float]] = {}
+    if not mapping:
+        return rot_lut
+    for material in mapping.get("materials", []):
+        name = material.get("name", "")
+        if not name:
+            continue
+        faces = material.get("faces", {})
+        rots = [float(faces.get(f, {}).get("uv_rotation", 0.0)) if isinstance(faces.get(f), dict) else 0.0 for f in FACE_ORDER]
+        for alias in _atlas_name_aliases(name):
+            rot_lut[alias] = rots
+    return rot_lut
+
+
+def build_block_face_uv_bounds_lut(mapping: Optional[dict]) -> dict[str, list[tuple[float, float, float, float]]]:
+    """Build per-face UV bounds LUT: (u_min, v_min, u_max, v_max)."""
+    bounds_lut: dict[str, list[tuple[float, float, float, float]]] = {}
+    if not mapping:
+        return bounds_lut
+    for material in mapping.get("materials", []):
+        name = material.get("name", "")
+        if not name:
+            continue
+        faces = material.get("faces", {})
+        bounds = []
+        for f in FACE_ORDER:
+            loc = faces.get(f) if isinstance(faces.get(f), dict) else {}
+            u_min = float(loc.get("u_min", 0.0))
+            v_min = float(loc.get("v_min", 0.0))
+            u_max = float(loc.get("u_max", 1.0))
+            v_max = float(loc.get("v_max", 1.0))
+            bounds.append((u_min, v_min, u_max, v_max))
+        for alias in _atlas_name_aliases(name):
+            bounds_lut[alias] = bounds
+    return bounds_lut
+
+
 def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
     """
     Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, chunk dimensions and LUTs.
@@ -824,6 +863,8 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         face_chunk_lut, face_texture_lut = build_block_face_atlas_ids(mapping)
         face_tint_lut = build_block_face_tint_lut(mapping)
         anim_timing_lut, anim_frame_size_lut = build_block_face_anim_lut(mapping)
+        face_uv_rot_lut = build_block_face_uv_rot_lut(mapping)
+        face_uv_bounds_lut = build_block_face_uv_bounds_lut(mapping)
 
         res["block_face_lut"] = face_lut
         res["block_face_chunk_lut"] = face_chunk_lut
@@ -831,6 +872,8 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         res["block_face_tint_lut"] = face_tint_lut
         res["block_face_anim_timing_lut"] = anim_timing_lut
         res["block_face_anim_frame_size_lut"] = anim_frame_size_lut
+        res["block_face_uv_rot_lut"] = face_uv_rot_lut
+        res["block_face_uv_bounds_lut"] = face_uv_bounds_lut
         res["material_id_map"] = mat_id_map
 
     return res
