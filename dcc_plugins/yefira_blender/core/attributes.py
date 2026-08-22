@@ -107,7 +107,8 @@ INSTANCE_TRANSFER_SPECS: Final = (
     *((name, "FLOAT_VECTOR") for name in (BLOCK_CENTER, *FACE_TILE_ATTRIBUTES)),
     *((name, "FLOAT") for name in (*ATLAS_FLOAT_ATTRIBUTES, *FACE_UV_ROT_ATTRIBUTES)),
     *((name, "FLOAT_COLOR") for name in (*FACE_TINT_ATTRIBUTES, *FACE_ANIM_TIMING_ATTRIBUTES,
-                                         *FACE_ANIM_FRAME_SIZE_ATTRIBUTES, *FACE_UV_BOUNDS_ATTRIBUTES)),
+                                         *FACE_ANIM_FRAME_SIZE_ATTRIBUTES, *FACE_UV_BOUNDS_ATTRIBUTES,
+                                         MTK_BIOME_TINT_COLOR)),
 )
 
 

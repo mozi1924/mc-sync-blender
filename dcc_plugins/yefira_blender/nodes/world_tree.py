@@ -27,7 +27,7 @@ from ..core.attributes import (
     MTK_ANIM_ATLAS_HEIGHT, MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT,
     MTK_ANIM_FRAME_SIZE, MTK_ANIM_FRAME_WIDTH, MTK_ANIM_TIMING,
     MTK_ATLAS_CHUNK_ID, MTK_ATLAS_HEIGHT,
-    MTK_ATLAS_TEXTURE_ID, MTK_BIOME_TINT_DATA, MTK_TILE_SIZE,
+    MTK_ATLAS_TEXTURE_ID, MTK_BIOME_TINT_COLOR, MTK_BIOME_TINT_DATA, MTK_TILE_SIZE,
     MTK_TILES_PER_ROW, MTK_UV_ROTATION, MTK_UV_TILING_TRANSFORM,
     TEMPLATE_INDEX, UV_MAP, face_attribute,
 )
@@ -48,8 +48,8 @@ logger = logging.getLogger("Yefira")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-# Schema version 24: Direct world-face alignment for standard cubes and clockwise UV rotation.
-WORLD_TREE_SCHEMA_VERSION = 24
+# Schema version 25: Store MTK_BIOME_TINT_COLOR on FACE domain before vertex merge.
+WORLD_TREE_SCHEMA_VERSION = 25
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -669,22 +669,36 @@ def _build_tree_nodes_and_links(
     links.new(store_timing.outputs["Geometry"], store_size.inputs["Geometry"])
     links.new(call_size_selector.outputs["Selected"], store_size.inputs["Value"])
 
+    # --- SUBGROUP: STORE BIOME TINT COLOR (COLOR on FACE domain to prevent merge interpolation) ---
+    reader_color = nodes.new("GeometryNodeInputNamedAttribute")
+    reader_color.data_type = "FLOAT_COLOR"
+    reader_color.inputs["Name"].default_value = MTK_BIOME_TINT_COLOR
+    reader_color.location = (2440, -100)
+
+    store_color = nodes.new("GeometryNodeStoreNamedAttribute")
+    store_color.data_type = "FLOAT_COLOR"
+    store_color.domain = "FACE"
+    store_color.inputs["Name"].default_value = MTK_BIOME_TINT_COLOR
+    store_color.location = (2620, 100)
+    links.new(store_size.outputs["Geometry"], store_color.inputs["Geometry"])
+    links.new(reader_color.outputs["Attribute"], store_color.inputs["Value"])
+
     # --- SUBGROUP: HIDDEN FACE CULLING & VERTEX MERGE ---
     call_culling_merge = nodes.new("GeometryNodeGroup")
     call_culling_merge.node_tree = group_culling_merge
     call_culling_merge.name = "Hidden Face Culling & Merge"
-    call_culling_merge.location = (2620, 100)
-    links.new(store_size.outputs["Geometry"], call_culling_merge.inputs["Geometry"])
+    call_culling_merge.location = (2800, 100)
+    links.new(store_color.outputs["Geometry"], call_culling_merge.inputs["Geometry"])
     links.new(group_in.outputs["Geometry"], call_culling_merge.inputs["Point Cloud"])
 
     # --- SUBGROUP: MATERIAL DISPATCHER ---
     call_mat_dispatcher = nodes.new("GeometryNodeGroup")
     call_mat_dispatcher.node_tree = group_mat_dispatcher
     call_mat_dispatcher.name = "Material Dispatcher"
-    call_mat_dispatcher.location = (2840, 100)
+    call_mat_dispatcher.location = (3020, 100)
     links.new(call_culling_merge.outputs["Geometry"], call_mat_dispatcher.inputs["Geometry"])
 
     # Final Output
-    group_out.location = (3060, 100)
+    group_out.location = (3240, 100)
     links.new(call_mat_dispatcher.outputs["Geometry"], group_out.inputs["Geometry"])
     prune_unlinked_nodes(gn_tree)

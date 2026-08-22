@@ -36,6 +36,10 @@ class TestAttributeContract(unittest.TestCase):
             attributes.face_attribute("tile", "north"), "mtk_tile_north",
         )
 
+    def test_instance_transfer_includes_biome_tint_color(self):
+        transfer_attrs = [attr for attr, _ in attributes.INSTANCE_TRANSFER_SPECS]
+        self.assertIn(attributes.MTK_BIOME_TINT_COLOR, transfer_attrs)
+
 
 if __name__ == "__main__":
     unittest.main()
