@@ -76,30 +76,30 @@ public class GhostGizmoRenderer {
         boolean centerHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_CENTER);
         int centerColor = centerHighlighted ? COLOR_HIGHLIGHT : COLOR_CENTER;
         AABB centerBox = new AABB(
-            origin.x - 0.15, origin.y - 0.15, origin.z - 0.15,
-            origin.x + 0.15, origin.y + 0.15, origin.z + 0.15
+            origin.x - 0.2, origin.y - 0.2, origin.z - 0.2,
+            origin.x + 0.2, origin.y + 0.2, origin.z + 0.2
         );
-        Gizmos.cuboid(centerBox, GizmoStyle.strokeAndFill(centerColor, 2.5f, centerColor & 0x66FFFFFF));
+        Gizmos.cuboid(centerBox, GizmoStyle.strokeAndFill(centerColor, 3.0f, centerColor & 0x88FFFFFF));
 
-        float axisLength = 2.0f;
+        float axisLength = 2.5f;
 
         // X Axis (Red)
         boolean xHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_X);
         int colorX = xHighlighted ? COLOR_HIGHLIGHT : COLOR_X;
         Vec3 endX = origin.add(axisLength, 0, 0);
-        Gizmos.arrow(origin, endX, colorX, xHighlighted ? 4.0f : 2.5f);
+        Gizmos.arrow(origin, endX, colorX, xHighlighted ? 5.0f : 3.0f);
 
         // Y Axis (Green)
         boolean yHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Y);
         int colorY = yHighlighted ? COLOR_HIGHLIGHT : COLOR_Y;
         Vec3 endY = origin.add(0, axisLength, 0);
-        Gizmos.arrow(origin, endY, colorY, yHighlighted ? 4.0f : 2.5f);
+        Gizmos.arrow(origin, endY, colorY, yHighlighted ? 5.0f : 3.0f);
 
         // Z Axis (Blue)
         boolean zHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Z);
         int colorZ = zHighlighted ? COLOR_HIGHLIGHT : COLOR_Z;
         Vec3 endZ = origin.add(0, 0, axisLength);
-        Gizmos.arrow(origin, endZ, colorZ, zHighlighted ? 4.0f : 2.5f);
+        Gizmos.arrow(origin, endZ, colorZ, zHighlighted ? 5.0f : 3.0f);
     }
 
     private static void renderCenterGizmo(Vec3 center) {

@@ -6,7 +6,10 @@
 		"ExampleClientMixin",
 		"CameraMixin",
 		"ClientInputMixin",
-		"MouseHandlerMixin"
+		"MouseHandlerMixin",
+		"KeyboardHandlerMixin",
+		"MinecraftMixin",
+		"HudMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

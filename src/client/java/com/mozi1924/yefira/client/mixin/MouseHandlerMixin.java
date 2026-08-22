@@ -18,17 +18,27 @@ public class MouseHandlerMixin {
     @Shadow private double accumulatedDX;
     @Shadow private double accumulatedDY;
 
+    @Inject(method = "onMove", at = @At("HEAD"))
+    private void onMouseMove(long window, double xpos, double ypos, CallbackInfo ci) {
+        GhostModeManager ghost = GhostModeManager.getInstance();
+        if (ghost.isActive() && !ghost.isFlyLooking()) {
+            ghost.onMouseMove(xpos, ypos);
+        }
+    }
+
     @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true)
     private void onTurnPlayer(double delta, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            double sens = this.minecraft.options.sensitivity().get() * 0.6 + 0.2;
-            double mult = sens * sens * sens * 8.0;
-            double dx = this.accumulatedDX * mult;
-            double dy = this.accumulatedDY * mult;
+            if (ghost.isFlyLooking()) {
+                double sens = this.minecraft.options.sensitivity().get() * 0.6 + 0.2;
+                double mult = sens * sens * sens * 8.0;
+                double dx = this.accumulatedDX * mult;
+                double dy = this.accumulatedDY * mult;
+                ghost.onMouseTurn(dx, dy);
+            }
             this.accumulatedDX = 0.0;
             this.accumulatedDY = 0.0;
-            ghost.onMouseTurn(dx, dy);
             ci.cancel();
         }
     }
@@ -37,9 +47,8 @@ public class MouseHandlerMixin {
     private void onMouseButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            if (ghost.onMouseButton(buttonInfo, action)) {
-                ci.cancel();
-            }
+            ghost.onMouseButton(buttonInfo, action);
+            ci.cancel();
         }
     }
 
@@ -47,9 +56,8 @@ public class MouseHandlerMixin {
     private void onMouseScroll(long window, double xoffset, double yoffset, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            if (ghost.onMouseScroll(yoffset)) {
-                ci.cancel();
-            }
+            ghost.onMouseScroll(yoffset);
+            ci.cancel();
         }
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
@@ -26,13 +27,20 @@ public class GhostModeManager {
     private float pitch = 0.0f;
     private float flySpeed = 0.6f;
 
+    // Fly Navigation mode (Blender Shift + ~)
+    private boolean flyLooking = false;
+
     // DCC Navigation state
-    private boolean isRmbLooking = false;
     private boolean isMmbOrbiting = false;
     private boolean isMmbPanning = false;
+    private boolean isMmbZooming = false;
     private Vec3 pivotPos = Vec3.ZERO;
 
-    // Gizmo interaction
+    // Mouse tracking for free cursor mode
+    private double lastMouseX = -1.0;
+    private double lastMouseY = -1.0;
+
+    // Gizmo interaction constants
     public static final int CORNER_NONE = 0;
     public static final int CORNER_POS1 = 1;
     public static final int CORNER_POS2 = 2;
@@ -52,10 +60,15 @@ public class GhostModeManager {
 
     private BlockPos initialPos1 = null;
     private BlockPos initialPos2 = null;
-    private double dragStartAxisParam = 0.0;
+    private Vec3 dragStartHitPoint = null;
+    private double dragStartParam = 0.0;
 
     public boolean isActive() {
         return active;
+    }
+
+    public boolean isFlyLooking() {
+        return active && flyLooking;
     }
 
     public void toggle() {
@@ -71,22 +84,24 @@ public class GhostModeManager {
         if (mc.player == null) return;
 
         this.active = true;
+        this.flyLooking = false;
         Player player = mc.player;
         this.cameraPos = player.getEyePosition();
         this.yaw = player.getYRot();
         this.pitch = player.getXRot();
         this.flySpeed = 0.6f;
 
-        Vec3 look = getLookVector(yaw, pitch);
-        this.pivotPos = this.cameraPos.add(look.scale(10.0));
+        updatePivot();
 
-        this.isRmbLooking = false;
         this.isMmbOrbiting = false;
         this.isMmbPanning = false;
+        this.isMmbZooming = false;
         this.hoveredCorner = CORNER_NONE;
         this.hoveredAxis = AXIS_NONE;
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
+        this.lastMouseX = mc.mouseHandler.xpos();
+        this.lastMouseY = mc.mouseHandler.ypos();
 
         // Release mouse cursor for DCC interaction
         mc.mouseHandler.releaseMouse();
@@ -96,15 +111,64 @@ public class GhostModeManager {
     public void disable() {
         Minecraft mc = Minecraft.getInstance();
         this.active = false;
-        this.isRmbLooking = false;
+        this.flyLooking = false;
         this.isMmbOrbiting = false;
         this.isMmbPanning = false;
+        this.isMmbZooming = false;
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
 
         // Regrab mouse
         mc.mouseHandler.grabMouse();
         Yefira.LOGGER.info("Ghost Mode DISABLED");
+    }
+
+    public void toggleFlyNavigation() {
+        if (!active) return;
+        Minecraft mc = Minecraft.getInstance();
+        this.flyLooking = !this.flyLooking;
+
+        if (this.flyLooking) {
+            this.isMmbOrbiting = false;
+            this.isMmbPanning = false;
+            this.isMmbZooming = false;
+            this.draggingCorner = CORNER_NONE;
+            this.draggingAxis = AXIS_NONE;
+            mc.mouseHandler.grabMouse();
+            Yefira.LOGGER.info("Fly Navigation ENABLED (Shift+~)");
+        } else {
+            this.lastMouseX = mc.mouseHandler.xpos();
+            this.lastMouseY = mc.mouseHandler.ypos();
+            mc.mouseHandler.releaseMouse();
+            Yefira.LOGGER.info("Fly Navigation DISABLED (Returned to Free Cursor)");
+        }
+    }
+
+    public void exitFlyNavigation() {
+        if (this.flyLooking) {
+            Minecraft mc = Minecraft.getInstance();
+            this.flyLooking = false;
+            this.lastMouseX = mc.mouseHandler.xpos();
+            this.lastMouseY = mc.mouseHandler.ypos();
+            mc.mouseHandler.releaseMouse();
+            Yefira.LOGGER.info("Fly Navigation Exited");
+        }
+    }
+
+    private void updatePivot() {
+        SelectionManager mgr = SelectionManager.getInstance();
+        if (mgr.hasSelection()) {
+            SelectionBox sel = mgr.getCurrentSelection();
+            BlockPos min = sel.getMin();
+            BlockPos max = sel.getMax();
+            this.pivotPos = new Vec3(
+                (min.getX() + max.getX() + 1) / 2.0,
+                (min.getY() + max.getY() + 1) / 2.0,
+                (min.getZ() + max.getZ() + 1) / 2.0
+            );
+        } else {
+            this.pivotPos = this.cameraPos.add(getForwardVector(yaw, pitch).scale(10.0));
+        }
     }
 
     public Vec3 getCameraPos() {
@@ -139,36 +203,29 @@ public class GhostModeManager {
         return draggingAxis;
     }
 
-    public boolean isRmbLooking() {
-        return isRmbLooking;
-    }
-
     /**
-     * Called on client tick to process keyboard navigation (WASD, Space, Shift, etc.)
+     * Called on client tick.
+     * Note: WASD / QE movement ONLY runs in Fly Navigation Mode (Shift + ~).
+     * In regular DCC mode, keyboard does not move the camera.
      */
     public void tickMovement() {
         if (!active) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.gui != null && mc.gui.screen() != null) return;
 
+        // In normal DCC mode, keyboard navigation is disabled (purely mouse-driven)
+        if (!flyLooking) {
+            if (draggingCorner == CORNER_NONE) {
+                updateGizmoHover();
+            }
+            return;
+        }
+
+        // --- Fly Navigation Mode (Shift + ~) Movement ---
         var window = mc.getWindow();
 
-        // Calculate motion basis vectors
-        float pitchRad = (float) Math.toRadians(pitch);
-        float yawRad = (float) Math.toRadians(yaw);
-
-        Vec3 forward = new Vec3(
-            -Math.sin(yawRad) * Math.cos(pitchRad),
-            -Math.sin(pitchRad),
-            Math.cos(yawRad) * Math.cos(pitchRad)
-        ).normalize();
-
-        Vec3 right = new Vec3(
-            Math.cos(yawRad),
-            0,
-            Math.sin(yawRad)
-        ).normalize();
-
+        Vec3 forward = getForwardVector(yaw, pitch);
+        Vec3 right = getRightVector(yaw);
         Vec3 worldUp = new Vec3(0, 1, 0);
 
         Vec3 move = Vec3.ZERO;
@@ -192,47 +249,70 @@ public class GhostModeManager {
             double currentSpeed = flySpeed * (boost ? 3.0 : 1.0);
             cameraPos = cameraPos.add(move.normalize().scale(currentSpeed));
         }
+    }
 
-        // Update hover detection when mouse cursor is free
-        if (!isRmbLooking && draggingCorner == CORNER_NONE) {
-            updateGizmoHover();
+    /**
+     * Mouse look rotation handler when in Fly Navigation mode
+     */
+    public void onMouseTurn(double dx, double dy) {
+        if (!active) return;
+
+        if (flyLooking) {
+            yaw += (float) dx;
+            pitch += (float) dy;
+            pitch = Math.max(-89.9f, Math.min(89.9f, pitch));
         }
     }
 
     /**
-     * Mouse look rotation handler
+     * Called on mouse move when in free cursor mode
      */
-    public void onMouseTurn(double dx, double dy) {
-        if (!active) return;
-        Minecraft mc = Minecraft.getInstance();
+    public void onMouseMove(double mouseX, double mouseY) {
+        if (!active || flyLooking) return;
 
-        if (isRmbLooking) {
-            yaw += (float) dx;
-            pitch += (float) dy;
-            pitch = Math.max(-89.9f, Math.min(89.9f, pitch));
-        } else if (isMmbOrbiting) {
-            yaw += (float) dx;
-            pitch += (float) dy;
+        if (lastMouseX < 0 || lastMouseY < 0) {
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
+            return;
+        }
+
+        double dx = mouseX - lastMouseX;
+        double dy = mouseY - lastMouseY;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+
+        if (isMmbOrbiting) {
+            // Blender Orbit: MMB drag
+            yaw += (float) (dx * 0.35);
+            pitch += (float) (dy * 0.35);
             pitch = Math.max(-89.9f, Math.min(89.9f, pitch));
 
-            // Orbit camera around pivotPos
             double dist = cameraPos.distanceTo(pivotPos);
-            Vec3 look = getLookVector(yaw, pitch);
+            if (dist < 0.5) dist = 0.5;
+            Vec3 look = getForwardVector(yaw, pitch);
             cameraPos = pivotPos.subtract(look.scale(dist));
         } else if (isMmbPanning) {
-            float pitchRad = (float) Math.toRadians(pitch);
-            float yawRad = (float) Math.toRadians(yaw);
+            // Blender Pan: Shift + MMB drag
+            Vec3 forward = getForwardVector(yaw, pitch);
+            Vec3 right = getRightVector(yaw);
+            Vec3 up = forward.cross(right).normalize();
 
-            Vec3 forward = getLookVector(yaw, pitch);
-            Vec3 right = new Vec3(Math.cos(yawRad), 0, Math.sin(yawRad)).normalize();
-            Vec3 up = right.cross(forward).normalize();
-
-            double panScale = 0.02 * (cameraPos.distanceTo(pivotPos) / 10.0 + 1.0);
+            double dist = cameraPos.distanceTo(pivotPos);
+            double panScale = 0.002 * Math.max(2.0, dist);
             Vec3 delta = right.scale(-dx * panScale).add(up.scale(dy * panScale));
             cameraPos = cameraPos.add(delta);
             pivotPos = pivotPos.add(delta);
+        } else if (isMmbZooming) {
+            // Blender Zoom: Ctrl + MMB drag
+            double dist = cameraPos.distanceTo(pivotPos);
+            double zoomFactor = Math.exp(dy * 0.008);
+            double newDist = Math.max(0.5, Math.min(500.0, dist * zoomFactor));
+            Vec3 look = getForwardVector(yaw, pitch);
+            cameraPos = pivotPos.subtract(look.scale(newDist));
         } else if (draggingCorner != CORNER_NONE && draggingAxis != AXIS_NONE) {
             handleGizmoDrag();
+        } else {
+            updateGizmoHover();
         }
     }
 
@@ -244,51 +324,48 @@ public class GhostModeManager {
         Minecraft mc = Minecraft.getInstance();
         int button = buttonInfo.button();
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            if (action == GLFW.GLFW_PRESS) {
-                isRmbLooking = true;
-                mc.mouseHandler.grabMouse();
-                return true;
-            } else if (action == GLFW.GLFW_RELEASE) {
-                isRmbLooking = false;
-                mc.mouseHandler.releaseMouse();
+        if (flyLooking) {
+            // In Fly Navigation, LMB or RMB or ESC exits fly navigation
+            if (action == GLFW.GLFW_PRESS && (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                exitFlyNavigation();
                 return true;
             }
+            return true;
         }
 
+        // Free Cursor mode interaction
         if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
             if (action == GLFW.GLFW_PRESS) {
-                boolean shiftHeld = InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                                    InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT);
-                if (shiftHeld) {
+                lastMouseX = mc.mouseHandler.xpos();
+                lastMouseY = mc.mouseHandler.ypos();
+
+                var window = mc.getWindow();
+                boolean shiftHeld = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT) ||
+                                    InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+                boolean ctrlHeld = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_CONTROL) ||
+                                   InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_CONTROL);
+
+                if (ctrlHeld) {
+                    isMmbZooming = true;
+                } else if (shiftHeld) {
                     isMmbPanning = true;
                 } else {
                     isMmbOrbiting = true;
-                    // Update pivotPos to selection center if selection exists, else in front of camera
-                    SelectionManager mgr = SelectionManager.getInstance();
-                    if (mgr.hasSelection()) {
-                        SelectionBox sel = mgr.getCurrentSelection();
-                        BlockPos min = sel.getMin();
-                        BlockPos max = sel.getMax();
-                        pivotPos = new Vec3(
-                            (min.getX() + max.getX() + 1) / 2.0,
-                            (min.getY() + max.getY() + 1) / 2.0,
-                            (min.getZ() + max.getZ() + 1) / 2.0
-                        );
-                    } else {
-                        pivotPos = cameraPos.add(getLookVector(yaw, pitch).scale(10.0));
-                    }
+                    updatePivot();
                 }
                 return true;
             } else if (action == GLFW.GLFW_RELEASE) {
                 isMmbOrbiting = false;
                 isMmbPanning = false;
+                isMmbZooming = false;
                 return true;
             }
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             if (action == GLFW.GLFW_PRESS) {
+                // Perform fresh hover hit-test on click
+                updateGizmoHover();
                 if (hoveredCorner != CORNER_NONE && hoveredAxis != AXIS_NONE) {
                     startGizmoDrag(hoveredCorner, hoveredAxis);
                     return true;
@@ -301,7 +378,12 @@ public class GhostModeManager {
             }
         }
 
-        return false;
+        // Intercept right click in normal mode
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            return true;
+        }
+
+        return true;
     }
 
     /**
@@ -310,20 +392,26 @@ public class GhostModeManager {
     public boolean onMouseScroll(double yoffset) {
         if (!active) return false;
 
-        if (isRmbLooking) {
-            // Adjust fly speed
+        if (flyLooking) {
+            // Adjust fly speed in fly mode
             flySpeed = Math.max(0.05f, Math.min(5.0f, flySpeed + (float) yoffset * 0.1f));
             return true;
         } else {
-            // Dolly / Zoom
-            Vec3 look = getLookVector(yaw, pitch);
-            double zoomAmount = yoffset * flySpeed * 2.0;
-            cameraPos = cameraPos.add(look.scale(zoomAmount));
+            // Zoom towards pivot
+            double dist = cameraPos.distanceTo(pivotPos);
+            double zoomFactor = yoffset > 0 ? 0.85 : 1.15;
+            double newDist = Math.max(0.5, Math.min(500.0, dist * zoomFactor));
+            Vec3 look = getForwardVector(yaw, pitch);
+            cameraPos = pivotPos.subtract(look.scale(newDist));
             return true;
         }
     }
 
-    private Vec3 getLookVector(float yRot, float xRot) {
+    // ==========================================
+    // Minecraft Camera Coordinate Basis Vectors
+    // ==========================================
+
+    public static Vec3 getForwardVector(float yRot, float xRot) {
         float pitchRad = (float) Math.toRadians(xRot);
         float yawRad = (float) Math.toRadians(yRot);
         return new Vec3(
@@ -333,21 +421,35 @@ public class GhostModeManager {
         ).normalize();
     }
 
-    // ==========================================
-    // 3D Gizmo Raycast & Dragging Calculations
-    // ==========================================
+    public static Vec3 getRightVector(float yRot) {
+        float yawRad = (float) Math.toRadians(yRot);
+        // In Minecraft coords: looking South (yaw=0), East is Left (+X), West is Right (-X)
+        // When facing yaw, Right is (-cos(yaw), 0, -sin(yaw))
+        return new Vec3(
+            -Math.cos(yawRad),
+            0,
+            -Math.sin(yawRad)
+        ).normalize();
+    }
+
+    // ==========================================================
+    // Screen Projection & Robust DCC Plane Gizmo Dragging Math
+    // ==========================================================
 
     private record Ray(Vec3 origin, Vec3 dir) {}
 
     private Ray getMouseRay() {
         Minecraft mc = Minecraft.getInstance();
-        double mouseX = mc.mouseHandler.xpos();
-        double mouseY = mc.mouseHandler.ypos();
+        return getScreenRay(mc.mouseHandler.xpos(), mc.mouseHandler.ypos());
+    }
+
+    private Ray getScreenRay(double mouseX, double mouseY) {
+        Minecraft mc = Minecraft.getInstance();
         int width = mc.getWindow().getWidth();
         int height = mc.getWindow().getHeight();
 
         if (width <= 0 || height <= 0) {
-            return new Ray(cameraPos, getLookVector(yaw, pitch));
+            return new Ray(cameraPos, getForwardVector(yaw, pitch));
         }
 
         float nx = (float) ((2.0 * mouseX / width) - 1.0);
@@ -362,27 +464,78 @@ public class GhostModeManager {
         float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
         float tanHalfFovX = tanHalfFovY * aspect;
 
-        float pitchRad = (float) Math.toRadians(pitch);
-        float yawRad = (float) Math.toRadians(yaw);
-
-        Vec3 forward = new Vec3(
-            -Math.sin(yawRad) * Math.cos(pitchRad),
-            -Math.sin(pitchRad),
-            Math.cos(yawRad) * Math.cos(pitchRad)
-        ).normalize();
-
-        Vec3 right = new Vec3(
-            Math.cos(yawRad),
-            0,
-            Math.sin(yawRad)
-        ).normalize();
-
-        Vec3 up = right.cross(forward).normalize();
+        Vec3 forward = getForwardVector(yaw, pitch);
+        Vec3 right = getRightVector(yaw);
+        Vec3 up = forward.cross(right).normalize();
 
         Vec3 rayDir = forward.add(right.scale(nx * tanHalfFovX)).add(up.scale(ny * tanHalfFovY)).normalize();
         return new Ray(cameraPos, rayDir);
     }
 
+    /**
+     * Projects a 3D world position to 2D Screen pixel coordinates.
+     * Returns null if point is behind the camera.
+     */
+    private Vec2 projectToScreen(Vec3 worldPos) {
+        Minecraft mc = Minecraft.getInstance();
+        int width = mc.getWindow().getWidth();
+        int height = mc.getWindow().getHeight();
+        if (width <= 0 || height <= 0) return null;
+
+        Vec3 forward = getForwardVector(yaw, pitch);
+        Vec3 right = getRightVector(yaw);
+        Vec3 up = forward.cross(right).normalize();
+
+        Vec3 rel = worldPos.subtract(cameraPos);
+        double depth = rel.dot(forward);
+        if (depth <= 0.1) {
+            return null; // Behind camera
+        }
+
+        float fov = 70.0f;
+        if (mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
+            fov = mc.gameRenderer.mainCamera().getFov();
+        }
+
+        float aspect = (float) width / (float) height;
+        float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
+        float tanHalfFovX = tanHalfFovY * aspect;
+
+        double xView = rel.dot(right);
+        double yView = rel.dot(up);
+
+        double ndcX = xView / (depth * tanHalfFovX);
+        double ndcY = yView / (depth * tanHalfFovY);
+
+        float screenX = (float) ((ndcX + 1.0) / 2.0 * width);
+        float screenY = (float) ((1.0 - ndcY) / 2.0 * height);
+
+        return new Vec2(screenX, screenY);
+    }
+
+    private double distancePointToSegment2D(double px, double py, Vec2 segStart, Vec2 segEnd) {
+        double vx = segEnd.x - segStart.x;
+        double vy = segEnd.y - segStart.y;
+        double wx = px - segStart.x;
+        double wy = py - segStart.y;
+
+        double lenSq = vx * vx + vy * vy;
+        if (lenSq < 1e-6) {
+            return Math.hypot(px - segStart.x, py - segStart.y);
+        }
+
+        double t = (wx * vx + wy * vy) / lenSq;
+        t = Math.max(0.0, Math.min(1.0, t));
+
+        double projX = segStart.x + t * vx;
+        double projY = segStart.y + t * vy;
+
+        return Math.hypot(px - projX, py - projY);
+    }
+
+    /**
+     * Screen-space hit test: 24-pixel threshold makes clicking super reliable at any distance.
+     */
     private void updateGizmoHover() {
         SelectionManager mgr = SelectionManager.getInstance();
         BlockPos pos1 = mgr.getPos1();
@@ -394,60 +547,73 @@ public class GhostModeManager {
             return;
         }
 
-        Ray ray = getMouseRay();
-        double closestDist = Double.MAX_VALUE;
+        Minecraft mc = Minecraft.getInstance();
+        double mouseX = mc.mouseHandler.xpos();
+        double mouseY = mc.mouseHandler.ypos();
+
+        double closestDist = 24.0; // 24 pixel hit radius
         int bestCorner = CORNER_NONE;
         int bestAxis = AXIS_NONE;
 
+        float axisLength = 2.5f;
+
+        // Test Pos1
         if (pos1 != null) {
             Vec3 origin1 = new Vec3(pos1.getX() + 0.5, pos1.getY() + 0.5, pos1.getZ() + 0.5);
-            double distThreshold = 0.35 + origin1.distanceTo(cameraPos) * 0.03;
+            Vec2 screenOrigin = projectToScreen(origin1);
 
-            // Check Center handle
-            double centerDist = distanceRayToPoint(ray, origin1);
-            if (centerDist < distThreshold && centerDist < closestDist) {
-                closestDist = centerDist;
-                bestCorner = CORNER_POS1;
-                bestAxis = AXIS_CENTER;
-            }
-
-            // Check X, Y, Z axes
-            for (int axis = 0; axis < 3; axis++) {
-                Vec3 axisDir = getAxisDirection(axis);
-                double d = distanceRayToSegment(ray, origin1, origin1.add(axisDir.scale(2.0)));
-                if (d < distThreshold && d < closestDist) {
-                    closestDist = d;
+            if (screenOrigin != null) {
+                double centerDist = Math.hypot(mouseX - screenOrigin.x, mouseY - screenOrigin.y);
+                if (centerDist < 20.0 && centerDist < closestDist) {
+                    closestDist = centerDist;
                     bestCorner = CORNER_POS1;
-                    bestAxis = axis;
+                    bestAxis = AXIS_CENTER;
+                }
+
+                for (int axis = 0; axis < 3; axis++) {
+                    Vec3 axisEnd = origin1.add(getAxisDirection(axis).scale(axisLength));
+                    Vec2 screenEnd = projectToScreen(axisEnd);
+                    if (screenEnd != null) {
+                        double d = distancePointToSegment2D(mouseX, mouseY, screenOrigin, screenEnd);
+                        if (d < 18.0 && d < closestDist) {
+                            closestDist = d;
+                            bestCorner = CORNER_POS1;
+                            bestAxis = axis;
+                        }
+                    }
                 }
             }
         }
 
+        // Test Pos2
         if (pos2 != null) {
             Vec3 origin2 = new Vec3(pos2.getX() + 0.5, pos2.getY() + 0.5, pos2.getZ() + 0.5);
-            double distThreshold = 0.35 + origin2.distanceTo(cameraPos) * 0.03;
+            Vec2 screenOrigin = projectToScreen(origin2);
 
-            // Check Center handle
-            double centerDist = distanceRayToPoint(ray, origin2);
-            if (centerDist < distThreshold && centerDist < closestDist) {
-                closestDist = centerDist;
-                bestCorner = CORNER_POS2;
-                bestAxis = AXIS_CENTER;
-            }
-
-            // Check X, Y, Z axes
-            for (int axis = 0; axis < 3; axis++) {
-                Vec3 axisDir = getAxisDirection(axis);
-                double d = distanceRayToSegment(ray, origin2, origin2.add(axisDir.scale(2.0)));
-                if (d < distThreshold && d < closestDist) {
-                    closestDist = d;
+            if (screenOrigin != null) {
+                double centerDist = Math.hypot(mouseX - screenOrigin.x, mouseY - screenOrigin.y);
+                if (centerDist < 20.0 && centerDist < closestDist) {
+                    closestDist = centerDist;
                     bestCorner = CORNER_POS2;
-                    bestAxis = axis;
+                    bestAxis = AXIS_CENTER;
+                }
+
+                for (int axis = 0; axis < 3; axis++) {
+                    Vec3 axisEnd = origin2.add(getAxisDirection(axis).scale(axisLength));
+                    Vec2 screenEnd = projectToScreen(axisEnd);
+                    if (screenEnd != null) {
+                        double d = distancePointToSegment2D(mouseX, mouseY, screenOrigin, screenEnd);
+                        if (d < 18.0 && d < closestDist) {
+                            closestDist = d;
+                            bestCorner = CORNER_POS2;
+                            bestAxis = axis;
+                        }
+                    }
                 }
             }
         }
 
-        // Center selection box move gizmo
+        // Test Center bounding box move gizmo
         if (pos1 != null && pos2 != null) {
             SelectionBox sel = mgr.getCurrentSelection();
             if (sel != null) {
@@ -458,15 +624,27 @@ public class GhostModeManager {
                     (min.getY() + max.getY() + 1) / 2.0,
                     (min.getZ() + max.getZ() + 1) / 2.0
                 );
-                double distThreshold = 0.4 + center.distanceTo(cameraPos) * 0.03;
+                Vec2 screenCenter = projectToScreen(center);
 
-                for (int axis = 0; axis < 3; axis++) {
-                    Vec3 axisDir = getAxisDirection(axis);
-                    double d = distanceRayToSegment(ray, center, center.add(axisDir.scale(2.5)));
-                    if (d < distThreshold && d < closestDist) {
-                        closestDist = d;
+                if (screenCenter != null) {
+                    double centerDist = Math.hypot(mouseX - screenCenter.x, mouseY - screenCenter.y);
+                    if (centerDist < 22.0 && centerDist < closestDist) {
+                        closestDist = centerDist;
                         bestCorner = CORNER_CENTER;
-                        bestAxis = axis;
+                        bestAxis = AXIS_CENTER;
+                    }
+
+                    for (int axis = 0; axis < 3; axis++) {
+                        Vec3 axisEnd = center.add(getAxisDirection(axis).scale(axisLength));
+                        Vec2 screenEnd = projectToScreen(axisEnd);
+                        if (screenEnd != null) {
+                            double d = distancePointToSegment2D(mouseX, mouseY, screenCenter, screenEnd);
+                            if (d < 18.0 && d < closestDist) {
+                                closestDist = d;
+                                bestCorner = CORNER_CENTER;
+                                bestAxis = axis;
+                            }
+                        }
                     }
                 }
             }
@@ -486,7 +664,12 @@ public class GhostModeManager {
         Vec3 origin = getGizmoOrigin(corner);
         if (origin != null) {
             Ray ray = getMouseRay();
-            this.dragStartAxisParam = projectRayOntoAxis(ray, origin, getAxisDirection(axis));
+            if (axis == AXIS_CENTER) {
+                this.dragStartHitPoint = intersectRayWithCameraPlane(ray, origin);
+            } else {
+                Vec3 axisDir = getAxisDirection(axis);
+                this.dragStartParam = intersectRayWithAxisPlane(ray, origin, axisDir);
+            }
         }
     }
 
@@ -500,26 +683,50 @@ public class GhostModeManager {
         if (origin == null) return;
 
         Ray ray = getMouseRay();
-        Vec3 axisDir = getAxisDirection(draggingAxis);
-        double currentParam = projectRayOntoAxis(ray, origin, axisDir);
-        double deltaParam = currentParam - dragStartAxisParam;
-        int blockDelta = (int) Math.round(deltaParam);
 
-        if (blockDelta == 0) return;
+        if (draggingAxis == AXIS_CENTER) {
+            // Dragging on camera plane
+            Vec3 hit = intersectRayWithCameraPlane(ray, origin);
+            if (hit == null || dragStartHitPoint == null) return;
 
-        int dx = (draggingAxis == AXIS_X) ? blockDelta : 0;
-        int dy = (draggingAxis == AXIS_Y) ? blockDelta : 0;
-        int dz = (draggingAxis == AXIS_Z) ? blockDelta : 0;
+            Vec3 offset = hit.subtract(dragStartHitPoint);
+            int dx = (int) Math.round(offset.x);
+            int dy = (int) Math.round(offset.y);
+            int dz = (int) Math.round(offset.z);
 
-        if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
-            BlockPos newPos = initialPos1.offset(dx, dy, dz);
-            mgr.setPos1(mc.level, newPos);
-        } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
-            BlockPos newPos = initialPos2.offset(dx, dy, dz);
-            mgr.setPos2(mc.level, newPos);
-        } else if (draggingCorner == CORNER_CENTER && initialPos1 != null && initialPos2 != null) {
-            mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
-            mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+            if (dx == 0 && dy == 0 && dz == 0) return;
+
+            if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
+                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
+            } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
+                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+            } else if (draggingCorner == CORNER_CENTER && initialPos1 != null && initialPos2 != null) {
+                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
+                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+            }
+        } else {
+            // Dragging along single axis (X, Y, or Z) using DCC plane projection
+            Vec3 axisDir = getAxisDirection(draggingAxis);
+            double currentParam = intersectRayWithAxisPlane(ray, origin, axisDir);
+            double deltaParam = currentParam - dragStartParam;
+            int blockDelta = (int) Math.round(deltaParam);
+
+            if (blockDelta == 0) return;
+
+            int dx = (draggingAxis == AXIS_X) ? blockDelta : 0;
+            int dy = (draggingAxis == AXIS_Y) ? blockDelta : 0;
+            int dz = (draggingAxis == AXIS_Z) ? blockDelta : 0;
+
+            if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
+                BlockPos newPos = initialPos1.offset(dx, dy, dz);
+                mgr.setPos1(mc.level, newPos);
+            } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
+                BlockPos newPos = initialPos2.offset(dx, dy, dz);
+                mgr.setPos2(mc.level, newPos);
+            } else if (draggingCorner == CORNER_CENTER && initialPos1 != null && initialPos2 != null) {
+                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
+                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+            }
         }
     }
 
@@ -528,6 +735,7 @@ public class GhostModeManager {
         this.draggingAxis = AXIS_NONE;
         this.initialPos1 = null;
         this.initialPos2 = null;
+        this.dragStartHitPoint = null;
     }
 
     private Vec3 getGizmoOrigin(int corner) {
@@ -560,60 +768,40 @@ public class GhostModeManager {
         };
     }
 
-    private double distanceRayToPoint(Ray ray, Vec3 point) {
-        Vec3 toPoint = point.subtract(ray.origin);
-        double t = toPoint.dot(ray.dir);
-        if (t < 0) t = 0;
-        Vec3 closest = ray.origin.add(ray.dir.scale(t));
-        return closest.distanceTo(point);
-    }
-
-    private double distanceRayToSegment(Ray ray, Vec3 segStart, Vec3 segEnd) {
-        Vec3 u = ray.dir;
-        Vec3 v = segEnd.subtract(segStart);
-        Vec3 w = ray.origin.subtract(segStart);
-
-        double a = u.dot(u); // 1.0
-        double b = u.dot(v);
-        double c = v.dot(v);
-        double d = u.dot(w);
-        double e = v.dot(w);
-        double D = a * c - b * b;
-
-        double sc, tc;
-
-        if (D < 1e-6) {
-            sc = 0.0;
-            tc = (b > c ? d / b : e / c);
+    /**
+     * Intersects ray with a plane containing the axis line and facing the camera.
+     * Returns parameter t along the axis.
+     */
+    private double intersectRayWithAxisPlane(Ray ray, Vec3 axisOrigin, Vec3 axisDir) {
+        Vec3 camLook = getForwardVector(yaw, pitch);
+        // Plane normal containing axisDir, facing camera
+        Vec3 normal = axisDir.cross(camLook).cross(axisDir);
+        if (normal.lengthSqr() < 1e-6) {
+            normal = camLook;
         } else {
-            sc = (b * e - c * d) / D;
-            tc = (a * e - b * d) / D;
+            normal = normal.normalize();
         }
 
-        if (sc < 0.0) sc = 0.0;
-        tc = Math.max(0.0, Math.min(1.0, tc));
-
-        Vec3 pRay = ray.origin.add(u.scale(sc));
-        Vec3 pSeg = segStart.add(v.scale(tc));
-        return pRay.distanceTo(pSeg);
-    }
-
-    private double projectRayOntoAxis(Ray ray, Vec3 axisOrigin, Vec3 axisDir) {
-        Vec3 u = ray.dir;
-        Vec3 v = axisDir;
-        Vec3 w = ray.origin.subtract(axisOrigin);
-
-        double a = u.dot(u); // 1.0
-        double b = u.dot(v);
-        double c = v.dot(v); // 1.0
-        double d = u.dot(w);
-        double e = v.dot(w);
-        double D = a * c - b * b;
-
-        if (D < 1e-6) {
+        double denom = ray.dir.dot(normal);
+        if (Math.abs(denom) < 1e-6) {
             return 0.0;
         }
 
-        return (a * e - b * d) / D;
+        double t = axisOrigin.subtract(ray.origin).dot(normal) / denom;
+        Vec3 hitPoint = ray.origin.add(ray.dir.scale(t));
+        return hitPoint.subtract(axisOrigin).dot(axisDir);
+    }
+
+    /**
+     * Intersects ray with a plane passing through origin and facing camera.
+     */
+    private Vec3 intersectRayWithCameraPlane(Ray ray, Vec3 planeOrigin) {
+        Vec3 normal = getForwardVector(yaw, pitch);
+        double denom = ray.dir.dot(normal);
+        if (Math.abs(denom) < 1e-6) {
+            return planeOrigin;
+        }
+        double t = planeOrigin.subtract(ray.origin).dot(normal) / denom;
+        return ray.origin.add(ray.dir.scale(t));
     }
 }
