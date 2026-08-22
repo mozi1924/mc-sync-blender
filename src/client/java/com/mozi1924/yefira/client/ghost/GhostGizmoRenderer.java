@@ -1,0 +1,135 @@
+package com.mozi1924.yefira.client.ghost;
+
+import com.mozi1924.yefira.selection.SelectionBox;
+import com.mozi1924.yefira.selection.SelectionManager;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gizmos.GizmoStyle;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+
+public class GhostGizmoRenderer {
+
+    public static final int COLOR_X = 0xFFFF3333; // Red
+    public static final int COLOR_Y = 0xFF33FF33; // Green
+    public static final int COLOR_Z = 0xFF3388FF; // Blue
+    public static final int COLOR_CENTER = 0xFFFFCC00; // Gold
+    public static final int COLOR_HIGHLIGHT = 0xFFFFFF55; // Bright Yellow
+
+    public static void register() {
+        LevelRenderEvents.BEFORE_GIZMOS.register(context -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.level == null) return;
+
+            GhostModeManager ghost = GhostModeManager.getInstance();
+            if (!ghost.isActive()) return;
+
+            SelectionManager mgr = SelectionManager.getInstance();
+            if (mgr.getDimension() != null && !mc.level.dimension().equals(mgr.getDimension())) {
+                return;
+            }
+
+            BlockPos pos1 = mgr.getPos1();
+            BlockPos pos2 = mgr.getPos2();
+
+            // Render Pos1 Gizmo
+            if (pos1 != null) {
+                Vec3 origin1 = new Vec3(pos1.getX() + 0.5, pos1.getY() + 0.5, pos1.getZ() + 0.5);
+                renderCornerGizmo(origin1, GhostModeManager.CORNER_POS1, "Pos 1", 0xFF00FFCC);
+            }
+
+            // Render Pos2 Gizmo
+            if (pos2 != null) {
+                Vec3 origin2 = new Vec3(pos2.getX() + 0.5, pos2.getY() + 0.5, pos2.getZ() + 0.5);
+                renderCornerGizmo(origin2, GhostModeManager.CORNER_POS2, "Pos 2", 0xFFFF00CC);
+            }
+
+            // Render Center Move Gizmo if both pos1 and pos2 are set
+            if (pos1 != null && pos2 != null) {
+                SelectionBox sel = mgr.getCurrentSelection();
+                if (sel != null) {
+                    BlockPos min = sel.getMin();
+                    BlockPos max = sel.getMax();
+                    Vec3 center = new Vec3(
+                        (min.getX() + max.getX() + 1) / 2.0,
+                        (min.getY() + max.getY() + 1) / 2.0,
+                        (min.getZ() + max.getZ() + 1) / 2.0
+                    );
+                    renderCenterGizmo(center);
+                }
+            }
+        });
+    }
+
+    private static void renderCornerGizmo(Vec3 origin, int cornerId, String label, int labelColor) {
+        GhostModeManager ghost = GhostModeManager.getInstance();
+        int hoveredCorner = ghost.getHoveredCorner();
+        int hoveredAxis = ghost.getHoveredAxis();
+        int draggingCorner = ghost.getDraggingCorner();
+        int draggingAxis = ghost.getDraggingAxis();
+
+        boolean isCurrentCorner = (draggingCorner == cornerId) || (draggingCorner == GhostModeManager.CORNER_NONE && hoveredCorner == cornerId);
+
+        // Center handle cube
+        boolean centerHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_CENTER);
+        int centerColor = centerHighlighted ? COLOR_HIGHLIGHT : COLOR_CENTER;
+        AABB centerBox = new AABB(
+            origin.x - 0.15, origin.y - 0.15, origin.z - 0.15,
+            origin.x + 0.15, origin.y + 0.15, origin.z + 0.15
+        );
+        Gizmos.cuboid(centerBox, GizmoStyle.strokeAndFill(centerColor, 2.5f, centerColor & 0x66FFFFFF));
+
+        float axisLength = 2.0f;
+
+        // X Axis (Red)
+        boolean xHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_X);
+        int colorX = xHighlighted ? COLOR_HIGHLIGHT : COLOR_X;
+        Vec3 endX = origin.add(axisLength, 0, 0);
+        Gizmos.arrow(origin, endX, colorX, xHighlighted ? 4.0f : 2.5f);
+
+        // Y Axis (Green)
+        boolean yHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Y);
+        int colorY = yHighlighted ? COLOR_HIGHLIGHT : COLOR_Y;
+        Vec3 endY = origin.add(0, axisLength, 0);
+        Gizmos.arrow(origin, endY, colorY, yHighlighted ? 4.0f : 2.5f);
+
+        // Z Axis (Blue)
+        boolean zHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Z);
+        int colorZ = zHighlighted ? COLOR_HIGHLIGHT : COLOR_Z;
+        Vec3 endZ = origin.add(0, 0, axisLength);
+        Gizmos.arrow(origin, endZ, colorZ, zHighlighted ? 4.0f : 2.5f);
+    }
+
+    private static void renderCenterGizmo(Vec3 center) {
+        GhostModeManager ghost = GhostModeManager.getInstance();
+        int hoveredCorner = ghost.getHoveredCorner();
+        int hoveredAxis = ghost.getHoveredAxis();
+        int draggingCorner = ghost.getDraggingCorner();
+        int draggingAxis = ghost.getDraggingAxis();
+
+        boolean isCenterGizmo = (draggingCorner == GhostModeManager.CORNER_CENTER) ||
+                                (draggingCorner == GhostModeManager.CORNER_NONE && hoveredCorner == GhostModeManager.CORNER_CENTER);
+
+        float axisLength = 2.5f;
+
+        // Center sphere/point
+        Gizmos.point(center, COLOR_CENTER, 6.0f);
+
+        // X Axis
+        boolean xHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_X);
+        int colorX = xHighlighted ? COLOR_HIGHLIGHT : (COLOR_X & 0xAAFFFFFF);
+        Gizmos.arrow(center, center.add(axisLength, 0, 0), colorX, xHighlighted ? 4.0f : 2.0f);
+
+        // Y Axis
+        boolean yHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Y);
+        int colorY = yHighlighted ? COLOR_HIGHLIGHT : (COLOR_Y & 0xAAFFFFFF);
+        Gizmos.arrow(center, center.add(0, axisLength, 0), colorY, yHighlighted ? 4.0f : 2.0f);
+
+        // Z Axis
+        boolean zHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Z);
+        int colorZ = zHighlighted ? COLOR_HIGHLIGHT : (COLOR_Z & 0xAAFFFFFF);
+        Gizmos.arrow(center, center.add(0, 0, axisLength), colorZ, zHighlighted ? 4.0f : 2.0f);
+    }
+}

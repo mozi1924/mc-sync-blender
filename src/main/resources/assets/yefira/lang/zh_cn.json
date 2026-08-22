@@ -1,5 +1,6 @@
 {
   "key.category.yefira.selection": "Yefira 选区",
   "key.yefira.pos1": "设置选区点 Pos1",
-  "key.yefira.pos2": "设置选区点 Pos2"
+  "key.yefira.pos2": "设置选区点 Pos2",
+  "key.yefira.ghost_mode": "切换幽灵模式 (Ghost Mode)"
 }

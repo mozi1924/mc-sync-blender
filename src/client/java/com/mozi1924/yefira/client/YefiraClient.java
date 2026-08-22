@@ -2,6 +2,9 @@ package com.mozi1924.yefira.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mozi1924.yefira.Yefira;
+import com.mozi1924.yefira.client.ghost.GhostGizmoRenderer;
+import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
+import com.mozi1924.yefira.client.ghost.GhostModeManager;
 import com.mozi1924.yefira.client.model.ClientBlockModelProvider;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
 import com.mozi1924.yefira.encoder.BlockModelExtractor;
@@ -28,6 +31,7 @@ public class YefiraClient implements ClientModInitializer {
 
 	public static KeyMapping keyPos1;
 	public static KeyMapping keyPos2;
+	public static KeyMapping keyGhostMode;
 
 	@Override
 	public void onInitializeClient() {
@@ -49,8 +53,17 @@ public class YefiraClient implements ClientModInitializer {
 			YEFIRA_CATEGORY
 		));
 
-		// Register 3D Bounding Box Renderer
+		keyGhostMode = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.ghost_mode",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_G,
+			YEFIRA_CATEGORY
+		));
+
+		// Register 3D Bounding Box Renderer and Ghost Gizmos
 		SelectionBoxRenderer.register();
+		GhostGizmoRenderer.register();
+		GhostHudOverlay.register();
 
 		// Register Client play connection events for multiplayer server selections
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
@@ -68,15 +81,26 @@ public class YefiraClient implements ClientModInitializer {
 		});
 
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			if (GhostModeManager.getInstance().isActive()) {
+				GhostModeManager.getInstance().disable();
+			}
 			if (!client.hasSingleplayerServer()) {
 				SelectionManager.getInstance().setActiveStoragePath(null);
 			}
 		});
 
-		// Register client tick listener for key presses
+		// Register client tick listener for key presses and ghost mode updates
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.player == null || client.level == null) {
 				return;
+			}
+
+			while (keyGhostMode.consumeClick()) {
+				GhostModeManager.getInstance().toggle();
+			}
+
+			if (GhostModeManager.getInstance().isActive()) {
+				GhostModeManager.getInstance().tickMovement();
 			}
 
 			// Check if player is holding Golden Pickaxe in main hand or off hand

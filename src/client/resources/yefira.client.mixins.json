@@ -3,7 +3,10 @@
 	"package": "com.mozi1924.yefira.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"ExampleClientMixin"
+		"ExampleClientMixin",
+		"CameraMixin",
+		"ClientInputMixin",
+		"MouseHandlerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
