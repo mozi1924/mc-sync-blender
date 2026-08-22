@@ -75,9 +75,9 @@ def setup_world_geometry_nodes(
     setup_material_slots_for_object(world_obj, mat, atlas_params.get("mapping"))
 
     # Resolve all chunk materials and construct/update independent Material Dispatcher group
-    chunk_mats = find_all_atlas_chunk_materials(atlas_params.get("mapping"))
+    chunk_mats = find_all_atlas_chunk_materials(atlas_params.get("mapping"), bound_material=mat, obj=world_obj)
     if not chunk_mats:
-        fallback_mat = find_bound_atlas_material(None) or get_or_create_atlas_material()
+        fallback_mat = find_bound_atlas_material(world_obj) or find_bound_atlas_material(None) or get_or_create_atlas_material()
         if fallback_mat:
             chunk_mats = {0: fallback_mat}
 

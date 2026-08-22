@@ -969,12 +969,67 @@ def get_or_create_atlas_material() -> Optional[bpy.types.Material]:
     return mat
 
 
-def find_all_atlas_chunk_materials(mapping: Optional[dict] = None) -> dict[int, bpy.types.Material]:
-    """Find all Atlas chunk materials in Blender data, keyed by chunk_id."""
+def find_all_atlas_chunk_materials(
+    mapping: Optional[dict] = None,
+    bound_material: Optional[bpy.types.Material] = None,
+    obj: Optional[bpy.types.Object] = None,
+) -> dict[int, bpy.types.Material]:
+    """Find all Atlas chunk materials in Blender data, keyed by chunk_id.
+
+    Prioritizes materials matching the bound material's pack hash / mapping
+    or currently assigned to obj.data.materials to prevent stale materials from
+    previous replacements polluting the material dispatcher.
+    """
     if not HAS_BPY:
         return {}
 
     chunk_materials: dict[int, bpy.types.Material] = {}
+
+    if bound_material is None and obj is not None:
+        bound_material = find_bound_atlas_material(obj)
+
+    target_pack_hash = None
+    target_uv_source = None
+    if bound_material:
+        target_pack_hash = bound_material.get("mtk:pack_hash") or bound_material.get("mtk_pack_hash")
+        target_uv_source = bound_material.get("mtk:atlas_uv_source")
+        # Direct chunk 0 binding
+        for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
+            if key in bound_material:
+                try:
+                    cid0 = int(bound_material[key])
+                    chunk_materials[cid0] = bound_material
+                    break
+                except (ValueError, TypeError):
+                    pass
+        if not chunk_materials:
+            chunk_materials[0] = bound_material
+
+    # 1. First priority: Check materials already assigned to object material slots
+    if obj and getattr(obj, "data", None) and hasattr(obj.data, "materials"):
+        for slot_idx, slot_mat in enumerate(obj.data.materials):
+            if not slot_mat:
+                continue
+            slot_hash = slot_mat.get("mtk:pack_hash") or slot_mat.get("mtk_pack_hash")
+            slot_cid = None
+            for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
+                if key in slot_mat:
+                    try:
+                        slot_cid = int(slot_mat[key])
+                        break
+                    except (ValueError, TypeError):
+                        pass
+            if slot_cid is None and "atlas_chunk_" in slot_mat.name:
+                import re
+                m = re.search(r"atlas_chunk_(\d+)", slot_mat.name)
+                if m:
+                    slot_cid = int(m.group(1))
+
+            if slot_cid is not None:
+                if target_pack_hash and slot_hash and slot_hash != target_pack_hash:
+                    continue
+                if slot_cid not in chunk_materials:
+                    chunk_materials[slot_cid] = slot_mat
 
     # Sort materials to prefer ones specialized with :attr:UVMap or :attr:
     mats_sorted = sorted(
@@ -984,40 +1039,48 @@ def find_all_atlas_chunk_materials(mapping: Optional[dict] = None) -> dict[int, 
         )
     )
 
-    # 1. First priority: Match materials by explicit custom property mtk:atlas_chunk_id
+    # 2. Match materials in bpy.data.materials filtering by target pack hash & UV source
     for mat in mats_sorted:
+        mat_hash = mat.get("mtk:pack_hash") or mat.get("mtk_pack_hash")
+        mat_uv = mat.get("mtk:atlas_uv_source")
+
+        # Skip materials from a different resource pack hash
+        if target_pack_hash and mat_hash and mat_hash != target_pack_hash:
+            continue
+        # Skip materials with different UV source when target UV source is specified
+        if target_uv_source and mat_uv and mat_uv != target_uv_source:
+            continue
+
+        cid = None
         for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
             if key in mat:
                 try:
                     cid = int(mat[key])
-                    if cid not in chunk_materials:
-                        chunk_materials[cid] = mat
                     break
                 except (ValueError, TypeError):
                     pass
 
-    # 2. Second priority: Match materials by naming pattern (e.g., mtk:minecraft:atlas_chunk_000...)
-    for mat in mats_sorted:
-        if "atlas_chunk_" in mat.name:
+        if cid is None and "atlas_chunk_" in mat.name:
             import re
             m = re.search(r"atlas_chunk_(\d+)", mat.name)
             if m:
                 cid = int(m.group(1))
-                if cid not in chunk_materials:
-                    chunk_materials[cid] = mat
 
-    # 3. Check mapping chunks metadata
+        if cid is not None and cid not in chunk_materials:
+            chunk_materials[cid] = mat
+
+    # 3. Check mapping chunks metadata fallback
     if mapping and "chunks" in mapping:
         for chunk in mapping["chunks"]:
             cid = int(chunk.get("chunk_id", 0))
             if cid not in chunk_materials:
                 if cid == 0:
-                    active = find_active_atlas_material()
+                    active = bound_material or find_active_atlas_material()
                     if active:
                         chunk_materials[0] = active
 
     if not chunk_materials:
-        active = find_active_atlas_material() or get_or_create_atlas_material()
+        active = bound_material or find_active_atlas_material() or get_or_create_atlas_material()
         if active:
             chunk_materials[0] = active
 
@@ -1043,7 +1106,7 @@ def setup_material_slots_for_object(
     if mapping is None and mat:
         mapping = parse_atlas_mapping(mat)
 
-    chunk_materials = find_all_atlas_chunk_materials(mapping)
+    chunk_materials = find_all_atlas_chunk_materials(mapping=mapping, bound_material=mat, obj=obj)
     if not chunk_materials and mat:
         chunk_materials[0] = mat
 
