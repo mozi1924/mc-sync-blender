@@ -60,6 +60,7 @@ public class GhostModeManager {
 
     private BlockPos initialPos1 = null;
     private BlockPos initialPos2 = null;
+    private Vec3 dragStartOrigin = null;
     private Vec3 dragStartHitPoint = null;
     private double dragStartParam = 0.0;
 
@@ -100,6 +101,7 @@ public class GhostModeManager {
         this.hoveredAxis = AXIS_NONE;
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
+        this.dragStartOrigin = null;
         this.lastMouseX = mc.mouseHandler.xpos();
         this.lastMouseY = mc.mouseHandler.ypos();
 
@@ -117,6 +119,7 @@ public class GhostModeManager {
         this.isMmbZooming = false;
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
+        this.dragStartOrigin = null;
 
         // Regrab mouse
         mc.mouseHandler.grabMouse();
@@ -134,6 +137,7 @@ public class GhostModeManager {
             this.isMmbZooming = false;
             this.draggingCorner = CORNER_NONE;
             this.draggingAxis = AXIS_NONE;
+            this.dragStartOrigin = null;
             mc.mouseHandler.grabMouse();
             Yefira.LOGGER.info("Fly Navigation ENABLED (Shift+~)");
         } else {
@@ -282,7 +286,11 @@ public class GhostModeManager {
         lastMouseY = mouseY;
 
         if (isMmbOrbiting) {
-            // Blender Orbit: MMB drag
+            // Natural Viewport Orbit:
+            // Drag LEFT (dx < 0) -> view turns LEFT (yaw decreases)
+            // Drag RIGHT (dx > 0) -> view turns RIGHT (yaw increases)
+            // Drag UP (dy < 0) -> view tilts UP (pitch decreases)
+            // Drag DOWN (dy > 0) -> view tilts DOWN (pitch increases)
             yaw += (float) (dx * 0.35);
             pitch += (float) (dy * 0.35);
             pitch = Math.max(-89.9f, Math.min(89.9f, pitch));
@@ -292,18 +300,21 @@ public class GhostModeManager {
             Vec3 look = getForwardVector(yaw, pitch);
             cameraPos = pivotPos.subtract(look.scale(dist));
         } else if (isMmbPanning) {
-            // Blender Pan: Shift + MMB drag
-            Vec3 forward = getForwardVector(yaw, pitch);
+            // Natural Viewport Pan: Shift + MMB drag
             Vec3 right = getRightVector(yaw);
-            Vec3 up = forward.cross(right).normalize();
+            Vec3 up = getUpVector(yaw, pitch);
 
             double dist = cameraPos.distanceTo(pivotPos);
             double panScale = 0.002 * Math.max(2.0, dist);
+            // Drag RIGHT (dx > 0) -> scene shifts right (camera moves left)
+            // Drag UP (dy < 0) -> scene shifts up (camera moves down)
             Vec3 delta = right.scale(-dx * panScale).add(up.scale(dy * panScale));
             cameraPos = cameraPos.add(delta);
             pivotPos = pivotPos.add(delta);
         } else if (isMmbZooming) {
-            // Blender Zoom: Ctrl + MMB drag
+            // Natural Viewport Zoom: Ctrl + MMB drag
+            // Drag UP (dy < 0) -> Zoom IN
+            // Drag DOWN (dy > 0) -> Zoom OUT
             double dist = cameraPos.distanceTo(pivotPos);
             double zoomFactor = Math.exp(dy * 0.008);
             double newDist = Math.max(0.5, Math.min(500.0, dist * zoomFactor));
@@ -432,6 +443,12 @@ public class GhostModeManager {
         ).normalize();
     }
 
+    public static Vec3 getUpVector(float yRot, float xRot) {
+        Vec3 forward = getForwardVector(yRot, xRot);
+        Vec3 right = getRightVector(yRot);
+        return right.cross(forward).normalize();
+    }
+
     // ==========================================================
     // Screen Projection & Robust DCC Plane Gizmo Dragging Math
     // ==========================================================
@@ -466,7 +483,7 @@ public class GhostModeManager {
 
         Vec3 forward = getForwardVector(yaw, pitch);
         Vec3 right = getRightVector(yaw);
-        Vec3 up = forward.cross(right).normalize();
+        Vec3 up = getUpVector(yaw, pitch);
 
         Vec3 rayDir = forward.add(right.scale(nx * tanHalfFovX)).add(up.scale(ny * tanHalfFovY)).normalize();
         return new Ray(cameraPos, rayDir);
@@ -484,7 +501,7 @@ public class GhostModeManager {
 
         Vec3 forward = getForwardVector(yaw, pitch);
         Vec3 right = getRightVector(yaw);
-        Vec3 up = forward.cross(right).normalize();
+        Vec3 up = getUpVector(yaw, pitch);
 
         Vec3 rel = worldPos.subtract(cameraPos);
         double depth = rel.dot(forward);
@@ -663,30 +680,28 @@ public class GhostModeManager {
 
         Vec3 origin = getGizmoOrigin(corner);
         if (origin != null) {
+            this.dragStartOrigin = origin;
             Ray ray = getMouseRay();
             if (axis == AXIS_CENTER) {
-                this.dragStartHitPoint = intersectRayWithCameraPlane(ray, origin);
+                this.dragStartHitPoint = intersectRayWithCameraPlane(ray, this.dragStartOrigin);
             } else {
                 Vec3 axisDir = getAxisDirection(axis);
-                this.dragStartParam = intersectRayWithAxisPlane(ray, origin, axisDir);
+                this.dragStartParam = intersectRayWithAxisPlane(ray, this.dragStartOrigin, axisDir);
             }
         }
     }
 
     private void handleGizmoDrag() {
-        if (draggingCorner == CORNER_NONE || draggingAxis == AXIS_NONE) return;
+        if (draggingCorner == CORNER_NONE || draggingAxis == AXIS_NONE || dragStartOrigin == null) return;
         SelectionManager mgr = SelectionManager.getInstance();
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
-
-        Vec3 origin = getGizmoOrigin(draggingCorner);
-        if (origin == null) return;
 
         Ray ray = getMouseRay();
 
         if (draggingAxis == AXIS_CENTER) {
             // Dragging on camera plane
-            Vec3 hit = intersectRayWithCameraPlane(ray, origin);
+            Vec3 hit = intersectRayWithCameraPlane(ray, dragStartOrigin);
             if (hit == null || dragStartHitPoint == null) return;
 
             Vec3 offset = hit.subtract(dragStartHitPoint);
@@ -707,7 +722,7 @@ public class GhostModeManager {
         } else {
             // Dragging along single axis (X, Y, or Z) using DCC plane projection
             Vec3 axisDir = getAxisDirection(draggingAxis);
-            double currentParam = intersectRayWithAxisPlane(ray, origin, axisDir);
+            double currentParam = intersectRayWithAxisPlane(ray, dragStartOrigin, axisDir);
             double deltaParam = currentParam - dragStartParam;
             int blockDelta = (int) Math.round(deltaParam);
 
@@ -736,6 +751,7 @@ public class GhostModeManager {
         this.initialPos1 = null;
         this.initialPos2 = null;
         this.dragStartHitPoint = null;
+        this.dragStartOrigin = null;
     }
 
     private Vec3 getGizmoOrigin(int corner) {
