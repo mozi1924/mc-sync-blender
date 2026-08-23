@@ -156,7 +156,16 @@ def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, l
             locations_by_name[alias] = face_locations
             material_ids[alias] = material_id
 
-    # 1. First consume the authoritative material mapping.  A real model can
+    # 0. First consume authoritative baked block_states if available from AtlasGenerator
+    block_states = mapping.get("block_states", {})
+    for state_str, state_info in block_states.items():
+        faces = state_info.get("faces", {})
+        fallback = _fallback_texture_location(mapping, state_str) or {}
+        face_locations = [faces.get(face_name) or fallback for face_name in FACE_ORDER]
+        mat_id = int(face_locations[0].get("texture_id", 0)) if face_locations and face_locations[0] else 0
+        add(state_str, face_locations, mat_id)
+
+    # 1. Next consume the authoritative material mapping.  A real model can
     # encode arbitrary face layouts that texture-name conventions cannot.
     for index, material in enumerate(mapping.get("materials", [])):
         name = material.get("name", "")
@@ -757,6 +766,13 @@ def build_block_face_uv_rot_lut(mapping: Optional[dict]) -> dict[str, list[float
     rot_lut: dict[str, list[float]] = {}
     if not mapping:
         return rot_lut
+    # 1. From block_states
+    for state_str, state_info in mapping.get("block_states", {}).items():
+        faces = state_info.get("faces", {})
+        rots = [float(faces.get(f, {}).get("uv_rotation", 0.0)) if isinstance(faces.get(f), dict) else 0.0 for f in FACE_ORDER]
+        for alias in _atlas_name_aliases(state_str):
+            rot_lut[alias] = rots
+    # 2. From materials
     for material in mapping.get("materials", []):
         name = material.get("name", "")
         if not name:
@@ -764,7 +780,7 @@ def build_block_face_uv_rot_lut(mapping: Optional[dict]) -> dict[str, list[float
         faces = material.get("faces", {})
         rots = [float(faces.get(f, {}).get("uv_rotation", 0.0)) if isinstance(faces.get(f), dict) else 0.0 for f in FACE_ORDER]
         for alias in _atlas_name_aliases(name):
-            rot_lut[alias] = rots
+            rot_lut.setdefault(alias, rots)
     return rot_lut
 
 
@@ -773,6 +789,20 @@ def build_block_face_uv_bounds_lut(mapping: Optional[dict]) -> dict[str, list[tu
     bounds_lut: dict[str, list[tuple[float, float, float, float]]] = {}
     if not mapping:
         return bounds_lut
+    # 1. From block_states
+    for state_str, state_info in mapping.get("block_states", {}).items():
+        faces = state_info.get("faces", {})
+        bounds = []
+        for f in FACE_ORDER:
+            loc = faces.get(f) if isinstance(faces.get(f), dict) else {}
+            u_min = float(loc.get("u_min", 0.0))
+            v_min = float(loc.get("v_min", 0.0))
+            u_max = float(loc.get("u_max", 1.0))
+            v_max = float(loc.get("v_max", 1.0))
+            bounds.append((u_min, v_min, u_max, v_max))
+        for alias in _atlas_name_aliases(state_str):
+            bounds_lut[alias] = bounds
+    # 2. From materials
     for material in mapping.get("materials", []):
         name = material.get("name", "")
         if not name:
@@ -787,7 +817,7 @@ def build_block_face_uv_bounds_lut(mapping: Optional[dict]) -> dict[str, list[tu
             v_max = float(loc.get("v_max", 1.0))
             bounds.append((u_min, v_min, u_max, v_max))
         for alias in _atlas_name_aliases(name):
-            bounds_lut[alias] = bounds
+            bounds_lut.setdefault(alias, bounds)
     return bounds_lut
 
 
