@@ -145,13 +145,14 @@ public class BlockModelExtractor {
                 faces[3] = BlockFaceData.simple(bottomTex);
 
                 int frontIdx = 5; // North
+                float frontRot = 0.0f;
                 if ("south".equals(facing)) frontIdx = 4;
                 else if ("east".equals(facing)) frontIdx = 0;
                 else if ("west".equals(facing)) frontIdx = 1;
-                else if ("up".equals(facing)) frontIdx = 2;
-                else if ("down".equals(facing)) frontIdx = 3;
+                else if ("up".equals(facing)) { frontIdx = 2; frontRot = 180.0f; }
+                else if ("down".equals(facing)) { frontIdx = 3; frontRot = 180.0f; }
 
-                faces[frontIdx] = BlockFaceData.simple(frontTex);
+                faces[frontIdx] = BlockFaceData.simple(frontTex, frontRot);
             } else {
                 String baseTex = "minecraft:block/" + name;
                 for (int i = 0; i < 6; i++) {
