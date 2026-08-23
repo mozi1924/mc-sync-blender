@@ -239,126 +239,121 @@ def update_world_point_cloud(
             mat_id = palette_mat_cache[parsed.name]
         material_ids.append(mat_id)
 
-        json_faces = json_obj.get("faces") if json_obj and isinstance(json_obj, dict) else None
-        if json_faces and isinstance(json_faces, dict):
-            for face_idx, face_name in enumerate(FACES):
-                f_data = json_faces.get(face_name, {})
-                tex_name = f_data.get("tex", "")
-                uv_r = float(f_data.get("rot", 0.0))
-                uv_b = tuple(f_data.get("uv", [0.0, 0.0, 1.0, 1.0]))
-                tint_idx = int(f_data.get("tint", -1))
+        # Primary DCC-side resolution using StateBaker (computes exact UV rotations, models, and textures)
+        baked_model = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state)
+        for face_idx, face_name in enumerate(FACES):
+            baked_face = baked_model.faces[face_idx]
+            tex_name = baked_face.texture
+            uv_r = float(baked_face.uv_rot)
+            uv_b = tuple(baked_face.uv_bounds)
+            tint_idx = int(baked_face.tint_index)
 
-                loc = None
-                if atlas_mapping_textures:
-                    short_n = tex_name.split(":", 1)[-1]
-                    if short_n.startswith("block/"):
-                        short_n = short_n[6:]
-                    loc = atlas_mapping_textures.get(tex_name) or atlas_mapping_textures.get(short_n) or atlas_mapping_textures.get(f"minecraft:{short_n}") or atlas_mapping_textures.get(f"minecraft:block/{short_n}")
+            loc = None
+            if atlas_mapping_textures:
+                short_n = tex_name.split(":", 1)[-1]
+                if short_n.startswith("block/"):
+                    short_n = short_n[6:]
+                loc = (
+                    atlas_mapping_textures.get(tex_name)
+                    or atlas_mapping_textures.get(short_n)
+                    or atlas_mapping_textures.get(f"minecraft:{short_n}")
+                    or atlas_mapping_textures.get(f"minecraft:block/{short_n}")
+                )
 
-                col = float(loc.get("tile_column", 0)) if loc else 0.0
-                row = float(loc.get("tile_row", 0)) if loc else 0.0
-                cid = int(loc.get("chunk_id", 0)) if loc else 0
-                tid = int(loc.get("texture_id", mat_id)) if loc else mat_id
+            col = float(loc.get("tile_column", 0)) if loc else 0.0
+            row = float(loc.get("tile_row", 0)) if loc else 0.0
+            cid = int(loc.get("chunk_id", 0)) if loc else 0
+            tid = int(loc.get("texture_id", mat_id)) if loc else mat_id
 
-                if loc and loc.get("kind") == "animation":
-                    px = int(loc.get("pixel_x", 0))
-                    fw = max(1, int(loc.get("frame_width", 16)))
-                    col = float(px // fw)
-                    row = 0.0
+            short_t = tex_name.split(":", 1)[-1]
+            if short_t.startswith("block/"):
+                short_t = short_t[6:]
 
-                if face_idx == 0: tile_east.append((col, row, 0.0))
-                elif face_idx == 1: tile_west.append((col, row, 0.0))
-                elif face_idx == 2: tile_top.append((col, row, 0.0))
-                elif face_idx == 3: tile_bottom.append((col, row, 0.0))
-                elif face_idx == 4: tile_south.append((col, row, 0.0))
-                elif face_idx == 5: tile_north.append((col, row, 0.0))
+            if loc and loc.get("kind") == "animation":
+                px = int(loc.get("pixel_x", 0))
+                fw = max(1, int(loc.get("frame_width", 16)))
+                col = float(px // fw)
+                row = 0.0
+            elif loc is None and block_face_lut:
+                b_lut = (
+                    block_face_lut.get(short_t)
+                    or block_face_lut.get(tex_name)
+                    or block_face_lut.get(parsed.name)
+                    or block_face_lut.get(parsed.full_state)
+                )
+                if b_lut and len(b_lut) > face_idx:
+                    col, row = float(b_lut[face_idx][0]), float(b_lut[face_idx][1])
 
-                face_chunks[face_idx].append(cid)
-                face_textures[face_idx].append(tid)
+            if loc is None and block_face_chunk_lut:
+                c_lut = (
+                    block_face_chunk_lut.get(short_t)
+                    or block_face_chunk_lut.get(tex_name)
+                    or block_face_chunk_lut.get(parsed.name)
+                    or block_face_chunk_lut.get(parsed.full_state)
+                )
+                if c_lut and len(c_lut) > face_idx:
+                    cid = int(c_lut[face_idx])
 
-                if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
-                    base_w = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
-                    over_w = float(loc.get("default_overlay_tint_weight", 0.0)) if loc else 0.0
-                    tint_w = float(loc.get("default_tint_weight", 1.0)) if loc else 1.0
-                    is_h = 1.0 if loc and loc.get("is_hardcoded", False) else 0.0
-                    face_tint_data[face_idx].append((base_w, over_w, tint_w, is_h))
+            if loc is None and block_face_texture_lut:
+                t_lut = (
+                    block_face_texture_lut.get(short_t)
+                    or block_face_texture_lut.get(tex_name)
+                    or block_face_texture_lut.get(parsed.name)
+                    or block_face_texture_lut.get(parsed.full_state)
+                )
+                if t_lut and len(t_lut) > face_idx:
+                    tid = int(t_lut[face_idx])
+
+            if face_idx == 0: tile_east.append((col, row, 0.0))
+            elif face_idx == 1: tile_west.append((col, row, 0.0))
+            elif face_idx == 2: tile_top.append((col, row, 0.0))
+            elif face_idx == 3: tile_bottom.append((col, row, 0.0))
+            elif face_idx == 4: tile_south.append((col, row, 0.0))
+            elif face_idx == 5: tile_north.append((col, row, 0.0))
+
+            face_chunks[face_idx].append(cid)
+            face_textures[face_idx].append(tid)
+
+            if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
+                base_w = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
+                over_w = float(loc.get("default_overlay_tint_weight", 0.0)) if loc else 0.0
+                tint_w = float(loc.get("default_tint_weight", 1.0)) if loc else 1.0
+                is_h = 1.0 if loc and loc.get("is_hardcoded", False) else 0.0
+                face_tint_data[face_idx].append((base_w, over_w, tint_w, is_h))
+            elif loc is None and block_face_tint_lut:
+                tint_lut = block_face_tint_lut.get(parsed.name) or block_face_tint_lut.get(parsed.full_state)
+                if tint_lut and len(tint_lut) > face_idx:
+                    face_tint_data[face_idx].append(tint_lut[face_idx])
                 else:
                     face_tint_data[face_idx].append((0.0, 0.0, 0.0, 0.0))
+            else:
+                face_tint_data[face_idx].append((0.0, 0.0, 0.0, 0.0))
 
-                f_count = float(loc.get("frame_count", 1)) if loc else 1.0
-                f_time = float(loc.get("frametime", 1)) if loc else 1.0
-                interp = 1.0 if loc and loc.get("interpolate", False) else 0.0
-                face_anim_timing[face_idx].append((f_count, f_time, interp, 0.0))
-
-                fw = float(loc.get("frame_width", tile_size)) if loc else float(tile_size)
-                fh = float(loc.get("frame_height", tile_size)) if loc else float(tile_size)
-                face_anim_frame_size[face_idx].append((fw, fh, 0.0, 0.0))
-
-                face_uv_rot[face_idx].append(uv_r)
-                face_uv_bounds[face_idx].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
-        else:
-            # DCC-side resolution using StateBaker (computes exact UV rotations, models, and textures)
-            baked_model = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state)
-            for face_idx, face_name in enumerate(FACES):
-                baked_face = baked_model.faces[face_idx]
-                tex_name = baked_face.texture
-                uv_r = float(baked_face.uv_rot)
-                uv_b = tuple(baked_face.uv_bounds)
-                tint_idx = int(baked_face.tint_index)
-
-                loc = None
-                if atlas_mapping_textures:
-                    short_n = tex_name.split(":", 1)[-1]
-                    if short_n.startswith("block/"):
-                        short_n = short_n[6:]
-                    loc = (
-                        atlas_mapping_textures.get(tex_name)
-                        or atlas_mapping_textures.get(short_n)
-                        or atlas_mapping_textures.get(f"minecraft:{short_n}")
-                        or atlas_mapping_textures.get(f"minecraft:block/{short_n}")
-                    )
-
-                col = float(loc.get("tile_column", 0)) if loc else 0.0
-                row = float(loc.get("tile_row", 0)) if loc else 0.0
-                cid = int(loc.get("chunk_id", 0)) if loc else 0
-                tid = int(loc.get("texture_id", mat_id)) if loc else mat_id
-
-                if loc and loc.get("kind") == "animation":
-                    px = int(loc.get("pixel_x", 0))
-                    fw = max(1, int(loc.get("frame_width", 16)))
-                    col = float(px // fw)
-                    row = 0.0
-
-                if face_idx == 0: tile_east.append((col, row, 0.0))
-                elif face_idx == 1: tile_west.append((col, row, 0.0))
-                elif face_idx == 2: tile_top.append((col, row, 0.0))
-                elif face_idx == 3: tile_bottom.append((col, row, 0.0))
-                elif face_idx == 4: tile_south.append((col, row, 0.0))
-                elif face_idx == 5: tile_north.append((col, row, 0.0))
-
-                face_chunks[face_idx].append(cid)
-                face_textures[face_idx].append(tid)
-
-                if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
-                    base_w = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
-                    over_w = float(loc.get("default_overlay_tint_weight", 0.0)) if loc else 0.0
-                    tint_w = float(loc.get("default_tint_weight", 1.0)) if loc else 1.0
-                    is_h = 1.0 if loc and loc.get("is_hardcoded", False) else 0.0
-                    face_tint_data[face_idx].append((base_w, over_w, tint_w, is_h))
+            f_count = float(loc.get("frame_count", 1)) if loc else 1.0
+            f_time = float(loc.get("frametime", 1)) if loc else 1.0
+            interp = 1.0 if loc and loc.get("interpolate", False) else 0.0
+            if loc is None and block_face_anim_timing_lut:
+                at_lut = block_face_anim_timing_lut.get(parsed.name) or block_face_anim_timing_lut.get(parsed.full_state)
+                if at_lut and len(at_lut) > face_idx:
+                    face_anim_timing[face_idx].append(at_lut[face_idx])
                 else:
-                    face_tint_data[face_idx].append((0.0, 0.0, 0.0, 0.0))
-
-                f_count = float(loc.get("frame_count", 1)) if loc else 1.0
-                f_time = float(loc.get("frametime", 1)) if loc else 1.0
-                interp = 1.0 if loc and loc.get("interpolate", False) else 0.0
+                    face_anim_timing[face_idx].append((f_count, f_time, interp, 0.0))
+            else:
                 face_anim_timing[face_idx].append((f_count, f_time, interp, 0.0))
 
-                fw = float(loc.get("frame_width", tile_size)) if loc else float(tile_size)
-                fh = float(loc.get("frame_height", tile_size)) if loc else float(tile_size)
+            fw = float(loc.get("frame_width", tile_size)) if loc else float(tile_size)
+            fh = float(loc.get("frame_height", tile_size)) if loc else float(tile_size)
+            if loc is None and block_face_anim_frame_size_lut:
+                as_lut = block_face_anim_frame_size_lut.get(parsed.name) or block_face_anim_frame_size_lut.get(parsed.full_state)
+                if as_lut and len(as_lut) > face_idx:
+                    face_anim_frame_size[face_idx].append(as_lut[face_idx])
+                else:
+                    face_anim_frame_size[face_idx].append((fw, fh, 0.0, 0.0))
+            else:
                 face_anim_frame_size[face_idx].append((fw, fh, 0.0, 0.0))
 
-                face_uv_rot[face_idx].append(uv_r)
-                face_uv_bounds[face_idx].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
+            face_uv_rot[face_idx].append(uv_r)
+            face_uv_bounds[face_idx].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
 
         # Statistics
         if parsed.block_type == BlockTypeEnum.CUBE:

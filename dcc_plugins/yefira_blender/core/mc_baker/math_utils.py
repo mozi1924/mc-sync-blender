@@ -70,17 +70,19 @@ def rotate_z(v: Vec3, angle_deg: float) -> Vec3:
 
 
 def rotate_point(p: Vec3, rot_x: float, rot_y: float, origin: Vec3 = (0.5, 0.5, 0.5)) -> Vec3:
+    """Apply BlockModelRotation (X then Y rotation around origin)."""
     px = p[0] - origin[0]
     py = p[1] - origin[1]
     pz = p[2] - origin[2]
 
-    v = rotate_y((px, py, pz), rot_y)
-    v = rotate_x(v, rot_x)
+    v = rotate_x((px, py, pz), rot_x)
+    v = rotate_y(v, rot_y)
 
     return (v[0] + origin[0], v[1] + origin[1], v[2] + origin[2])
 
 
 def rotate_element_point(p: Vec3, rotation_dict: Optional[dict]) -> Vec3:
+    """Apply local element rotation (axis, origin [0..16], angle, rescale)."""
     if not rotation_dict:
         return p
 
@@ -119,13 +121,17 @@ def rotate_direction(direction: str, rot_x: float, rot_y: float) -> str:
     if direction not in DIR_VECTORS:
         return direction
     norm = DIR_VECTORS[direction]
-    v = rotate_y(norm, rot_y)
-    v = rotate_x(v, rot_x)
+    v = rotate_x(norm, rot_x)
+    v = rotate_y(v, rot_y)
     rounded = round_vec3(v)
     return VECTOR_TO_DIR.get(rounded, direction)
 
 
 def default_face_uv(direction: str, from_pos: Vec3, to_pos: Vec3) -> tuple[float, float, float, float]:
+    """
+    Calculate default (minU, minV, maxU, maxV) in [0..16] space
+    directly matching FaceBakery.defaultFaceUV.
+    """
     fx, fy, fz = from_pos
     tx, ty, tz = to_pos
 
@@ -145,6 +151,10 @@ def default_face_uv(direction: str, from_pos: Vec3, to_pos: Vec3) -> tuple[float
 
 
 def get_face_raw_vertices(direction: str, from_pos: Vec3, to_pos: Vec3) -> list[Vec3]:
+    """
+    Returns the 4 quad vertices (0..3) in Minecraft [0..1] space
+    directly matching FaceInfo vertex selection tables.
+    """
     fx, fy, fz = from_pos[0] / 16.0, from_pos[1] / 16.0, from_pos[2] / 16.0
     tx, ty, tz = to_pos[0] / 16.0, to_pos[1] / 16.0, to_pos[2] / 16.0
 
@@ -164,6 +174,10 @@ def get_face_raw_vertices(direction: str, from_pos: Vec3, to_pos: Vec3) -> list[
 
 
 def get_face_loop_uvs(uv_bounds: tuple[float, float, float, float], rotation_deg: float = 0.0) -> list[Vec2]:
+    """
+    Calculate the 4 loop UV coordinates [0..1] matching CuboidFace.getU/getV.
+    uv_bounds: (minU, minV, maxU, maxV) in [0..16].
+    """
     min_u, min_v, max_u, max_v = (
         uv_bounds[0] / 16.0,
         uv_bounds[1] / 16.0,
@@ -189,9 +203,14 @@ def apply_uvlock_to_uvs(
     rot_x: float,
     rot_y: float
 ) -> list[Vec2]:
+    """
+    Apply UVLock counter-rotation to the 4 loop UVs.
+    """
     if rot_x == 0.0 and rot_y == 0.0:
         return uvs
 
+    # Project on face plane: calculate UV rotation angle needed
+    # When uvlock is active, determine effective angle to rotate around center (0.5, 0.5)
     rot_angle = 0.0
     if orig_direction in ("up", "down"):
         if orig_direction == "up":
@@ -242,9 +261,23 @@ def calculate_uv_rotation(
                 return (base_rot - rot_x) % 360.0
 
         if rot_x == 90.0:
-            if orig_direction == "north" and new_direction == "up":
+            if rot_y in (90.0, 270.0) and orig_direction in ("north", "south", "up", "down") and new_direction in ("up", "down"):
+                return (base_rot + 90.0) % 360.0
+            elif orig_direction == "north" and new_direction == "up":
                 return (base_rot + 180.0) % 360.0
             elif orig_direction == "south" and new_direction == "down":
+                return (base_rot + 0.0) % 360.0
+            elif orig_direction == "up" and new_direction == "south":
+                return (base_rot + 0.0) % 360.0
+            elif orig_direction == "down" and new_direction == "north":
+                return (base_rot + 180.0) % 360.0
+        elif rot_x == 180.0 or (rot_x == 90.0 and rot_y == 180.0):
+            if orig_direction in ("north", "south", "east", "west") and new_direction in ("north", "south", "east", "west"):
+                return (base_rot + 180.0) % 360.0
+        elif rot_x == 270.0:
+            if orig_direction == "up" and new_direction == "north":
+                return (base_rot + 180.0) % 360.0
+            elif orig_direction == "down" and new_direction == "south":
                 return (base_rot + 0.0) % 360.0
 
         return base_rot

@@ -1045,7 +1045,7 @@ def find_all_atlas_chunk_materials(
         mat_uv = mat.get("mtk:atlas_uv_source")
 
         # Skip materials from a different resource pack hash
-        if target_pack_hash and mat_hash and mat_hash != target_pack_hash:
+        if target_pack_hash and (not mat_hash or mat_hash != target_pack_hash):
             continue
         # Skip materials with different UV source when target UV source is specified
         if target_uv_source and mat_uv and mat_uv != target_uv_source:

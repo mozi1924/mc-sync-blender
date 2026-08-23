@@ -13,6 +13,11 @@ import json
 import math
 import unittest
 import bpy
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath("."))
+sys.path.insert(0, os.path.abspath("dcc_plugins"))
 
 from dcc_plugins.yefira_blender.core.storage import VoxelStorage
 from dcc_plugins.yefira_blender.core.point_cloud_builder import update_world_point_cloud
@@ -273,31 +278,31 @@ class TestAllDirectionalBlocks(unittest.TestCase):
             self.assertAlmostEqual(obj.data.attributes["mtk_tile_top"].data[0].vector[0], 50.0) # observer_front
             self.assertAlmostEqual(obj.data.attributes["mtk_tile_bottom"].data[0].vector[0], 51.0) # observer_back
             self.assertAlmostEqual(obj.data.attributes["mtk_tile_south"].data[0].vector[0], 52.0) # observer_top
-            self.assertAlmostEqual(obj.data.attributes["mtk_uv_rot_south"].data[0].value, 0.0)
+            self.assertAlmostEqual(obj.data.attributes["mtk_uv_rot_south"].data[0].value, 180.0)
         finally:
             eval_obj.to_mesh_clear()
 
-        # 2. Observer facing DOWN: arrows on sides point DOWN (rot=180)
+        # 2. Observer facing DOWN: arrows on sides point DOWN (rot=0)
         state_down = {
             "state": "minecraft:observer[facing=down,powered=false]",
             "type": 0, "opaque": 1, "emissive": 0,
             "faces": {
-                "east": {"tex": "minecraft:block/observer_side", "rot": 180, "uv": [0.0, 0.0, 1.0, 1.0]},
-                "west": {"tex": "minecraft:block/observer_side", "rot": 180, "uv": [0.0, 0.0, 1.0, 1.0]},
+                "east": {"tex": "minecraft:block/observer_side", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
+                "west": {"tex": "minecraft:block/observer_side", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
                 "top": {"tex": "minecraft:block/observer_back", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
                 "bottom": {"tex": "minecraft:block/observer_front", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
-                "south": {"tex": "minecraft:block/observer_top", "rot": 180, "uv": [0.0, 0.0, 1.0, 1.0]},
-                "north": {"tex": "minecraft:block/observer_top", "rot": 180, "uv": [0.0, 0.0, 1.0, 1.0]},
+                "south": {"tex": "minecraft:block/observer_top", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
+                "north": {"tex": "minecraft:block/observer_top", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0]},
             }
         }
         obj, eval_mesh, eval_obj = self._build_and_eval_single_block(state_down)
         try:
             self.assertAlmostEqual(obj.data.attributes["mtk_tile_bottom"].data[0].vector[0], 50.0) # observer_front
             self.assertAlmostEqual(obj.data.attributes["mtk_tile_top"].data[0].vector[0], 51.0) # observer_back
-            self.assertAlmostEqual(obj.data.attributes["mtk_uv_rot_south"].data[0].value, 180.0)
+            self.assertAlmostEqual(obj.data.attributes["mtk_uv_rot_south"].data[0].value, 0.0)
         finally:
             eval_obj.to_mesh_clear()
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=['first-arg-is-ignored'])

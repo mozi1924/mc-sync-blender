@@ -42,6 +42,7 @@ class StateBaker:
         self._bake_cache: dict[str, BakedModel] = {}
 
     def set_resource_source(self, jar_path: Union[str, Path]):
+        """Set or switch the underlying Minecraft JAR/resource pack source."""
         if not self.resource_loader:
             self.resource_loader = JarResourceLoader(jar_path)
         else:
@@ -57,6 +58,10 @@ class StateBaker:
         self.state_resolver._state_cache.clear()
 
     def bake_block_state(self, state_str: str) -> BakedModel:
+        """
+        Bake a BlockState string into a fully resolved BakedModel containing all elements,
+        quad vertices in [0..1] block space, loop UV coordinates, and 6-face summary.
+        """
         state_str_clean = state_str.strip()
         if state_str_clean in self._bake_cache:
             return self._bake_cache[state_str_clean]
@@ -71,8 +76,10 @@ class StateBaker:
         fallback_texture = f"minecraft:block/{short_name}"
 
         is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab"))
-        is_emissive = any(w in short_name for w in ("glowstone", "sea_lantern", "shroomlight", "magma", "lava", "fire", "lantern", "torch"))
+        is_emissive = any(w in short_name for w in ("glowstone", "sea_lantern", "shroomlight", "magma", "lava", "fire", "lantern", "torch", "crying_obsidian", "beacon", "end_rod"))
         if props.get("lit") == "true":
+            is_emissive = True
+        if short_name == "respawn_anchor" and int(props.get("charges", "0")) > 0:
             is_emissive = True
 
         for match in variant_matches:
@@ -80,6 +87,7 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
+                # Default 1x1x1 cube fallback
                 raw_elements = [
                     {
                         "from": [0, 0, 0],
@@ -103,9 +111,12 @@ class StateBaker:
                     face_rot = float(face_data.get("rotation", 0.0))
                     tint_index = int(face_data.get("tintindex", -1))
 
+                    # UV bounds: if omitted in JSON, compute defaultFaceUV
                     if "uv" in face_data:
                         raw_uv = face_data["uv"]
                         uv_bounds_16 = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3]))
+                        if uv_bounds_16[1] > uv_bounds_16[3]:
+                            face_rot = (face_rot + 180.0) % 360.0
                     else:
                         uv_bounds_16 = default_face_uv(orig_dir, from_pos, to_pos)
 
@@ -116,8 +127,10 @@ class StateBaker:
                         uv_bounds_16[3] / 16.0,
                     )
 
+                    # 1. New face direction after variant rotation
                     new_dir = rotate_direction(orig_dir, match.rot_x, match.rot_y)
 
+                    # 2. UV rotation angle
                     uv_rot = calculate_uv_rotation(
                         orig_direction=orig_dir,
                         new_direction=new_dir,
@@ -127,13 +140,16 @@ class StateBaker:
                         uvlock=match.uvlock,
                     )
 
+                    # 3. Transform 3D quad vertices
                     raw_verts = get_face_raw_vertices(orig_dir, from_pos, to_pos)
+                    # Apply local element rotation first, then model variant rotation
                     transformed_verts = []
                     for v in raw_verts:
                         v_local = rotate_element_point(v, elem_rot)
                         v_world = rotate_point(v_local, match.rot_x, match.rot_y)
                         transformed_verts.append(v_world)
 
+                    # 4. Calculate loop UVs
                     loop_uvs = get_face_loop_uvs(uv_bounds_16, face_rot)
                     if match.uvlock:
                         loop_uvs = apply_uvlock_to_uvs(loop_uvs, orig_dir, match.rot_x, match.rot_y)
@@ -161,6 +177,16 @@ class StateBaker:
                     faces=elem_faces,
                     rotation=elem_rot,
                 ))
+
+        # Fill 6-face summary
+        if baked_elements:
+            for elem in baked_elements:
+                for f in elem.faces.values():
+                    if f and f.texture:
+                        fallback_texture = f.texture
+                        break
+                if fallback_texture != f"minecraft:block/{short_name}":
+                    break
 
         final_six_faces: list[BakedFace] = []
         for i in range(6):

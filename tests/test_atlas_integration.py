@@ -210,12 +210,15 @@ class TestYefiraAtlasIntegration(unittest.TestCase):
         obj = bpy.data.objects.new("TestMultiChunkObj", mesh)
         bpy.context.scene.collection.objects.link(obj)
 
-        mat0 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_000")
+        mat0 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_000_slots_test")
         mat0["mtk:atlas_chunk_id"] = 0
-        mat1 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001")
+        mat0["mtk:pack_hash"] = "slots_setup_test"
+        mat1 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001_slots_test")
         mat1["mtk:atlas_chunk_id"] = 1
-        mat2 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_002")
+        mat1["mtk:pack_hash"] = "slots_setup_test"
+        mat2 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_002_slots_test")
         mat2["mtk:atlas_chunk_id"] = 2
+        mat2["mtk:pack_hash"] = "slots_setup_test"
 
         mapping = {
             "chunks": [
@@ -225,7 +228,7 @@ class TestYefiraAtlasIntegration(unittest.TestCase):
             ]
         }
 
-        chunk_mats = find_all_atlas_chunk_materials(mapping)
+        chunk_mats = find_all_atlas_chunk_materials(mapping, bound_material=mat0)
         self.assertEqual(len(chunk_mats), 3)
         self.assertIs(chunk_mats[0], mat0)
         self.assertIs(chunk_mats[1], mat1)

@@ -106,9 +106,9 @@ class TestBlockModelUVAndOrientation(unittest.TestCase):
         # Verify UV rotation attributes written to mesh
         self.assertIn("mtk_uv_rot_east", mesh.attributes)
         self.assertIn("mtk_uv_rot_top", mesh.attributes)
-        self.assertAlmostEqual(mesh.attributes["mtk_uv_rot_east"].data[0].value, 0.0)
+        self.assertAlmostEqual(mesh.attributes["mtk_uv_rot_east"].data[0].value, 270.0)
         self.assertAlmostEqual(mesh.attributes["mtk_uv_rot_top"].data[0].value, 90.0)
-        self.assertAlmostEqual(mesh.attributes["mtk_uv_rot_north"].data[0].value, 90.0)
+        self.assertAlmostEqual(mesh.attributes["mtk_uv_rot_north"].data[0].value, 270.0)
 
         # Verify tile coordinates
         # East: oak_log_top (col 21, row 8)
@@ -178,4 +178,4 @@ class TestBlockModelUVAndOrientation(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=['first-arg-is-ignored'])
