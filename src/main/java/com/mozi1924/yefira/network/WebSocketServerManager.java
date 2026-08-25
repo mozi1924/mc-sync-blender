@@ -191,11 +191,11 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             conn.send(infoBytes);
 
-            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
-            conn.send(snapshotBytes);
-
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
             conn.send(manifestBytes);
+
+            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
+            conn.send(snapshotBytes);
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
         }
@@ -206,14 +206,14 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         try {
             long snapshotSeqId = globalSeqId.incrementAndGet();
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
-            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
+            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
-                    client.send(snapshotBytes);
                     client.send(manifestBytes);
+                    client.send(snapshotBytes);
                 }
             }
         } catch (Exception e) {
