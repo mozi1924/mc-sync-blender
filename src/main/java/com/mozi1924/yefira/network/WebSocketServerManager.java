@@ -248,7 +248,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         }
     }
 
-    /** Called from END_SERVER_TICK to make edit traffic bounded and ordered. */
+    /** Called from END_SERVER_TICK to make edit traffic bounded, ordered, and optimized for batches. */
     public void flushQueuedDeltaUpdates() {
         synchronized (pendingDeltaChanges) {
             if (pendingDeltaChanges.isEmpty() || pendingDeltaSelection == null) return;
@@ -256,12 +256,44 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
             List<BlockDataEncoder.BlockChangeEntry> changes = List.copyOf(pendingDeltaChanges.values());
             pendingDeltaChanges.clear();
             pendingDeltaSelection = null;
-            // Keep this send ordered with selection changes: if a selection
-            // changes concurrently, it either clears this batch before the
-            // send, or waits and sends its replacement snapshot afterwards.
-            // A client can therefore never receive an old-selection delta
-            // after the replacement full snapshot.
-            broadcastDeltaUpdate(selection, changes);
+
+            SelectionManager selectionManager = SelectionManager.getInstance();
+            Level level = selectionManager.getCurrentLevel();
+
+            // When a large burst of edits occurs (e.g. /fill, WorldEdit, large redstone),
+            // upgrade densely affected 16x16x16 sections to Section Snapshots (Packet 0x06).
+            if (changes.size() > 64 && level != null) {
+                Map<BlockDataEncoder.SectionPos, List<BlockDataEncoder.BlockChangeEntry>> sectionGroups = new HashMap<>();
+                for (BlockDataEncoder.BlockChangeEntry change : changes) {
+                    BlockPos pos = change.pos();
+                    BlockDataEncoder.SectionPos secPos = new BlockDataEncoder.SectionPos(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4);
+                    sectionGroups.computeIfAbsent(secPos, k -> new ArrayList<>()).add(change);
+                }
+
+                List<BlockDataEncoder.BlockChangeEntry> remainingMicroDeltas = new ArrayList<>();
+                for (Map.Entry<BlockDataEncoder.SectionPos, List<BlockDataEncoder.BlockChangeEntry>> entry : sectionGroups.entrySet()) {
+                    BlockDataEncoder.SectionPos secPos = entry.getKey();
+                    List<BlockDataEncoder.BlockChangeEntry> secChanges = entry.getValue();
+
+                    if (secChanges.size() >= 32 || changes.size() > 256) {
+                        // Broadcast optimized Palette Section Snapshot for this whole chunk
+                        byte[] secBytes = BlockDataEncoder.encodeSectionSnapshot(level, selection, secPos);
+                        for (WebSocket client : clients) {
+                            if (client.isOpen()) {
+                                client.send(secBytes);
+                            }
+                        }
+                    } else {
+                        remainingMicroDeltas.addAll(secChanges);
+                    }
+                }
+
+                if (!remainingMicroDeltas.isEmpty()) {
+                    broadcastDeltaUpdate(selection, remainingMicroDeltas);
+                }
+            } else {
+                broadcastDeltaUpdate(selection, changes);
+            }
         }
     }
 

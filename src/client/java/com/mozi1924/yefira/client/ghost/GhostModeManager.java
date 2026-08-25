@@ -671,12 +671,17 @@ public class GhostModeManager {
         hoveredAxis = bestAxis;
     }
 
+    private BlockPos dragPreviewPos1 = null;
+    private BlockPos dragPreviewPos2 = null;
+
     private void startGizmoDrag(int corner, int axis) {
         SelectionManager mgr = SelectionManager.getInstance();
         this.draggingCorner = corner;
         this.draggingAxis = axis;
         this.initialPos1 = mgr.getPos1();
         this.initialPos2 = mgr.getPos2();
+        this.dragPreviewPos1 = this.initialPos1;
+        this.dragPreviewPos2 = this.initialPos2;
 
         Vec3 origin = getGizmoOrigin(corner);
         if (origin != null) {
@@ -693,7 +698,6 @@ public class GhostModeManager {
 
     private void handleGizmoDrag() {
         if (draggingCorner == CORNER_NONE || draggingAxis == AXIS_NONE || dragStartOrigin == null) return;
-        SelectionManager mgr = SelectionManager.getInstance();
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
 
@@ -712,12 +716,12 @@ public class GhostModeManager {
             if (dx == 0 && dy == 0 && dz == 0) return;
 
             if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
-                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
+                dragPreviewPos1 = initialPos1.offset(dx, dy, dz);
             } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
-                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+                dragPreviewPos2 = initialPos2.offset(dx, dy, dz);
             } else if (draggingCorner == CORNER_CENTER && initialPos1 != null && initialPos2 != null) {
-                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
-                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+                dragPreviewPos1 = initialPos1.offset(dx, dy, dz);
+                dragPreviewPos2 = initialPos2.offset(dx, dy, dz);
             }
         } else {
             // Dragging along single axis (X, Y, or Z) using DCC plane projection
@@ -733,39 +737,55 @@ public class GhostModeManager {
             int dz = (draggingAxis == AXIS_Z) ? blockDelta : 0;
 
             if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
-                BlockPos newPos = initialPos1.offset(dx, dy, dz);
-                mgr.setPos1(mc.level, newPos);
+                dragPreviewPos1 = initialPos1.offset(dx, dy, dz);
             } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
-                BlockPos newPos = initialPos2.offset(dx, dy, dz);
-                mgr.setPos2(mc.level, newPos);
+                dragPreviewPos2 = initialPos2.offset(dx, dy, dz);
             } else if (draggingCorner == CORNER_CENTER && initialPos1 != null && initialPos2 != null) {
-                mgr.setPos1(mc.level, initialPos1.offset(dx, dy, dz));
-                mgr.setPos2(mc.level, initialPos2.offset(dx, dy, dz));
+                dragPreviewPos1 = initialPos1.offset(dx, dy, dz);
+                dragPreviewPos2 = initialPos2.offset(dx, dy, dz);
             }
         }
     }
 
     private void finishGizmoDrag() {
+        if (draggingCorner != CORNER_NONE) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level != null && dragPreviewPos1 != null && dragPreviewPos2 != null) {
+                if (!dragPreviewPos1.equals(initialPos1) || !dragPreviewPos2.equals(initialPos2)) {
+                    SelectionManager.getInstance().setPositions(mc.level, dragPreviewPos1, dragPreviewPos2);
+                }
+            }
+        }
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
         this.initialPos1 = null;
         this.initialPos2 = null;
+        this.dragPreviewPos1 = null;
+        this.dragPreviewPos2 = null;
         this.dragStartHitPoint = null;
         this.dragStartOrigin = null;
     }
 
     private Vec3 getGizmoOrigin(int corner) {
         SelectionManager mgr = SelectionManager.getInstance();
-        if (corner == CORNER_POS1 && mgr.getPos1() != null) {
-            BlockPos p = mgr.getPos1();
-            return new Vec3(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5);
-        } else if (corner == CORNER_POS2 && mgr.getPos2() != null) {
-            BlockPos p = mgr.getPos2();
-            return new Vec3(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5);
-        } else if (corner == CORNER_CENTER && mgr.getCurrentSelection() != null) {
-            SelectionBox sel = mgr.getCurrentSelection();
-            BlockPos min = sel.getMin();
-            BlockPos max = sel.getMax();
+        BlockPos p1 = (draggingCorner != CORNER_NONE && dragPreviewPos1 != null) ? dragPreviewPos1 : mgr.getPos1();
+        BlockPos p2 = (draggingCorner != CORNER_NONE && dragPreviewPos2 != null) ? dragPreviewPos2 : mgr.getPos2();
+
+        if (corner == CORNER_POS1 && p1 != null) {
+            return new Vec3(p1.getX() + 0.5, p1.getY() + 0.5, p1.getZ() + 0.5);
+        } else if (corner == CORNER_POS2 && p2 != null) {
+            return new Vec3(p2.getX() + 0.5, p2.getY() + 0.5, p2.getZ() + 0.5);
+        } else if (corner == CORNER_CENTER && p1 != null && p2 != null) {
+            BlockPos min = new BlockPos(
+                Math.min(p1.getX(), p2.getX()),
+                Math.min(p1.getY(), p2.getY()),
+                Math.min(p1.getZ(), p2.getZ())
+            );
+            BlockPos max = new BlockPos(
+                Math.max(p1.getX(), p2.getX()),
+                Math.max(p1.getY(), p2.getY()),
+                Math.max(p1.getZ(), p2.getZ())
+            );
             return new Vec3(
                 (min.getX() + max.getX() + 1) / 2.0,
                 (min.getY() + max.getY() + 1) / 2.0,

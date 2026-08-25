@@ -77,6 +77,14 @@ public class SelectionManager {
         updateSelection();
     }
 
+    public synchronized void setPositions(Level level, BlockPos p1, BlockPos p2) {
+        this.currentLevel = level;
+        this.dimension = level.dimension();
+        this.pos1 = p1;
+        this.pos2 = p2;
+        updateSelection();
+    }
+
     public synchronized void clearSelection() {
         this.pos1 = null;
         this.pos2 = null;
