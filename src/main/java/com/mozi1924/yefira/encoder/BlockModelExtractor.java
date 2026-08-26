@@ -161,7 +161,7 @@ public class BlockModelExtractor {
                 }
             } else if (name.contains("banner")) {
                 for (int i = 0; i < 6; i++) {
-                    faces[i] = BlockFaceData.simple("minecraft:entity/banner/base");
+                    faces[i] = BlockFaceData.simple("minecraft:entity/banner/banner_base");
                 }
             } else {
                 String baseTex = "minecraft:block/" + name;

@@ -119,7 +119,7 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
                     String cStem = name.equals("chest") ? "normal" : (name.equals("trapped_chest") ? "trapped" : "ender");
                     faces[i] = BlockFaceData.simple("minecraft:entity/chest/" + cStem);
                 } else if (name.contains("banner")) {
-                    faces[i] = BlockFaceData.simple("minecraft:entity/banner/base");
+                    faces[i] = BlockFaceData.simple("minecraft:entity/banner/banner_base");
                 } else {
                     faces[i] = BlockFaceData.simple("minecraft:block/" + name);
                 }
