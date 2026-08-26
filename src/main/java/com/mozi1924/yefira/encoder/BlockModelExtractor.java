@@ -154,7 +154,11 @@ public class BlockModelExtractor {
 
                 faces[frontIdx] = BlockFaceData.simple(frontTex, frontRot);
             } else if (name.equals("chest") || name.equals("trapped_chest") || name.equals("ender_chest")) {
+                String cType = props.getOrDefault("type", "single");
                 String cStem = name.equals("chest") ? "normal" : (name.equals("trapped_chest") ? "trapped" : "ender");
+                if (!"single".equals(cType) && !"ender_chest".equals(name)) {
+                    cStem = cStem + "_" + cType;
+                }
                 String chestTex = "minecraft:entity/chest/" + cStem;
                 for (int i = 0; i < 6; i++) {
                     faces[i] = BlockFaceData.simple(chestTex);
