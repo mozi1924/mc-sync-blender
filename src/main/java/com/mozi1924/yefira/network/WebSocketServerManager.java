@@ -33,6 +33,8 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     // at most one delta packet per server tick.
     private final Map<BlockPos, BlockDataEncoder.BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
     private SelectionBox pendingDeltaSelection;
+    private long lastManifestBroadcastTick = 0;
+    private boolean hasEditsSinceLastManifest = false;
 
     public static synchronized WebSocketServerManager getInstance() {
         if (INSTANCE == null) {
@@ -223,9 +225,39 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         }
     }
 
+    public void broadcastManifest(Level level, SelectionBox selection) {
+        if (clients.isEmpty() || level == null || selection == null) return;
+        try {
+            long seqId = globalSeqId.incrementAndGet();
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, seqId);
+            for (WebSocket client : clients) {
+                if (client.isOpen()) {
+                    client.send(manifestBytes);
+                }
+            }
+        } catch (Exception e) {
+            Yefira.LOGGER.error("Error broadcasting section manifest", e);
+        }
+    }
+
+    public void tickValidationHeartbeat(long currentTick) {
+        if (clients.isEmpty()) return;
+        SelectionManager selectionManager = SelectionManager.getInstance();
+        if (!selectionManager.hasSelection() || selectionManager.getCurrentLevel() == null) return;
+
+        // Broadcast manifest if edits occurred and 20 ticks elapsed, or at least every 100 ticks (5s)
+        if ((hasEditsSinceLastManifest && currentTick - lastManifestBroadcastTick >= 20)
+                || (currentTick - lastManifestBroadcastTick >= 100)) {
+            lastManifestBroadcastTick = currentTick;
+            hasEditsSinceLastManifest = false;
+            broadcastManifest(selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
+        }
+    }
+
     public void broadcastDeltaUpdate(SelectionBox selection, List<BlockDataEncoder.BlockChangeEntry> changes) {
         if (clients.isEmpty() || changes.isEmpty()) return;
         try {
+            hasEditsSinceLastManifest = true;
             long seqId = globalSeqId.incrementAndGet();
             byte[] deltaBytes = BlockDataEncoder.encodeDeltaUpdate(selection, changes, seqId);
             for (WebSocket client : clients) {
@@ -258,6 +290,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
             List<BlockDataEncoder.BlockChangeEntry> changes = List.copyOf(pendingDeltaChanges.values());
             pendingDeltaChanges.clear();
             pendingDeltaSelection = null;
+            hasEditsSinceLastManifest = true;
 
             SelectionManager selectionManager = SelectionManager.getInstance();
             Level level = selectionManager.getCurrentLevel();

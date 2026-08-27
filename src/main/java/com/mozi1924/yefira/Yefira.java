@@ -27,8 +27,10 @@ public class Yefira implements ModInitializer {
 
 		// Bound delta traffic to one packet per server tick.  Blender performs a
 		// second, short coalescing pass before evaluating its point cloud.
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(
-				server -> com.mozi1924.yefira.network.WebSocketServerManager.getInstance().flushQueuedDeltaUpdates());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			com.mozi1924.yefira.network.WebSocketServerManager.getInstance().flushQueuedDeltaUpdates();
+			com.mozi1924.yefira.network.WebSocketServerManager.getInstance().tickValidationHeartbeat(server.getTickCount());
+		});
 
 		// 监听服务器生命周期
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
