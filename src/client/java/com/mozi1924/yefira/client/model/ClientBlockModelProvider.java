@@ -115,19 +115,7 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
             if (chosenQuad != null) {
                 faces[i] = extractFaceFromQuad(chosenQuad, dir);
             } else {
-                if (name.equals("chest") || name.equals("trapped_chest") || name.equals("ender_chest")) {
-                    String cType = "single";
-                    for (Property<?> property : state.getProperties()) {
-                        if ("type".equals(property.getName())) {
-                            cType = state.getValue(property).toString();
-                        }
-                    }
-                    String cStem = name.equals("chest") ? "normal" : (name.equals("trapped_chest") ? "trapped" : "ender");
-                    if (!"single".equals(cType) && !"ender_chest".equals(name)) {
-                        cStem = cStem + "_" + cType;
-                    }
-                    faces[i] = BlockFaceData.simple("minecraft:entity/chest/" + cStem);
-                } else if (name.contains("banner")) {
+                if (name.contains("banner")) {
                     faces[i] = BlockFaceData.simple("minecraft:entity/banner/banner_base");
                 } else {
                     faces[i] = BlockFaceData.simple("minecraft:block/" + name);
