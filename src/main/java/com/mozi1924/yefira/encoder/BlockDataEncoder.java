@@ -29,6 +29,9 @@ public class BlockDataEncoder {
     // C2S Request Packet Types
     public static final byte PACKET_C2S_REQ_FULL_SYNC = (byte) 0x80;
     public static final byte PACKET_C2S_REQ_SECTION_SYNC = (byte) 0x81;
+    public static final byte PACKET_C2S_SYNC_CONFIG = (byte) 0x82;
+
+    private static final Map<BlockState, byte[]> STATE_UTF8_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 将 BlockState 序列化为规范字符串标识，例如 "minecraft:oak_log[axis=y,facing=north]"
@@ -93,9 +96,9 @@ public class BlockDataEncoder {
         int sizeY = selection.getSizeY();
         int sizeZ = selection.getSizeZ();
 
-        // 收集所有 BlockState 建立 Palette
+        // 收集所有 BlockState 建立 Palette（基于 BlockState 实例快速缓存，杜绝重复序列化 JSON）
         List<String> palette = new ArrayList<>();
-        Map<String, Integer> paletteMap = new HashMap<>();
+        Map<BlockState, Integer> stateToPaletteIdx = new IdentityHashMap<>();
 
         // 预处理建立 Palette 和 三维 State 数组
         int totalBlocks = sizeX * sizeY * sizeZ;
@@ -109,13 +112,13 @@ public class BlockDataEncoder {
                 for (int z = 0; z < sizeZ; z++) {
                     mutablePos.set(min.getX() + x, min.getY() + y, min.getZ() + z);
                     BlockState state = level.getBlockState(mutablePos);
-                    String encodedEntry = BlockModelExtractor.get(state).toJson();
-
-                    int paletteIdx = paletteMap.computeIfAbsent(encodedEntry, k -> {
-                        int newIdx = palette.size();
-                        palette.add(k);
-                        return newIdx;
-                    });
+                    Integer paletteIdx = stateToPaletteIdx.get(state);
+                    if (paletteIdx == null) {
+                        String encodedEntry = BlockModelExtractor.get(state).toJson();
+                        paletteIdx = palette.size();
+                        palette.add(encodedEntry);
+                        stateToPaletteIdx.put(state, paletteIdx);
+                    }
 
                     gridIndices[index++] = paletteIdx;
                 }
@@ -253,7 +256,7 @@ public class BlockDataEncoder {
         int sizeZ = Math.max(0, endZ - startZ + 1);
 
         List<String> palette = new ArrayList<>();
-        Map<String, Integer> paletteMap = new HashMap<>();
+        Map<BlockState, Integer> stateToPaletteIdx = new IdentityHashMap<>();
 
         int totalBlocks = sizeX * sizeY * sizeZ;
         int[] gridIndices = new int[totalBlocks];
@@ -266,13 +269,13 @@ public class BlockDataEncoder {
                 for (int z = 0; z < sizeZ; z++) {
                     mutablePos.set(startX + x, startY + y, startZ + z);
                     BlockState state = level.getBlockState(mutablePos);
-                    String encodedEntry = BlockModelExtractor.get(state).toJson();
-
-                    int paletteIdx = paletteMap.computeIfAbsent(encodedEntry, k -> {
-                        int newIdx = palette.size();
-                        palette.add(k);
-                        return newIdx;
-                    });
+                    Integer paletteIdx = stateToPaletteIdx.get(state);
+                    if (paletteIdx == null) {
+                        String encodedEntry = BlockModelExtractor.get(state).toJson();
+                        paletteIdx = palette.size();
+                        palette.add(encodedEntry);
+                        stateToPaletteIdx.put(state, paletteIdx);
+                    }
 
                     gridIndices[index++] = paletteIdx;
                 }
@@ -394,8 +397,8 @@ public class BlockDataEncoder {
                 for (int z = startZ; z <= endZ; z++) {
                     mutablePos.set(x, y, z);
                     BlockState state = level.getBlockState(mutablePos);
-                    String stateStr = serializeBlockState(state);
-                    crc.update(stateStr.getBytes(StandardCharsets.UTF_8));
+                    byte[] bytes = STATE_UTF8_CACHE.computeIfAbsent(state, s -> serializeBlockState(s).getBytes(StandardCharsets.UTF_8));
+                    crc.update(bytes);
                 }
             }
         }

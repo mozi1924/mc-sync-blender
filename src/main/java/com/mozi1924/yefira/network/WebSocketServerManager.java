@@ -36,6 +36,14 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     private long lastManifestBroadcastTick = 0;
     private boolean hasEditsSinceLastManifest = false;
 
+    public static class ClientConfig {
+        public byte throttleMode = 0; // 0 = NORMAL, 1 = ECO, 2 = PAUSED
+        public byte targetFps = 60;
+        public boolean isActive = true;
+    }
+
+    private final Map<WebSocket, ClientConfig> clientConfigs = new ConcurrentHashMap<>();
+
     public static synchronized WebSocketServerManager getInstance() {
         if (INSTANCE == null) {
             INSTANCE = new WebSocketServerManager(new InetSocketAddress(PORT));
@@ -77,6 +85,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         clients.add(conn);
+        clientConfigs.put(conn, new ClientConfig());
         Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
 
         // New clients receive one authoritative full snapshot plus its
@@ -91,6 +100,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         clients.remove(conn);
+        clientConfigs.remove(conn);
         Yefira.LOGGER.info("DCC client disconnected: {}", conn.getRemoteSocketAddress());
     }
 
@@ -132,6 +142,19 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
         byte version = message.get();
         byte packetType = message.get();
+
+        if (packetType == BlockDataEncoder.PACKET_C2S_SYNC_CONFIG) {
+            byte mode = message.remaining() > 0 ? message.get() : 0;
+            byte fps = message.remaining() > 0 ? message.get() : 60;
+            byte flags = message.remaining() > 0 ? message.get() : 1;
+            ClientConfig cfg = clientConfigs.computeIfAbsent(conn, k -> new ClientConfig());
+            cfg.throttleMode = mode;
+            cfg.targetFps = fps;
+            cfg.isActive = (flags & 1) != 0;
+            Yefira.LOGGER.info("Client {} updated sync config: mode={}, targetFps={}, active={}",
+                    conn.getRemoteSocketAddress(), mode, fps, cfg.isActive);
+            return;
+        }
 
         SelectionManager selectionManager = SelectionManager.getInstance();
         if (!selectionManager.hasSelection() || selectionManager.getCurrentLevel() == null) {
