@@ -243,8 +243,18 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
             conn.send(manifestBytes);
 
-            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
-            conn.send(snapshotBytes);
+            long volume = selection.getVolume();
+            if (volume <= 32768) {
+                byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
+                conn.send(snapshotBytes);
+            } else {
+                // 大选区/调试模式世界：流式分块按 Section 发送非空快照，避免单包超过 1MB/20MB 造成内存暴涨或网络超限
+                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, bytes -> {
+                    if (conn.isOpen()) {
+                        conn.send(bytes);
+                    }
+                });
+            }
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
         }
@@ -256,14 +266,30 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             long snapshotSeqId = globalSeqId.incrementAndGet();
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
-            byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
                     client.send(manifestBytes);
-                    client.send(snapshotBytes);
                 }
+            }
+
+            long volume = selection.getVolume();
+            if (volume <= 32768) {
+                byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
+                for (WebSocket client : clients) {
+                    if (client.isOpen()) {
+                        client.send(snapshotBytes);
+                    }
+                }
+            } else {
+                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, bytes -> {
+                    for (WebSocket client : clients) {
+                        if (client.isOpen()) {
+                            client.send(bytes);
+                        }
+                    }
+                });
             }
         } catch (Exception e) {
             Yefira.LOGGER.error("Error broadcasting snapshot", e);

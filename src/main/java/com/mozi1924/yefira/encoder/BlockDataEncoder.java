@@ -380,6 +380,39 @@ public class BlockDataEncoder {
         return list;
     }
 
+    public static boolean isSectionNonEmpty(Level level, SelectionBox selection, SectionPos secPos) {
+        int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
+        int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
+        int startY = Math.max(selection.getMin().getY(), secPos.y << 4);
+        int endY = Math.min(selection.getMax().getY(), (secPos.y << 4) + 15);
+        int startZ = Math.max(selection.getMin().getZ(), secPos.z << 4);
+        int endZ = Math.min(selection.getMax().getZ(), (secPos.z << 4) + 15);
+
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+        for (int x = startX; x <= endX; x++) {
+            for (int y = startY; y <= endY; y++) {
+                for (int z = startZ; z <= endZ; z++) {
+                    mutablePos.set(x, y, z);
+                    BlockState state = level.getBlockState(mutablePos);
+                    if (!state.isAir()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, java.util.function.Consumer<byte[]> sender) {
+        List<SectionPos> sections = getCoveredSections(selection);
+        for (SectionPos sec : sections) {
+            if (isSectionNonEmpty(level, selection, sec)) {
+                byte[] sectionSnapshot = encodeSectionSnapshot(level, selection, sec);
+                sender.accept(sectionSnapshot);
+            }
+        }
+    }
+
     public static long calculateSectionCRC32(Level level, SelectionBox selection, SectionPos secPos) {
         java.util.zip.CRC32 crc = new java.util.zip.CRC32();
         int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
