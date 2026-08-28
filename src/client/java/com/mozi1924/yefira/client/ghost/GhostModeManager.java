@@ -256,6 +256,31 @@ public class GhostModeManager {
         return draggingAxis;
     }
 
+    public boolean isDragging() {
+        return active && draggingCorner != CORNER_NONE;
+    }
+
+    public BlockPos getEffectivePos1() {
+        if (isDragging() && dragPreviewPos1 != null) {
+            return dragPreviewPos1;
+        }
+        return SelectionManager.getInstance().getPos1();
+    }
+
+    public BlockPos getEffectivePos2() {
+        if (isDragging() && dragPreviewPos2 != null) {
+            return dragPreviewPos2;
+        }
+        return SelectionManager.getInstance().getPos2();
+    }
+
+    public SelectionBox getDragPreviewSelection() {
+        if (isDragging() && dragPreviewPos1 != null && dragPreviewPos2 != null) {
+            return new SelectionBox(dragPreviewPos1, dragPreviewPos2);
+        }
+        return null;
+    }
+
     /**
      * Called on client tick.
      * Note: WASD / QE movement ONLY runs in Fly Navigation Mode (Shift + ~).
@@ -605,9 +630,8 @@ public class GhostModeManager {
      * Screen-space hit test: 24-pixel threshold makes clicking super reliable at any distance.
      */
     private void updateGizmoHover() {
-        SelectionManager mgr = SelectionManager.getInstance();
-        BlockPos pos1 = mgr.getPos1();
-        BlockPos pos2 = mgr.getPos2();
+        BlockPos pos1 = getEffectivePos1();
+        BlockPos pos2 = getEffectivePos2();
 
         if (pos1 == null && pos2 == null) {
             hoveredCorner = CORNER_NONE;
@@ -683,24 +707,20 @@ public class GhostModeManager {
 
         // Test Center bounding box move gizmo
         if (pos1 != null && pos2 != null) {
-            SelectionBox sel = mgr.getCurrentSelection();
-            if (sel != null) {
-                BlockPos min = sel.getMin();
-                BlockPos max = sel.getMax();
-                Vec3 center = new Vec3(
-                    (min.getX() + max.getX() + 1) / 2.0,
-                    (min.getY() + max.getY() + 1) / 2.0,
-                    (min.getZ() + max.getZ() + 1) / 2.0
-                );
-                Vec2 screenCenter = projectToScreen(center);
+            Vec3 center = new Vec3(
+                (pos1.getX() + pos2.getX() + 1) / 2.0,
+                (pos1.getY() + pos2.getY() + 1) / 2.0,
+                (pos1.getZ() + pos2.getZ() + 1) / 2.0
+            );
+            Vec2 screenCenter = projectToScreen(center);
 
-                if (screenCenter != null) {
-                    double centerDist = Math.hypot(mouseX - screenCenter.x, mouseY - screenCenter.y);
-                    if (centerDist < 22.0 && centerDist < closestDist) {
-                        closestDist = centerDist;
-                        bestCorner = CORNER_CENTER;
-                        bestAxis = AXIS_CENTER;
-                    }
+            if (screenCenter != null) {
+                double centerDist = Math.hypot(mouseX - screenCenter.x, mouseY - screenCenter.y);
+                if (centerDist < 22.0 && centerDist < closestDist) {
+                    closestDist = centerDist;
+                    bestCorner = CORNER_CENTER;
+                    bestAxis = AXIS_CENTER;
+                }
 
                     for (int axis = 0; axis < 3; axis++) {
                         Vec3 axisEnd = center.add(getAxisDirection(axis).scale(axisLength));
@@ -716,7 +736,6 @@ public class GhostModeManager {
                     }
                 }
             }
-        }
 
         hoveredCorner = bestCorner;
         hoveredAxis = bestAxis;

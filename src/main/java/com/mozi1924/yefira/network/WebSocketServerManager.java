@@ -240,7 +240,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             long volume = selection.getVolume();
             int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
             int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
-            String dimension = level.dimension() != null ? level.dimension().location().toString() : "minecraft:overworld";
+            String dimension = level.dimension() != null ? level.dimension().identifier().toString() : "minecraft:overworld";
             int flags = (volume > 32768) ? 1 : 0;
 
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
@@ -275,7 +275,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             long volume = selection.getVolume();
             int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
             int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
-            String dimension = level.dimension() != null ? level.dimension().location().toString() : "minecraft:overworld";
+            String dimension = level.dimension() != null ? level.dimension().identifier().toString() : "minecraft:overworld";
             int flags = (volume > 32768) ? 1 : 0;
 
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);

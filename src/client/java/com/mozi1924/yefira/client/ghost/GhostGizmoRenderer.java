@@ -1,5 +1,6 @@
 package com.mozi1924.yefira.client.ghost;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
@@ -9,6 +10,7 @@ import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.lwjgl.opengl.GL11;
 
 public class GhostGizmoRenderer {
 
@@ -31,8 +33,11 @@ public class GhostGizmoRenderer {
                 return;
             }
 
-            BlockPos pos1 = mgr.getPos1();
-            BlockPos pos2 = mgr.getPos2();
+            // 清除深度缓冲，确保 Gizmo 坐标轴始终绘制在所有方块与地形的最上层，不被任何方块遮挡！
+            GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+
+            BlockPos pos1 = ghost.getEffectivePos1();
+            BlockPos pos2 = ghost.getEffectivePos2();
 
             // Render Pos1 Gizmo
             if (pos1 != null) {
@@ -48,17 +53,22 @@ public class GhostGizmoRenderer {
 
             // Render Center Move Gizmo if both pos1 and pos2 are set
             if (pos1 != null && pos2 != null) {
-                SelectionBox sel = mgr.getCurrentSelection();
-                if (sel != null) {
-                    BlockPos min = sel.getMin();
-                    BlockPos max = sel.getMax();
-                    Vec3 center = new Vec3(
-                        (min.getX() + max.getX() + 1) / 2.0,
-                        (min.getY() + max.getY() + 1) / 2.0,
-                        (min.getZ() + max.getZ() + 1) / 2.0
-                    );
-                    renderCenterGizmo(center);
-                }
+                BlockPos min = new BlockPos(
+                    Math.min(pos1.getX(), pos2.getX()),
+                    Math.min(pos1.getY(), pos2.getY()),
+                    Math.min(pos1.getZ(), pos2.getZ())
+                );
+                BlockPos max = new BlockPos(
+                    Math.max(pos1.getX(), pos2.getX()),
+                    Math.max(pos1.getY(), pos2.getY()),
+                    Math.max(pos1.getZ(), pos2.getZ())
+                );
+                Vec3 center = new Vec3(
+                    (min.getX() + max.getX() + 1) / 2.0,
+                    (min.getY() + max.getY() + 1) / 2.0,
+                    (min.getZ() + max.getZ() + 1) / 2.0
+                );
+                renderCenterGizmo(center);
             }
         });
     }
