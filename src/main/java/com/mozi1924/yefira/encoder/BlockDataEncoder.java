@@ -448,7 +448,24 @@ public class BlockDataEncoder {
         }
     }
 
+    private static final Map<SectionPos, Long> SECTION_CRC_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static void clearSectionCRCCache() {
+        SECTION_CRC_CACHE.clear();
+    }
+
+    public static void invalidateSectionCRC(SectionPos secPos) {
+        if (secPos != null) {
+            SECTION_CRC_CACHE.remove(secPos);
+        }
+    }
+
     public static long calculateSectionCRC32(Level level, SelectionBox selection, SectionPos secPos) {
+        Long cached = SECTION_CRC_CACHE.get(secPos);
+        if (cached != null) {
+            return cached;
+        }
+
         java.util.zip.CRC32 crc = new java.util.zip.CRC32();
         int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
         int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
@@ -470,7 +487,9 @@ public class BlockDataEncoder {
                 }
             }
         }
-        return crc.getValue();
+        long result = crc.getValue();
+        SECTION_CRC_CACHE.put(secPos, result);
+        return result;
     }
 
     public static class BlockChangeEntry {

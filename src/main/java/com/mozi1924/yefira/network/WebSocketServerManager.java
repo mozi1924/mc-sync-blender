@@ -106,7 +106,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
             SelectionManager selectionManager = SelectionManager.getInstance();
             if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
-                sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
+                sendHandshakeManifestToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
             }
         }
 
@@ -222,6 +222,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     public void onSelectionChanged(Level level, SelectionBox selection) {
         if (clients.isEmpty()) return;
         clearPendingDeltaChanges();
+        BlockDataEncoder.clearSectionCRCCache();
         Yefira.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
         broadcastSnapshot(level, selection);
     }
@@ -229,10 +230,31 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     @Override
     public void onSelectionCleared() {
         clearPendingDeltaChanges();
+        BlockDataEncoder.clearSectionCRCCache();
         // 可发送选区清空标志包，目前直接忽略或发送空数据
     }
 
     // --- 数据发送辅助方法 ---
+
+    private void sendHandshakeManifestToClient(WebSocket conn, Level level, SelectionBox selection) {
+        try {
+            long snapshotSeqId = globalSeqId.incrementAndGet();
+            byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
+            conn.send(infoBytes);
+
+            int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
+            int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
+            long totalVolume = selection.getVolume();
+            String dimName = level.dimension().identifier().toString();
+            byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, totalVolume, dimName, 0);
+            conn.send(handshakeBytes);
+
+            byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
+            conn.send(manifestBytes);
+        } catch (Exception e) {
+            Yefira.LOGGER.error("Failed to send handshake manifest to client {}", conn.getRemoteSocketAddress(), e);
+        }
+    }
 
     private void sendSnapshotToClient(WebSocket conn, Level level, SelectionBox selection) {
         try {
@@ -346,6 +368,8 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     /** Queue an edit for the next server tick, coalescing repeated writes. */
     public void queueDeltaUpdate(SelectionBox selection, BlockDataEncoder.BlockChangeEntry change) {
         if (clients.isEmpty()) return;
+        BlockPos pos = change.pos();
+        BlockDataEncoder.invalidateSectionCRC(new BlockDataEncoder.SectionPos(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4));
         synchronized (pendingDeltaChanges) {
             if (pendingDeltaSelection != null && !sameBounds(pendingDeltaSelection, selection)) {
                 pendingDeltaChanges.clear();
