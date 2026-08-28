@@ -74,9 +74,9 @@ public class YefiraClient implements ClientModInitializer {
 					boolean loaded = SelectionManager.getInstance().loadSavedSelection(serverPath, client.level);
 					if (loaded) {
 						Yefira.LOGGER.info("Loaded server selection for IP: {}", serverData.ip);
-						WebSocketServerManager.getInstance().startServer();
 					}
 				}
+				WebSocketServerManager.getInstance().startServer();
 			}
 		});
 
@@ -86,6 +86,7 @@ public class YefiraClient implements ClientModInitializer {
 			}
 			if (!client.hasSingleplayerServer()) {
 				SelectionManager.getInstance().setActiveStoragePath(null);
+				WebSocketServerManager.getInstance().stopServer();
 			}
 		});
 

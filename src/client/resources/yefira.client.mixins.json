@@ -9,7 +9,8 @@
 		"MouseHandlerMixin",
 		"KeyboardHandlerMixin",
 		"MinecraftMixin",
-		"HudMixin"
+		"HudMixin",
+		"ItemInHandRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

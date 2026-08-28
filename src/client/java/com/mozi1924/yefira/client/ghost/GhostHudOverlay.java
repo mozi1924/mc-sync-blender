@@ -41,7 +41,7 @@ public class GhostHudOverlay implements HudElement {
         // Control Hints
         String hints = isFly
             ? "WASD: Fly | Space/E: Up | Shift/Q: Down | Scroll: Speed | Shift+~ / ESC: Exit"
-            : "Shift+~: Fly Nav | MMB: Orbit | Shift+MMB: Pan | Ctrl+MMB / Scroll: Zoom | LMB: Drag Axis";
+            : "Shift+~: Fly Nav | MMB: Orbit | Shift+MMB: Pan | Scroll: Zoom | F: Focus | LMB: Drag Axis";
         graphics.centeredText(font, hints, screenWidth / 2, 6, 0xFFE0E0E0);
 
         // Fly Speed / Status

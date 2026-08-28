@@ -22,19 +22,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class WebSocketServerManager extends WebSocketServer implements SelectionManager.SelectionChangeListener {
+public class WebSocketServerManager implements SelectionManager.SelectionChangeListener {
 
-    private static WebSocketServerManager INSTANCE;
+    private static final WebSocketServerManager INSTANCE = new WebSocketServerManager();
     private static int PORT = 8765;
 
+    private Impl serverImpl;
     private final Set<WebSocket> clients = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    // Block edits frequently arrive as a burst (fill, paste, WorldEdit-like
-    // operations).  Accumulate the last state for each coordinate and emit
-    // at most one delta packet per server tick.
     private final Map<BlockPos, BlockDataEncoder.BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
     private SelectionBox pendingDeltaSelection;
     private long lastManifestBroadcastTick = 0;
     private boolean hasEditsSinceLastManifest = false;
+    private final AtomicLong globalSeqId = new AtomicLong(1);
 
     public static class ClientConfig {
         public byte throttleMode = 0; // 0 = NORMAL, 1 = ECO, 2 = PAUSED
@@ -44,10 +43,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
 
     private final Map<WebSocket, ClientConfig> clientConfigs = new ConcurrentHashMap<>();
 
-    public static synchronized WebSocketServerManager getInstance() {
-        if (INSTANCE == null) {
-            INSTANCE = new WebSocketServerManager(new InetSocketAddress(PORT));
-        }
+    public static WebSocketServerManager getInstance() {
         return INSTANCE;
     }
 
@@ -55,57 +51,94 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         PORT = port;
     }
 
-    private WebSocketServerManager(InetSocketAddress address) {
-        super(address);
-        setReuseAddr(true);
+    public int getPort() {
+        return PORT;
     }
 
-    public void startServer() {
+    private WebSocketServerManager() {
+    }
+
+    public synchronized void startServer() {
+        if (serverImpl != null) {
+            Yefira.LOGGER.info("WebSocket Server is already running on port: {}", PORT);
+            return;
+        }
         try {
-            this.start();
+            serverImpl = new Impl(new InetSocketAddress(PORT));
+            serverImpl.setReuseAddr(true);
+            serverImpl.start();
             SelectionManager.getInstance().addListener(this);
-            Yefira.LOGGER.info("WebSocket Server started on port: {}", getPort());
+            Yefira.LOGGER.info("WebSocket Server started on port: {}", PORT);
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to start WebSocket Server", e);
+            serverImpl = null;
         }
     }
 
-    public void stopServer() {
-        try {
-            SelectionManager.getInstance().removeListener(this);
-            this.stop(1000);
-            Yefira.LOGGER.info("WebSocket Server stopped.");
-        } catch (Exception e) {
-            Yefira.LOGGER.error("Error stopping WebSocket Server", e);
+    public synchronized void stopServer() {
+        SelectionManager.getInstance().removeListener(this);
+        clearPendingDeltaChanges();
+        clientConfigs.clear();
+        clients.clear();
+
+        if (serverImpl != null) {
+            try {
+                serverImpl.stop(1000);
+                Yefira.LOGGER.info("WebSocket Server stopped.");
+            } catch (Exception e) {
+                Yefira.LOGGER.error("Error stopping WebSocket Server", e);
+            } finally {
+                serverImpl = null;
+            }
         }
     }
 
-    private final AtomicLong globalSeqId = new AtomicLong(1);
+    private class Impl extends WebSocketServer {
+        public Impl(InetSocketAddress address) {
+            super(address);
+        }
 
-    @Override
-    public void onOpen(WebSocket conn, ClientHandshake handshake) {
-        clients.add(conn);
-        clientConfigs.put(conn, new ClientConfig());
-        Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
+        @Override
+        public void onOpen(WebSocket conn, ClientHandshake handshake) {
+            clients.add(conn);
+            clientConfigs.put(conn, new ClientConfig());
+            Yefira.LOGGER.info("New DCC client connected: {}", conn.getRemoteSocketAddress());
 
-        // New clients receive one authoritative full snapshot plus its
-        // manifest.  Section snapshots are repair payloads only and are sent
-        // on an explicit client request after a manifest mismatch.
-        SelectionManager selectionManager = SelectionManager.getInstance();
-        if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
-            sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
+            SelectionManager selectionManager = SelectionManager.getInstance();
+            if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
+                sendSnapshotToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
+            }
+        }
+
+        @Override
+        public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+            clients.remove(conn);
+            clientConfigs.remove(conn);
+            Yefira.LOGGER.info("DCC client disconnected: {}", conn.getRemoteSocketAddress());
+        }
+
+        @Override
+        public void onMessage(WebSocket conn, String message) {
+            WebSocketServerManager.this.handleTextMessage(conn, message);
+        }
+
+        @Override
+        public void onMessage(WebSocket conn, ByteBuffer message) {
+            WebSocketServerManager.this.handleBinaryMessage(conn, message);
+        }
+
+        @Override
+        public void onError(WebSocket conn, Exception ex) {
+            Yefira.LOGGER.error("WebSocket error on connection: {}", conn != null ? conn.getRemoteSocketAddress() : "global", ex);
+        }
+
+        @Override
+        public void onStart() {
+            Yefira.LOGGER.info("WebSocket Server successfully initialized.");
         }
     }
 
-    @Override
-    public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        clients.remove(conn);
-        clientConfigs.remove(conn);
-        Yefira.LOGGER.info("DCC client disconnected: {}", conn.getRemoteSocketAddress());
-    }
-
-    @Override
-    public void onMessage(WebSocket conn, String message) {
+    private void handleTextMessage(WebSocket conn, String message) {
         // 支持文本指令回复，如 "PING" -> "PONG", "REFRESH" -> 发送全量快照
         if ("PING".equalsIgnoreCase(message.trim())) {
             conn.send("PONG");
@@ -128,8 +161,7 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
         }
     }
 
-    @Override
-    public void onMessage(WebSocket conn, ByteBuffer message) {
+    private void handleBinaryMessage(WebSocket conn, ByteBuffer message) {
         if (message == null || message.remaining() < 4) return;
 
         message.order(java.nio.ByteOrder.LITTLE_ENDIAN);
@@ -182,16 +214,6 @@ public class WebSocketServerManager extends WebSocketServer implements Selection
                 conn.send(sectionSnapshot);
             }
         }
-    }
-
-    @Override
-    public void onError(WebSocket conn, Exception ex) {
-        Yefira.LOGGER.error("WebSocket error on connection: {}", conn != null ? conn.getRemoteSocketAddress() : "global", ex);
-    }
-
-    @Override
-    public void onStart() {
-        Yefira.LOGGER.info("WebSocket Server successfully initialized.");
     }
 
     // --- SelectionChangeListener 接口实现 ---

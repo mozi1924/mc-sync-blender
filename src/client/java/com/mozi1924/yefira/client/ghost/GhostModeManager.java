@@ -82,7 +82,7 @@ public class GhostModeManager {
 
     public void enable() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         this.active = true;
         this.flyLooking = false;
@@ -92,7 +92,7 @@ public class GhostModeManager {
         this.pitch = player.getXRot();
         this.flySpeed = 0.6f;
 
-        updatePivot();
+        initPivotOnEnable(player);
 
         this.isMmbOrbiting = false;
         this.isMmbPanning = false;
@@ -107,7 +107,7 @@ public class GhostModeManager {
 
         // Release mouse cursor for DCC interaction
         mc.mouseHandler.releaseMouse();
-        Yefira.LOGGER.info("Ghost Mode ENABLED at {}", cameraPos);
+        Yefira.LOGGER.info("Ghost Mode ENABLED at {} with Pivot at {}", cameraPos, pivotPos);
     }
 
     public void disable() {
@@ -144,6 +144,8 @@ public class GhostModeManager {
             this.lastMouseX = mc.mouseHandler.xpos();
             this.lastMouseY = mc.mouseHandler.ypos();
             mc.mouseHandler.releaseMouse();
+            // Re-sync pivot from current camera look
+            recalculatePivotFromLook();
             Yefira.LOGGER.info("Fly Navigation DISABLED (Returned to Free Cursor)");
         }
     }
@@ -155,23 +157,62 @@ public class GhostModeManager {
             this.lastMouseX = mc.mouseHandler.xpos();
             this.lastMouseY = mc.mouseHandler.ypos();
             mc.mouseHandler.releaseMouse();
+            recalculatePivotFromLook();
             Yefira.LOGGER.info("Fly Navigation Exited");
         }
     }
 
-    private void updatePivot() {
+    private void initPivotOnEnable(Player player) {
+        Vec3 look = getForwardVector(yaw, pitch);
+        Vec3 maxReach = cameraPos.add(look.scale(128.0));
+        net.minecraft.world.level.ClipContext clipContext = new net.minecraft.world.level.ClipContext(
+            cameraPos, maxReach,
+            net.minecraft.world.level.ClipContext.Block.OUTLINE,
+            net.minecraft.world.level.ClipContext.Fluid.NONE,
+            player
+        );
+        net.minecraft.world.phys.BlockHitResult hit = player.level().clip(clipContext);
+        if (hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            this.pivotPos = hit.getLocation();
+        } else {
+            SelectionManager mgr = SelectionManager.getInstance();
+            if (mgr.hasSelection()) {
+                this.pivotPos = mgr.getCurrentSelection().getCenter();
+            } else {
+                this.pivotPos = cameraPos.add(look.scale(10.0));
+            }
+        }
+    }
+
+    public void recalculatePivotFromLook() {
+        Minecraft mc = Minecraft.getInstance();
+        Vec3 look = getForwardVector(yaw, pitch);
+        if (mc.level != null && mc.player != null) {
+            Vec3 maxReach = cameraPos.add(look.scale(128.0));
+            net.minecraft.world.level.ClipContext clipContext = new net.minecraft.world.level.ClipContext(
+                cameraPos, maxReach,
+                net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                net.minecraft.world.level.ClipContext.Fluid.NONE,
+                mc.player
+            );
+            net.minecraft.world.phys.BlockHitResult hit = mc.level.clip(clipContext);
+            if (hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                this.pivotPos = hit.getLocation();
+                return;
+            }
+        }
+        this.pivotPos = cameraPos.add(look.scale(10.0));
+    }
+
+    public void focusSelection() {
         SelectionManager mgr = SelectionManager.getInstance();
         if (mgr.hasSelection()) {
+            this.pivotPos = mgr.getCurrentSelection().getCenter();
             SelectionBox sel = mgr.getCurrentSelection();
-            BlockPos min = sel.getMin();
-            BlockPos max = sel.getMax();
-            this.pivotPos = new Vec3(
-                (min.getX() + max.getX() + 1) / 2.0,
-                (min.getY() + max.getY() + 1) / 2.0,
-                (min.getZ() + max.getZ() + 1) / 2.0
-            );
-        } else {
-            this.pivotPos = this.cameraPos.add(getForwardVector(yaw, pitch).scale(10.0));
+            double radius = Math.max(5.0, Math.max(sel.getSizeX(), Math.max(sel.getSizeY(), sel.getSizeZ())) * 1.5);
+            Vec3 look = getForwardVector(yaw, pitch);
+            this.cameraPos = this.pivotPos.subtract(look.scale(radius));
+            Yefira.LOGGER.info("Ghost Mode focused on selection: center={}, dist={}", pivotPos, radius);
         }
     }
 
@@ -219,6 +260,9 @@ public class GhostModeManager {
 
         // In normal DCC mode, keyboard navigation is disabled (purely mouse-driven)
         if (!flyLooking) {
+            if (mc.mouseHandler.isMouseGrabbed()) {
+                mc.mouseHandler.releaseMouse();
+            }
             if (draggingCorner == CORNER_NONE) {
                 updateGizmoHover();
             }
@@ -362,7 +406,6 @@ public class GhostModeManager {
                     isMmbPanning = true;
                 } else {
                     isMmbOrbiting = true;
-                    updatePivot();
                 }
                 return true;
             } else if (action == GLFW.GLFW_RELEASE) {

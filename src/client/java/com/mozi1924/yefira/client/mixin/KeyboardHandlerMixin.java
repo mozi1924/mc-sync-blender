@@ -63,6 +63,15 @@ public class KeyboardHandlerMixin {
             return;
         }
 
+        // 4. Focus on Selection: Numpad . or F key (Blender standard)
+        if (key == GLFW.GLFW_KEY_KP_DECIMAL || key == GLFW.GLFW_KEY_F) {
+            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+                ghost.focusSelection();
+            }
+            ci.cancel();
+            return;
+        }
+
         // In Ghost Mode, block all vanilla gameplay key events (hotbar, drop item, chat, attack, use item)
         // Movement keys (WASD, Space, Shift, Ctrl, Q, E) are polled directly by GhostModeManager in tickMovement()
         ci.cancel();

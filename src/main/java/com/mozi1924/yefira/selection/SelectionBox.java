@@ -67,4 +67,12 @@ public class SelectionBox {
                y >= min.getY() && y <= max.getY() &&
                z >= min.getZ() && z <= max.getZ();
     }
+
+    public net.minecraft.world.phys.Vec3 getCenter() {
+        return new net.minecraft.world.phys.Vec3(
+            (min.getX() + max.getX() + 1) / 2.0,
+            (min.getY() + max.getY() + 1) / 2.0,
+            (min.getZ() + max.getZ() + 1) / 2.0
+        );
+    }
 }

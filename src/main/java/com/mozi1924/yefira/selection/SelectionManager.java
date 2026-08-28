@@ -47,9 +47,10 @@ public class SelectionManager {
 
     public synchronized boolean loadSavedSelection(java.nio.file.Path storagePath, Level level) {
         this.activeStoragePath = storagePath;
+        this.currentLevel = level;
+        this.dimension = level != null ? level.dimension() : null;
         SelectionStorageManager.SelectionData data = SelectionStorageManager.loadFromPath(storagePath);
         if (data != null) {
-            this.currentLevel = level;
             this.dimension = data.dimension();
             this.pos1 = data.pos1();
             this.pos2 = data.pos2();
@@ -59,8 +60,28 @@ public class SelectionManager {
             }
             Yefira.LOGGER.info("Loaded saved selection from {}", storagePath);
             return true;
+        } else {
+            this.pos1 = null;
+            this.pos2 = null;
+            this.currentSelection = null;
+            for (SelectionChangeListener listener : listeners) {
+                listener.onSelectionCleared();
+            }
+            return false;
         }
-        return false;
+    }
+
+    public synchronized void resetOnWorldUnload() {
+        this.pos1 = null;
+        this.pos2 = null;
+        this.currentSelection = null;
+        this.currentLevel = null;
+        this.dimension = null;
+        this.activeStoragePath = null;
+        for (SelectionChangeListener listener : listeners) {
+            listener.onSelectionCleared();
+        }
+        Yefira.LOGGER.info("Selection manager reset on world unload.");
     }
 
     public synchronized void setPos1(Level level, BlockPos pos) {

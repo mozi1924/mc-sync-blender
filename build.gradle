@@ -10,6 +10,16 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	runs {
+		client {
+			client()
+			setConfigName("Minecraft Client")
+			ideConfigGenerated(true)
+			runDir("run")
+			vmArgs("-XstartOnFirstThread")
+		}
+	}
+
 	mods {
 		"yefira" {
 			sourceSet sourceSets.main

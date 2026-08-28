@@ -46,6 +46,7 @@ public class Yefira implements ModInitializer {
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			com.mozi1924.yefira.network.WebSocketServerManager.getInstance().stopServer();
+			com.mozi1924.yefira.selection.SelectionManager.getInstance().resetOnWorldUnload();
 		});
 
 		LOGGER.info("Yefira initialized successfully!");

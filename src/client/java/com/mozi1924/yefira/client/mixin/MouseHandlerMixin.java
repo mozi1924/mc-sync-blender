@@ -20,6 +20,9 @@ public class MouseHandlerMixin {
 
     @Inject(method = "onMove", at = @At("HEAD"))
     private void onMouseMove(long window, double xpos, double ypos, CallbackInfo ci) {
+        if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
+            return;
+        }
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive() && !ghost.isFlyLooking()) {
             ghost.onMouseMove(xpos, ypos);
@@ -30,12 +33,14 @@ public class MouseHandlerMixin {
     private void onTurnPlayer(double delta, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            if (ghost.isFlyLooking()) {
-                double sens = this.minecraft.options.sensitivity().get() * 0.6 + 0.2;
-                double mult = sens * sens * sens * 8.0;
-                double dx = this.accumulatedDX * mult;
-                double dy = this.accumulatedDY * mult;
-                ghost.onMouseTurn(dx, dy);
+            if (this.minecraft.gui == null || this.minecraft.gui.screen() == null) {
+                if (ghost.isFlyLooking()) {
+                    double sens = this.minecraft.options.sensitivity().get() * 0.6 + 0.2;
+                    double mult = sens * sens * sens * 8.0;
+                    double dx = this.accumulatedDX * mult;
+                    double dy = this.accumulatedDY * mult;
+                    ghost.onMouseTurn(dx, dy);
+                }
             }
             this.accumulatedDX = 0.0;
             this.accumulatedDY = 0.0;
@@ -45,6 +50,9 @@ public class MouseHandlerMixin {
 
     @Inject(method = "onButton", at = @At("HEAD"), cancellable = true)
     private void onMouseButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
+        if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
+            return;
+        }
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
             ghost.onMouseButton(buttonInfo, action);
@@ -54,6 +62,9 @@ public class MouseHandlerMixin {
 
     @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
     private void onMouseScroll(long window, double xoffset, double yoffset, CallbackInfo ci) {
+        if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
+            return;
+        }
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
             ghost.onMouseScroll(yoffset);
