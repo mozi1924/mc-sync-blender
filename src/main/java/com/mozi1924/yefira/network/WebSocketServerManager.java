@@ -238,16 +238,9 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         try {
             long snapshotSeqId = globalSeqId.incrementAndGet();
             long volume = selection.getVolume();
-            int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
-            int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
-            String dimension = level.dimension() != null ? level.dimension().identifier().toString() : "minecraft:overworld";
-            int flags = (volume > 32768) ? 1 : 0;
 
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             conn.send(infoBytes);
-
-            byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, volume, dimension, flags);
-            conn.send(handshakeBytes);
 
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
             conn.send(manifestBytes);
@@ -273,19 +266,13 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         try {
             long snapshotSeqId = globalSeqId.incrementAndGet();
             long volume = selection.getVolume();
-            int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
-            int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
-            String dimension = level.dimension() != null ? level.dimension().identifier().toString() : "minecraft:overworld";
-            int flags = (volume > 32768) ? 1 : 0;
 
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
-            byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, volume, dimension, flags);
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
-                    client.send(handshakeBytes);
                     client.send(manifestBytes);
                 }
             }
