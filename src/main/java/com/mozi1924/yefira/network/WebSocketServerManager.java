@@ -237,13 +237,21 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     private void sendSnapshotToClient(WebSocket conn, Level level, SelectionBox selection) {
         try {
             long snapshotSeqId = globalSeqId.incrementAndGet();
+            long volume = selection.getVolume();
+            int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
+            int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
+            String dimension = level.dimension() != null ? level.dimension().location().toString() : "minecraft:overworld";
+            int flags = (volume > 32768) ? 1 : 0;
+
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
             conn.send(infoBytes);
+
+            byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, volume, dimension, flags);
+            conn.send(handshakeBytes);
 
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
             conn.send(manifestBytes);
 
-            long volume = selection.getVolume();
             if (volume <= 32768) {
                 byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
                 conn.send(snapshotBytes);
@@ -264,17 +272,24 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         if (clients.isEmpty()) return;
         try {
             long snapshotSeqId = globalSeqId.incrementAndGet();
+            long volume = selection.getVolume();
+            int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
+            int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
+            String dimension = level.dimension() != null ? level.dimension().location().toString() : "minecraft:overworld";
+            int flags = (volume > 32768) ? 1 : 0;
+
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
+            byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, volume, dimension, flags);
             byte[] manifestBytes = BlockDataEncoder.encodeSectionManifest(level, selection, snapshotSeqId);
 
             for (WebSocket client : clients) {
                 if (client.isOpen()) {
                     client.send(infoBytes);
+                    client.send(handshakeBytes);
                     client.send(manifestBytes);
                 }
             }
 
-            long volume = selection.getVolume();
             if (volume <= 32768) {
                 byte[] snapshotBytes = BlockDataEncoder.encodeFullSnapshot(level, selection);
                 for (WebSocket client : clients) {

@@ -25,6 +25,7 @@ public class BlockDataEncoder {
     public static final byte PACKET_DELTA_UPDATE = 0x03;
     public static final byte PACKET_SECTION_MANIFEST = 0x05;
     public static final byte PACKET_SECTION_SNAPSHOT = 0x06;
+    public static final byte PACKET_HANDSHAKE_INFO = 0x07;
 
     // C2S Request Packet Types
     public static final byte PACKET_C2S_REQ_FULL_SYNC = (byte) 0x80;
@@ -401,6 +402,40 @@ public class BlockDataEncoder {
             }
         }
         return false;
+    }
+
+    public static int countNonEmptySections(Level level, SelectionBox selection) {
+        List<SectionPos> sections = getCoveredSections(selection);
+        int count = 0;
+        for (SectionPos sec : sections) {
+            if (isSectionNonEmpty(level, selection, sec)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static byte[] encodeHandshakeInfo(int totalSections, int nonEmptySections, long totalVolume, String dimension, int flags) {
+        byte[] dimBytes = (dimension != null ? dimension : "").getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buf = ByteBuffer.allocate(4 + 2 + 2 + 4 + 2 + dimBytes.length + 2);
+        buf.order(ByteOrder.LITTLE_ENDIAN);
+
+        // Header
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(PACKET_HANDSHAKE_INFO);
+
+        // Section & Volume metrics
+        buf.putShort((short) totalSections);
+        buf.putShort((short) nonEmptySections);
+        buf.putInt((int) totalVolume);
+
+        // Dimension & Flags
+        buf.putShort((short) dimBytes.length);
+        buf.put(dimBytes);
+        buf.putShort((short) flags);
+
+        return buf.array();
     }
 
     public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, java.util.function.Consumer<byte[]> sender) {
