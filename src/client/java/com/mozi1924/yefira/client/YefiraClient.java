@@ -67,27 +67,31 @@ public class YefiraClient implements ClientModInitializer {
 
 		// Register Client play connection events for multiplayer server selections
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-			if (!client.hasSingleplayerServer()) {
-				ServerData serverData = client.getCurrentServer();
-				if (serverData != null && serverData.ip != null) {
-					Path serverPath = SelectionStorageManager.getServerStoragePath(serverData.ip);
-					boolean loaded = SelectionManager.getInstance().loadSavedSelection(serverPath, client.level);
-					if (loaded) {
-						Yefira.LOGGER.info("Loaded server selection for IP: {}", serverData.ip);
+			client.execute(() -> {
+				if (!client.hasSingleplayerServer()) {
+					ServerData serverData = client.getCurrentServer();
+					if (serverData != null && serverData.ip != null) {
+						Path serverPath = SelectionStorageManager.getServerStoragePath(serverData.ip);
+						boolean loaded = SelectionManager.getInstance().loadSavedSelection(serverPath, client.level);
+						if (loaded) {
+							Yefira.LOGGER.info("Loaded server selection for IP: {}", serverData.ip);
+						}
 					}
+					WebSocketServerManager.getInstance().startServer();
 				}
-				WebSocketServerManager.getInstance().startServer();
-			}
+			});
 		});
 
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-			if (GhostModeManager.getInstance().isActive()) {
-				GhostModeManager.getInstance().disable();
-			}
-			if (!client.hasSingleplayerServer()) {
-				SelectionManager.getInstance().setActiveStoragePath(null);
-				WebSocketServerManager.getInstance().stopServer();
-			}
+			client.execute(() -> {
+				if (GhostModeManager.getInstance().isActive()) {
+					GhostModeManager.getInstance().disable();
+				}
+				if (!client.hasSingleplayerServer()) {
+					SelectionManager.getInstance().setActiveStoragePath(null);
+					WebSocketServerManager.getInstance().stopServer();
+				}
+			});
 		});
 
 		// Register client tick listener for key presses and ghost mode updates

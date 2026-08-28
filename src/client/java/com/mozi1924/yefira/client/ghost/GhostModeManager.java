@@ -82,6 +82,10 @@ public class GhostModeManager {
 
     public void enable() {
         Minecraft mc = Minecraft.getInstance();
+        if (!mc.isSameThread()) {
+            mc.execute(this::enable);
+            return;
+        }
         if (mc.player == null || mc.level == null) return;
 
         this.active = true;
@@ -112,6 +116,10 @@ public class GhostModeManager {
 
     public void disable() {
         Minecraft mc = Minecraft.getInstance();
+        if (!mc.isSameThread()) {
+            mc.execute(this::disable);
+            return;
+        }
         this.active = false;
         this.flyLooking = false;
         this.isMmbOrbiting = false;
