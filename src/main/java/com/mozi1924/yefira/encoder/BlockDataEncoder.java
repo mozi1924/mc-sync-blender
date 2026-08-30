@@ -38,6 +38,9 @@ public class BlockDataEncoder {
      * 将 BlockState 序列化为规范字符串标识，例如 "minecraft:oak_log[axis=y,facing=north]"
      */
     public static String serializeBlockState(BlockState state) {
+        if (state == null || state.isAir()) {
+            return "minecraft:air";
+        }
         String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
         Collection<Property<?>> properties = state.getProperties();
         if (properties.isEmpty()) {
