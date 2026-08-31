@@ -45,7 +45,7 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 2. Ghost Mode toggle key (e.g. G)
+        // 2. Ghost Mode toggle key
         if (YefiraClient.keyGhostMode != null && YefiraClient.keyGhostMode.matches(keyEvent)) {
             if (action == GLFW.GLFW_PRESS) {
                 ghost.toggle();
@@ -54,8 +54,9 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 3. Blender Fly Navigation toggle: Shift + ~ (GLFW_KEY_GRAVE_ACCENT)
-        if (key == GLFW.GLFW_KEY_GRAVE_ACCENT || key == GLFW.GLFW_KEY_WORLD_1) {
+        // 3. Blender Fly Navigation toggle
+        if ((YefiraClient.keyFlyNav != null && YefiraClient.keyFlyNav.matches(keyEvent))
+                || key == GLFW.GLFW_KEY_GRAVE_ACCENT || key == GLFW.GLFW_KEY_WORLD_1) {
             if (action == GLFW.GLFW_PRESS) {
                 ghost.toggleFlyNavigation();
             }
@@ -63,8 +64,9 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 4. Focus on Selection: Numpad . or F key (Blender standard)
-        if (key == GLFW.GLFW_KEY_KP_DECIMAL || key == GLFW.GLFW_KEY_F) {
+        // 4. Focus on Selection: Numpad . or keyFocus
+        if ((YefiraClient.keyFocus != null && YefiraClient.keyFocus.matches(keyEvent))
+                || key == GLFW.GLFW_KEY_KP_DECIMAL) {
             if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
                 ghost.focusSelection();
             }
@@ -72,8 +74,8 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 5. Open Settings / Control Screen: O key or keyOpenGui
-        if ((YefiraClient.keyOpenGui != null && YefiraClient.keyOpenGui.matches(keyEvent)) || key == GLFW.GLFW_KEY_O) {
+        // 5. Open Settings / Control Screen: keyOpenGui
+        if (YefiraClient.keyOpenGui != null && YefiraClient.keyOpenGui.matches(keyEvent)) {
             if (action == GLFW.GLFW_PRESS) {
                 this.minecraft.setScreenAndShow(new com.mozi1924.yefira.client.gui.YefiraScreen());
             }
@@ -81,8 +83,9 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 6. Clear Selection: X key or DELETE key
-        if (key == GLFW.GLFW_KEY_X || key == GLFW.GLFW_KEY_DELETE) {
+        // 6. Clear Selection: keyClear or DELETE
+        if ((YefiraClient.keyClear != null && YefiraClient.keyClear.matches(keyEvent))
+                || key == GLFW.GLFW_KEY_DELETE) {
             if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
                 com.mozi1924.yefira.selection.SelectionManager.getInstance().clearSelection();
             }
@@ -90,8 +93,8 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 7. Create Preset Box (16x16x16): C key or N key
-        if (key == GLFW.GLFW_KEY_C || key == GLFW.GLFW_KEY_N) {
+        // 7. Create Preset Box (16x16x16): keyPresetBox
+        if (YefiraClient.keyPresetBox != null && YefiraClient.keyPresetBox.matches(keyEvent)) {
             if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
                 ghost.createPresetBoxAtCursorOrPivot(16);
             }

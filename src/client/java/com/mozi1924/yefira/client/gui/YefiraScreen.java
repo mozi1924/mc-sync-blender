@@ -4,6 +4,7 @@ import com.mozi1924.yefira.config.YefiraConfig;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
@@ -12,6 +13,15 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 public class YefiraScreen extends Screen {
+
+    public enum SyncMode {
+        CLIENT,
+        SERVER
+    }
+
+    private SyncMode currentMode = SyncMode.CLIENT;
+    private Button clientModeBtn;
+    private Button serverModeBtn;
 
     private EditBox hostEdit;
     private EditBox portEdit;
@@ -25,23 +35,58 @@ public class YefiraScreen extends Screen {
         super(Component.translatable("yefira.gui.title"));
     }
 
+    private boolean isMultiplayer() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc.player != null && !mc.hasSingleplayerServer();
+    }
+
+    private boolean hasOpPermission() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc.player != null && mc.player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
+    }
+
     @Override
     protected void init() {
         super.init();
 
         int centerX = this.width / 2;
-        int startY = 40;
+        boolean multi = isMultiplayer();
+        int startY = multi ? 50 : 35;
 
         YefiraConfig cfg = YefiraConfig.getInstance();
+
+        // 1. Dual Mode Pills (Only rendered in multiplayer)
+        if (multi) {
+            this.clientModeBtn = Button.builder(Component.translatable("yefira.gui.mode.client"), btn -> {
+                this.currentMode = SyncMode.CLIENT;
+                this.rebuildWidgets();
+            }).bounds(centerX - 125, startY - 25, 120, 20).build();
+            this.clientModeBtn.active = (currentMode != SyncMode.CLIENT);
+            this.addRenderableWidget(this.clientModeBtn);
+
+            this.serverModeBtn = Button.builder(Component.translatable("yefira.gui.mode.server"), btn -> {
+                this.currentMode = SyncMode.SERVER;
+                this.rebuildWidgets();
+            }).bounds(centerX + 5, startY - 25, 120, 20).build();
+            this.serverModeBtn.active = (currentMode != SyncMode.SERVER);
+            this.addRenderableWidget(this.serverModeBtn);
+        } else {
+            this.currentMode = SyncMode.CLIENT;
+        }
+
+        boolean isServerMode = (currentMode == SyncMode.SERVER);
+        boolean op = hasOpPermission();
 
         // Host EditBox
         this.hostEdit = new EditBox(this.font, centerX - 100, startY + 20, 200, 20, Component.translatable("yefira.gui.host"));
         this.hostEdit.setValue(cfg.getHost());
+        this.hostEdit.setEditable(!isServerMode);
         this.addRenderableWidget(this.hostEdit);
 
         // Port EditBox
         this.portEdit = new EditBox(this.font, centerX - 100, startY + 60, 200, 20, Component.translatable("yefira.gui.port"));
         this.portEdit.setValue(String.valueOf(cfg.getPort()));
+        this.portEdit.setEditable(!isServerMode);
         this.addRenderableWidget(this.portEdit);
 
         // AutoStart Checkbox
@@ -53,6 +98,7 @@ public class YefiraScreen extends Screen {
                     YefiraConfig.save();
                 })
                 .build();
+        this.autoStartCheckbox.active = !isServerMode;
         this.addRenderableWidget(this.autoStartCheckbox);
 
         // Legacy Pickaxe Checkbox
@@ -67,45 +113,70 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.legacyPickaxeCheckbox);
 
         // Server Start / Stop Button
-        WebSocketServerManager server = WebSocketServerManager.getInstance();
-        Component startStopText = server.isRunning()
+        WebSocketServerManager localServer = WebSocketServerManager.getInstance();
+        Component startStopText = localServer.isRunning()
                 ? Component.translatable("yefira.gui.server.stop")
                 : Component.translatable("yefira.gui.server.start");
 
         this.startStopButton = Button.builder(startStopText, btn -> {
             applyConfigFromFields();
-            if (server.isRunning()) {
-                server.stopServer();
+            Minecraft mc = Minecraft.getInstance();
+            if (isServerMode) {
+                if (op && mc.player != null && mc.player.connection != null) {
+                    mc.player.connection.sendCommand("yefira server start");
+                }
             } else {
-                server.startServer(cfg.getHost(), cfg.getPort());
+                if (localServer.isRunning()) {
+                    localServer.stopServer();
+                } else {
+                    localServer.startServer(cfg.getHost(), cfg.getPort());
+                }
+                updateButtonLabels();
             }
-            updateButtonLabels();
         }).bounds(centerX - 100, startY + 145, 95, 20).build();
+        this.startStopButton.active = !isServerMode || op;
         this.addRenderableWidget(this.startStopButton);
 
         // Server Restart Button
         this.restartButton = Button.builder(Component.translatable("yefira.gui.server.restart"), btn -> {
             applyConfigFromFields();
-            server.restartServer(cfg.getHost(), cfg.getPort());
-            updateButtonLabels();
+            Minecraft mc = Minecraft.getInstance();
+            if (isServerMode) {
+                if (op && mc.player != null && mc.player.connection != null) {
+                    mc.player.connection.sendCommand("yefira server restart");
+                }
+            } else {
+                localServer.restartServer(cfg.getHost(), cfg.getPort());
+                updateButtonLabels();
+            }
         }).bounds(centerX + 5, startY + 145, 95, 20).build();
+        this.restartButton.active = !isServerMode || op;
         this.addRenderableWidget(this.restartButton);
 
         // Clear Selection Button
         this.clearSelectionButton = Button.builder(Component.translatable("yefira.gui.selection.clear"), btn -> {
-            SelectionManager.getInstance().clearSelection();
+            Minecraft mc = Minecraft.getInstance();
+            if (isServerMode) {
+                if (op && mc.player != null && mc.player.connection != null) {
+                    mc.player.connection.sendCommand("yefira clear");
+                }
+            } else {
+                SelectionManager.getInstance().clearSelection();
+            }
         }).bounds(centerX - 100, startY + 175, 200, 20).build();
+        this.clearSelectionButton.active = !isServerMode || op;
         this.addRenderableWidget(this.clearSelectionButton);
 
         // Done / Close Button
         Button doneButton = Button.builder(Component.translatable("gui.done"), btn -> {
             applyConfigFromFields();
             this.onClose();
-        }).bounds(centerX - 100, this.height - 30, 200, 20).build();
+        }).bounds(centerX - 100, this.height - 28, 200, 20).build();
         this.addRenderableWidget(doneButton);
     }
 
     private void applyConfigFromFields() {
+        if (currentMode == SyncMode.SERVER) return;
         YefiraConfig cfg = YefiraConfig.getInstance();
         if (hostEdit != null) {
             String host = hostEdit.getValue().trim();
@@ -126,7 +197,7 @@ public class YefiraScreen extends Screen {
 
     private void updateButtonLabels() {
         WebSocketServerManager server = WebSocketServerManager.getInstance();
-        if (startStopButton != null) {
+        if (startStopButton != null && currentMode == SyncMode.CLIENT) {
             startStopButton.setMessage(server.isRunning()
                     ? Component.translatable("yefira.gui.server.stop")
                     : Component.translatable("yefira.gui.server.start"));
@@ -144,14 +215,23 @@ public class YefiraScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
         int centerX = this.width / 2;
-        int startY = 40;
+        boolean multi = isMultiplayer();
+        int startY = multi ? 50 : 35;
 
         // Title
-        graphics.centeredText(this.font, this.title, centerX, 15, 0xFFFFFF);
+        graphics.centeredText(this.font, this.title, centerX, multi ? 8 : 12, 0xFFFFFF);
 
         // Labels
         graphics.text(this.font, Component.translatable("yefira.gui.host.label"), centerX - 100, startY + 8, 0xAAAAAA);
         graphics.text(this.font, Component.translatable("yefira.gui.port.label"), centerX - 100, startY + 48, 0xAAAAAA);
+
+        if (currentMode == SyncMode.SERVER) {
+            boolean op = hasOpPermission();
+            if (!op) {
+                Component noOpText = Component.translatable("yefira.gui.mode.server.no_op");
+                graphics.centeredText(this.font, noOpText, centerX, startY + 138, 0xFF5555);
+            }
+        }
 
         // Server Status display
         WebSocketServerManager server = WebSocketServerManager.getInstance();
@@ -160,7 +240,7 @@ public class YefiraScreen extends Screen {
                 ? Component.translatable("yefira.gui.status.running", server.getHost(), server.getPort(), server.getConnectedCount())
                 : Component.translatable("yefira.gui.status.stopped");
         int statusColor = running ? 0x55FF55 : 0xFF5555;
-        graphics.centeredText(this.font, statusComponent, centerX, startY + 205, statusColor);
+        graphics.centeredText(this.font, statusComponent, centerX, startY + 202, statusColor);
 
         // Selection info display
         SelectionManager mgr = SelectionManager.getInstance();
@@ -169,9 +249,9 @@ public class YefiraScreen extends Screen {
             Component selText = Component.translatable("yefira.gui.selection.info",
                     sel.getMin().toShortString(), sel.getMax().toShortString(),
                     sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
-            graphics.centeredText(this.font, selText, centerX, startY + 220, 0x55FFFF);
+            graphics.centeredText(this.font, selText, centerX, startY + 218, 0x55FFFF);
         } else {
-            graphics.centeredText(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 220, 0xAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 218, 0xAAAAAA);
         }
     }
 

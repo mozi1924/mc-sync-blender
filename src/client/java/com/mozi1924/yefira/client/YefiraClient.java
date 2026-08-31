@@ -33,6 +33,10 @@ public class YefiraClient implements ClientModInitializer {
 	public static KeyMapping keyPos2;
 	public static KeyMapping keyGhostMode;
 	public static KeyMapping keyOpenGui;
+	public static KeyMapping keyFlyNav;
+	public static KeyMapping keyFocus;
+	public static KeyMapping keyClear;
+	public static KeyMapping keyPresetBox;
 
 	@Override
 	public void onInitializeClient() {
@@ -65,6 +69,34 @@ public class YefiraClient implements ClientModInitializer {
 			"key.yefira.open_gui",
 			InputConstants.Type.KEYSYM,
 			GLFW.GLFW_KEY_O,
+			YEFIRA_CATEGORY
+		));
+
+		keyFlyNav = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.fly_nav",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_GRAVE_ACCENT,
+			YEFIRA_CATEGORY
+		));
+
+		keyFocus = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.focus",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_F,
+			YEFIRA_CATEGORY
+		));
+
+		keyClear = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.clear",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_X,
+			YEFIRA_CATEGORY
+		));
+
+		keyPresetBox = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.preset_box",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_C,
 			YEFIRA_CATEGORY
 		));
 
