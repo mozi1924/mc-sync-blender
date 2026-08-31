@@ -19,6 +19,9 @@ public class Yefira implements ModInitializer {
 	public void onInitialize() {
 		LOGGER.info("Initializing Yefira Mod...");
 
+		// 加载配置文件
+		com.mozi1924.yefira.config.YefiraConfig.load();
+
 		// 注册游戏内选区指令 /yefira
 		com.mozi1924.yefira.command.SelectionCommand.register();
 
@@ -41,7 +44,12 @@ public class Yefira implements ModInitializer {
 			if (loaded) {
 				LOGGER.info("Loaded saved selection for world: {}", worldDir.getFileName());
 			}
-			com.mozi1924.yefira.network.WebSocketServerManager.getInstance().startServer();
+			com.mozi1924.yefira.config.YefiraConfig cfg = com.mozi1924.yefira.config.YefiraConfig.getInstance();
+			if (cfg.isAutoStartOnWorldLoad()) {
+				com.mozi1924.yefira.network.WebSocketServerManager.getInstance().startServer(cfg.getHost(), cfg.getPort());
+			} else {
+				LOGGER.info("WebSocket Server auto-start is disabled (on-demand mode).");
+			}
 		});
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {

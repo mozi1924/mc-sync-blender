@@ -32,6 +32,7 @@ public class YefiraClient implements ClientModInitializer {
 	public static KeyMapping keyPos1;
 	public static KeyMapping keyPos2;
 	public static KeyMapping keyGhostMode;
+	public static KeyMapping keyOpenGui;
 
 	@Override
 	public void onInitializeClient() {
@@ -60,6 +61,13 @@ public class YefiraClient implements ClientModInitializer {
 			YEFIRA_CATEGORY
 		));
 
+		keyOpenGui = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.yefira.open_gui",
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_O,
+			YEFIRA_CATEGORY
+		));
+
 		// Register 3D Bounding Box Renderer and Ghost Gizmos
 		SelectionBoxRenderer.register();
 		GhostGizmoRenderer.register();
@@ -77,7 +85,10 @@ public class YefiraClient implements ClientModInitializer {
 							Yefira.LOGGER.info("Loaded server selection for IP: {}", serverData.ip);
 						}
 					}
-					WebSocketServerManager.getInstance().startServer();
+					com.mozi1924.yefira.config.YefiraConfig cfg = com.mozi1924.yefira.config.YefiraConfig.getInstance();
+					if (cfg.isAutoStartOnWorldLoad()) {
+						WebSocketServerManager.getInstance().startServer(cfg.getHost(), cfg.getPort());
+					}
 				}
 			});
 		});
@@ -104,30 +115,38 @@ public class YefiraClient implements ClientModInitializer {
 				GhostModeManager.getInstance().toggle();
 			}
 
+			while (keyOpenGui.consumeClick()) {
+				client.setScreenAndShow(new com.mozi1924.yefira.client.gui.YefiraScreen());
+			}
+
 			if (GhostModeManager.getInstance().isActive()) {
 				GhostModeManager.getInstance().tickMovement();
 			}
 
-			// Check if player is holding Golden Pickaxe in main hand or off hand
-			boolean holdingTool = client.player.getMainHandItem().is(Items.GOLDEN_PICKAXE) ||
-								  client.player.getOffhandItem().is(Items.GOLDEN_PICKAXE);
+			// Check if legacy pickaxe tool is enabled in config
+			boolean legacyEnabled = com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool();
+			if (legacyEnabled) {
+				// Check if player is holding Golden Pickaxe in main hand or off hand
+				boolean holdingTool = client.player.getMainHandItem().is(Items.GOLDEN_PICKAXE) ||
+									  client.player.getOffhandItem().is(Items.GOLDEN_PICKAXE);
 
-			while (keyPos1.consumeClick()) {
-				if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
-					BlockHitResult blockHit = (BlockHitResult) client.hitResult;
-					BlockPos pos = blockHit.getBlockPos();
-					if (client.player.connection != null) {
-						client.player.connection.sendCommand("yefira pos1 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+				while (keyPos1.consumeClick()) {
+					if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
+						BlockHitResult blockHit = (BlockHitResult) client.hitResult;
+						BlockPos pos = blockHit.getBlockPos();
+						if (client.player.connection != null) {
+							client.player.connection.sendCommand("yefira pos1 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+						}
 					}
 				}
-			}
 
-			while (keyPos2.consumeClick()) {
-				if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
-					BlockHitResult blockHit = (BlockHitResult) client.hitResult;
-					BlockPos pos = blockHit.getBlockPos();
-					if (client.player.connection != null) {
-						client.player.connection.sendCommand("yefira pos2 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+				while (keyPos2.consumeClick()) {
+					if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
+						BlockHitResult blockHit = (BlockHitResult) client.hitResult;
+						BlockPos pos = blockHit.getBlockPos();
+						if (client.player.connection != null) {
+							client.player.connection.sendCommand("yefira pos2 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+						}
 					}
 				}
 			}

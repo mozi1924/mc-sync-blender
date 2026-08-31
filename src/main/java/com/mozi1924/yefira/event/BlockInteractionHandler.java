@@ -17,25 +17,26 @@ import net.minecraft.world.phys.BlockHitResult;
 public class BlockInteractionHandler {
 
     public static void register() {
-        // 左键攻击/点击方块设置 Pos1 并拦截破坏方块 (手持金镐)
+        // 左键攻击/点击方块设置 Pos1 并拦截破坏方块 (手持金镐，需在配置中开启)
         AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
-            if (isHoldingSelectionTool(player, hand)) {
+            if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool() && isHoldingSelectionTool(player, hand)) {
                 if (!level.isClientSide()) {
                     SelectionManager.getInstance().setPos1(level, pos);
-                    player.sendSystemMessage(Component.literal("§a[Yefira] First position set to " + pos.toShortString()));
+                    player.sendSystemMessage(Component.translatable("yefira.command.pos1.set", pos.toShortString()));
                 }
                 return InteractionResult.SUCCESS;
             }
             return InteractionResult.PASS;
         });
 
-        // 右键交互方块设置 Pos2 (手持金镐)
+        // 右键交互方块设置 Pos2 (手持金镐，需在配置中开启)
         UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> {
-            if (hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
+            if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool()
+                    && hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
                 if (!level.isClientSide()) {
                     BlockPos pos = hitResult.getBlockPos();
                     SelectionManager.getInstance().setPos2(level, pos);
-                    player.sendSystemMessage(Component.literal("§a[Yefira] Second position set to " + pos.toShortString()));
+                    player.sendSystemMessage(Component.translatable("yefira.command.pos2.set", pos.toShortString()));
                 }
                 return InteractionResult.SUCCESS;
             }

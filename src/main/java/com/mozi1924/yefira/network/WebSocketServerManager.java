@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WebSocketServerManager implements SelectionManager.SelectionChangeListener {
 
     private static final WebSocketServerManager INSTANCE = new WebSocketServerManager();
+    private static String HOST = "0.0.0.0";
     private static int PORT = 8765;
 
     private Impl serverImpl;
@@ -47,32 +48,69 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         return INSTANCE;
     }
 
-    public static synchronized void setPort(int port) {
-        PORT = port;
+    public static synchronized void setHost(String host) {
+        if (host != null && !host.trim().isEmpty()) {
+            HOST = host.trim();
+        }
     }
 
-    public int getPort() {
+    public static synchronized String getHost() {
+        return HOST;
+    }
+
+    public static synchronized void setPort(int port) {
+        if (port >= 1024 && port <= 65535) {
+            PORT = port;
+        }
+    }
+
+    public static synchronized int getPort() {
         return PORT;
+    }
+
+    public synchronized boolean isRunning() {
+        return serverImpl != null;
+    }
+
+    public int getConnectedCount() {
+        return clients.size();
     }
 
     private WebSocketServerManager() {
     }
 
     public synchronized void startServer() {
+        startServer(HOST, PORT);
+    }
+
+    public synchronized void startServer(String host, int port) {
+        setHost(host);
+        setPort(port);
+
         if (serverImpl != null) {
-            Yefira.LOGGER.info("WebSocket Server is already running on port: {}", PORT);
+            Yefira.LOGGER.info("WebSocket Server is already running on {}:{}", HOST, PORT);
             return;
         }
         try {
-            serverImpl = new Impl(new InetSocketAddress(PORT));
+            serverImpl = new Impl(new InetSocketAddress(HOST, PORT));
             serverImpl.setReuseAddr(true);
             serverImpl.start();
             SelectionManager.getInstance().addListener(this);
-            Yefira.LOGGER.info("WebSocket Server started on port: {}", PORT);
+            Yefira.LOGGER.info("WebSocket Server started on {}:{}", HOST, PORT);
         } catch (Exception e) {
-            Yefira.LOGGER.error("Failed to start WebSocket Server", e);
+            Yefira.LOGGER.error("Failed to start WebSocket Server on " + HOST + ":" + PORT, e);
             serverImpl = null;
         }
+    }
+
+    public synchronized void restartServer(String host, int port) {
+        stopServer();
+        startServer(host, port);
+    }
+
+    public synchronized void restartServer() {
+        stopServer();
+        startServer(HOST, PORT);
     }
 
     public synchronized void stopServer() {

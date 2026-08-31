@@ -36,9 +36,64 @@ public class SelectionCommand {
                 .executes(SelectionCommand::refreshSnapshot))
             .then(Commands.literal("status")
                 .executes(SelectionCommand::showStatus))
+            .then(Commands.literal("server")
+                .then(Commands.literal("start")
+                    .executes(SelectionCommand::serverStart))
+                .then(Commands.literal("stop")
+                    .executes(SelectionCommand::serverStop))
+                .then(Commands.literal("restart")
+                    .executes(SelectionCommand::serverRestart))
+                .then(Commands.literal("status")
+                    .executes(SelectionCommand::serverStatus)))
             .then(Commands.literal("dump_directional_models")
                 .executes(SelectionCommand::dumpDirectionalModels))
         );
+    }
+
+    private static int serverStart(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        com.mozi1924.yefira.config.YefiraConfig cfg = com.mozi1924.yefira.config.YefiraConfig.getInstance();
+        if (server.isRunning()) {
+            source.sendFailure(Component.translatable("yefira.command.server.already_running", server.getHost(), server.getPort()));
+        } else {
+            server.startServer(cfg.getHost(), cfg.getPort());
+            source.sendSuccess(() -> Component.translatable("yefira.command.server.started", cfg.getHost(), cfg.getPort()), true);
+        }
+        return 1;
+    }
+
+    private static int serverStop(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        if (!server.isRunning()) {
+            source.sendFailure(Component.translatable("yefira.command.server.not_running"));
+        } else {
+            server.stopServer();
+            source.sendSuccess(() -> Component.translatable("yefira.command.server.stopped"), true);
+        }
+        return 1;
+    }
+
+    private static int serverRestart(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        com.mozi1924.yefira.config.YefiraConfig cfg = com.mozi1924.yefira.config.YefiraConfig.getInstance();
+        server.restartServer(cfg.getHost(), cfg.getPort());
+        source.sendSuccess(() -> Component.translatable("yefira.command.server.restarted", cfg.getHost(), cfg.getPort()), true);
+        return 1;
+    }
+
+    private static int serverStatus(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        if (server.isRunning()) {
+            source.sendSuccess(() -> Component.translatable("yefira.command.server.status.running",
+                    server.getHost(), server.getPort(), server.getConnectedCount()), false);
+        } else {
+            source.sendSuccess(() -> Component.translatable("yefira.command.server.status.stopped"), false);
+        }
+        return 1;
     }
 
     private static int dumpDirectionalModels(CommandContext<CommandSourceStack> ctx) {
@@ -55,9 +110,9 @@ public class SelectionCommand {
         try {
             java.nio.file.Path outPath = java.nio.file.Paths.get("directional_models_dump.json");
             java.nio.file.Files.writeString(outPath, sb.toString());
-            source.sendSuccess(() -> Component.literal("§a[Yefira] Dumped " + models.size() + " directional models to " + outPath.toAbsolutePath()), true);
+            source.sendSuccess(() -> Component.translatable("yefira.command.dump.success", models.size(), outPath.toAbsolutePath().toString()), true);
         } catch (Exception e) {
-            source.sendFailure(Component.literal("§c[Yefira] Failed to dump models: " + e.getMessage()));
+            source.sendFailure(Component.translatable("yefira.command.dump.failed", e.getMessage()));
         }
         return count;
     }
@@ -66,14 +121,14 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         BlockPos pos = BlockPos.containing(source.getPosition());
         SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos1 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.translatable("yefira.command.pos1.set", pos.toShortString()), true);
         return 1;
     }
 
     private static int setPos1Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos1 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.translatable("yefira.command.pos1.set", pos.toShortString()), true);
         return 1;
     }
 
@@ -81,21 +136,21 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         BlockPos pos = BlockPos.containing(source.getPosition());
         SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos2 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.translatable("yefira.command.pos2.set", pos.toShortString()), true);
         return 1;
     }
 
     private static int setPos2Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.literal("§a[Yefira] Set Pos2 to " + pos.toShortString()), true);
+        source.sendSuccess(() -> Component.translatable("yefira.command.pos2.set", pos.toShortString()), true);
         return 1;
     }
 
     private static int clearSelection(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         SelectionManager.getInstance().clearSelection();
-        source.sendSuccess(() -> Component.literal("§e[Yefira] Selection cleared."), true);
+        source.sendSuccess(() -> Component.translatable("yefira.command.clear.success"), true);
         return 1;
     }
 
@@ -104,9 +159,9 @@ public class SelectionCommand {
         SelectionManager mgr = SelectionManager.getInstance();
         if (mgr.hasSelection() && mgr.getCurrentLevel() != null) {
             WebSocketServerManager.getInstance().broadcastSnapshot(mgr.getCurrentLevel(), mgr.getCurrentSelection());
-            source.sendSuccess(() -> Component.literal("§a[Yefira] Full snapshot re-broadcasted."), true);
+            source.sendSuccess(() -> Component.translatable("yefira.command.refresh.success"), true);
         } else {
-            source.sendFailure(Component.literal("§c[Yefira] No active selection to refresh."));
+            source.sendFailure(Component.translatable("yefira.command.refresh.no_selection"));
         }
         return 1;
     }
@@ -116,12 +171,13 @@ public class SelectionCommand {
         SelectionManager mgr = SelectionManager.getInstance();
         if (mgr.hasSelection()) {
             SelectionBox box = mgr.getCurrentSelection();
-            source.sendSuccess(() -> Component.literal("§b[Yefira] Active Selection:\n" +
-                    " - Min: " + box.getMin().toShortString() + "\n" +
-                    " - Max: " + box.getMax().toShortString() + "\n" +
-                    " - Size: " + box.getSizeX() + "x" + box.getSizeY() + "x" + box.getSizeZ() + " (" + box.getVolume() + " blocks)"), false);
+            source.sendSuccess(() -> Component.translatable("yefira.command.status.info",
+                    box.getMin().toShortString(),
+                    box.getMax().toShortString(),
+                    box.getSizeX(), box.getSizeY(), box.getSizeZ(),
+                    box.getVolume()), false);
         } else {
-            source.sendSuccess(() -> Component.literal("§e[Yefira] No active selection."), false);
+            source.sendSuccess(() -> Component.translatable("yefira.command.status.empty"), false);
         }
         return 1;
     }

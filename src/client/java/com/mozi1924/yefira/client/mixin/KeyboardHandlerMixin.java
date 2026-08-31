@@ -72,6 +72,33 @@ public class KeyboardHandlerMixin {
             return;
         }
 
+        // 5. Open Settings / Control Screen: O key or keyOpenGui
+        if ((YefiraClient.keyOpenGui != null && YefiraClient.keyOpenGui.matches(keyEvent)) || key == GLFW.GLFW_KEY_O) {
+            if (action == GLFW.GLFW_PRESS) {
+                this.minecraft.setScreenAndShow(new com.mozi1924.yefira.client.gui.YefiraScreen());
+            }
+            ci.cancel();
+            return;
+        }
+
+        // 6. Clear Selection: X key or DELETE key
+        if (key == GLFW.GLFW_KEY_X || key == GLFW.GLFW_KEY_DELETE) {
+            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+                com.mozi1924.yefira.selection.SelectionManager.getInstance().clearSelection();
+            }
+            ci.cancel();
+            return;
+        }
+
+        // 7. Create Preset Box (16x16x16): C key or N key
+        if (key == GLFW.GLFW_KEY_C || key == GLFW.GLFW_KEY_N) {
+            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+                ghost.createPresetBoxAtCursorOrPivot(16);
+            }
+            ci.cancel();
+            return;
+        }
+
         // In Ghost Mode, block all vanilla gameplay key events (hotbar, drop item, chat, attack, use item)
         // Movement keys (WASD, Space, Shift, Ctrl, Q, E) are polled directly by GhostModeManager in tickMovement()
         ci.cancel();

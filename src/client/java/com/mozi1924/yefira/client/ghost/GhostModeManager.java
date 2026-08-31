@@ -64,12 +64,33 @@ public class GhostModeManager {
     private Vec3 dragStartHitPoint = null;
     private double dragStartParam = 0.0;
 
+    // Direct Block Raycasting & Box Creation
+    private BlockPos hoveredBlockPos = null;
+    private boolean isBoxCreating = false;
+    private BlockPos boxCreateStartPos = null;
+    private BlockPos boxCreateCurrentPos = null;
+
     public boolean isActive() {
         return active;
     }
 
     public boolean isFlyLooking() {
         return active && flyLooking;
+    }
+
+    public BlockPos getHoveredBlockPos() {
+        return hoveredBlockPos;
+    }
+
+    public boolean isBoxCreating() {
+        return active && isBoxCreating;
+    }
+
+    public SelectionBox getBoxCreateSelection() {
+        if (isBoxCreating && boxCreateStartPos != null && boxCreateCurrentPos != null) {
+            return new SelectionBox(boxCreateStartPos, boxCreateCurrentPos);
+        }
+        return null;
     }
 
     public void toggle() {
@@ -106,6 +127,10 @@ public class GhostModeManager {
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
         this.dragStartOrigin = null;
+        this.hoveredBlockPos = null;
+        this.isBoxCreating = false;
+        this.boxCreateStartPos = null;
+        this.boxCreateCurrentPos = null;
         this.lastMouseX = mc.mouseHandler.xpos();
         this.lastMouseY = mc.mouseHandler.ypos();
 
@@ -128,6 +153,10 @@ public class GhostModeManager {
         this.draggingCorner = CORNER_NONE;
         this.draggingAxis = AXIS_NONE;
         this.dragStartOrigin = null;
+        this.hoveredBlockPos = null;
+        this.isBoxCreating = false;
+        this.boxCreateStartPos = null;
+        this.boxCreateCurrentPos = null;
 
         // Regrab mouse
         mc.mouseHandler.grabMouse();
@@ -397,6 +426,11 @@ public class GhostModeManager {
             double newDist = Math.max(0.5, Math.min(500.0, dist * zoomFactor));
             Vec3 look = getForwardVector(yaw, pitch);
             cameraPos = pivotPos.subtract(look.scale(newDist));
+        } else if (isBoxCreating) {
+            net.minecraft.world.phys.BlockHitResult hit = raycastBlockFromMouse(256.0);
+            if (hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                boxCreateCurrentPos = hit.getBlockPos();
+            }
         } else if (draggingCorner != CORNER_NONE && draggingAxis != AXIS_NONE) {
             handleGizmoDrag();
         } else {
@@ -456,17 +490,42 @@ public class GhostModeManager {
                 if (hoveredCorner != CORNER_NONE && hoveredAxis != AXIS_NONE) {
                     startGizmoDrag(hoveredCorner, hoveredAxis);
                     return true;
+                } else if (hoveredBlockPos != null) {
+                    isBoxCreating = true;
+                    boxCreateStartPos = hoveredBlockPos;
+                    boxCreateCurrentPos = hoveredBlockPos;
+                    return true;
                 }
             } else if (action == GLFW.GLFW_RELEASE) {
                 if (draggingCorner != CORNER_NONE) {
                     finishGizmoDrag();
                     return true;
                 }
+                if (isBoxCreating) {
+                    if (boxCreateStartPos != null && boxCreateCurrentPos != null && mc.level != null) {
+                        SelectionManager.getInstance().setPositions(mc.level, boxCreateStartPos, boxCreateCurrentPos);
+                    }
+                    isBoxCreating = false;
+                    boxCreateStartPos = null;
+                    boxCreateCurrentPos = null;
+                    return true;
+                }
             }
         }
 
-        // Intercept right click in normal mode
+        // Intercept right click in normal mode: set Pos2 or start selection
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (action == GLFW.GLFW_PRESS) {
+                updateGizmoHover();
+                if (hoveredBlockPos != null && mc.level != null) {
+                    if (!SelectionManager.getInstance().hasSelection() || SelectionManager.getInstance().getPos1() == null) {
+                        SelectionManager.getInstance().setPositions(mc.level, hoveredBlockPos, hoveredBlockPos);
+                    } else {
+                        SelectionManager.getInstance().setPos2(mc.level, hoveredBlockPos);
+                    }
+                    return true;
+                }
+            }
             return true;
         }
 
@@ -739,6 +798,48 @@ public class GhostModeManager {
 
         hoveredCorner = bestCorner;
         hoveredAxis = bestAxis;
+
+        if (hoveredCorner == CORNER_NONE) {
+            net.minecraft.world.phys.BlockHitResult hit = raycastBlockFromMouse(256.0);
+            if (hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                hoveredBlockPos = hit.getBlockPos();
+            } else {
+                hoveredBlockPos = null;
+            }
+        } else {
+            hoveredBlockPos = null;
+        }
+    }
+
+    public net.minecraft.world.phys.BlockHitResult raycastBlockFromMouse(double maxDist) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) return null;
+
+        Ray ray = getMouseRay();
+        Vec3 end = ray.origin().add(ray.dir().scale(maxDist));
+        net.minecraft.world.level.ClipContext clipContext = new net.minecraft.world.level.ClipContext(
+            ray.origin(), end,
+            net.minecraft.world.level.ClipContext.Block.OUTLINE,
+            net.minecraft.world.level.ClipContext.Fluid.NONE,
+            mc.player
+        );
+        return mc.level.clip(clipContext);
+    }
+
+    public void createPresetBoxAtCursorOrPivot(int size) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+        BlockPos basePos;
+        if (hoveredBlockPos != null) {
+            basePos = hoveredBlockPos;
+        } else {
+            basePos = BlockPos.containing(pivotPos);
+        }
+        int half = size / 2;
+        BlockPos p1 = basePos.offset(-half, 0, -half);
+        BlockPos p2 = basePos.offset(half - 1, size - 1, half - 1);
+        SelectionManager.getInstance().setPositions(mc.level, p1, p2);
+        focusSelection();
     }
 
     private BlockPos dragPreviewPos1 = null;

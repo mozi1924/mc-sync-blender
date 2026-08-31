@@ -36,6 +36,32 @@ public class GhostGizmoRenderer {
             // 清除深度缓冲，确保 Gizmo 坐标轴始终绘制在所有方块与地形的最上层，不被任何方块遮挡！
             GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 
+            // 1. Render Hovered Block Outline in Free Cursor Mode (when not dragging gizmos)
+            if (!ghost.isDragging() && !ghost.isBoxCreating() && ghost.getHoveredBlockPos() != null) {
+                BlockPos hPos = ghost.getHoveredBlockPos();
+                AABB blockBox = new AABB(
+                    hPos.getX(), hPos.getY(), hPos.getZ(),
+                    hPos.getX() + 1.0, hPos.getY() + 1.0, hPos.getZ() + 1.0
+                );
+                // Bright cyan stroke, faint fill
+                Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(0xFF00FFFF, 2.5f, 0x2200FFFF));
+            }
+
+            // 2. Render Box Creation Preview when dragging to create
+            if (ghost.isBoxCreating()) {
+                SelectionBox boxCreate = ghost.getBoxCreateSelection();
+                if (boxCreate != null) {
+                    BlockPos bMin = boxCreate.getMin();
+                    BlockPos bMax = boxCreate.getMax();
+                    AABB createBox = new AABB(
+                        bMin.getX(), bMin.getY(), bMin.getZ(),
+                        bMax.getX() + 1.0, bMax.getY() + 1.0, bMax.getZ() + 1.0
+                    );
+                    // Bright Lime Green stroke and fill for creating selection
+                    Gizmos.cuboid(createBox, GizmoStyle.strokeAndFill(0xFF55FF55, 3.0f, 0x4455FF55));
+                }
+            }
+
             BlockPos pos1 = ghost.getEffectivePos1();
             BlockPos pos2 = ghost.getEffectivePos2();
 
