@@ -92,6 +92,20 @@ public class BlockDataEncoder {
     }
 
     /**
+     * 获取指定位置的规范生物群系标识，例如 "minecraft:plains"
+     */
+    public static String getBiomeId(Level level, BlockPos pos) {
+        if (level == null || pos == null) {
+            return "minecraft:plains";
+        }
+        try {
+            return level.getBiome(pos).unwrapKey().map(k -> k.identifier().toString()).orElse("minecraft:plains");
+        } catch (Exception e) {
+            return "minecraft:plains";
+        }
+    }
+
+    /**
      * 编码 0x02 Full Snapshot 全量快照字节数据包
      */
     public static byte[] encodeFullSnapshot(Level level, SelectionBox selection) {
@@ -104,9 +118,13 @@ public class BlockDataEncoder {
         List<String> palette = new ArrayList<>();
         Map<BlockState, Integer> stateToPaletteIdx = new IdentityHashMap<>();
 
+        List<String> biomePalette = new ArrayList<>();
+        Map<String, Integer> biomeToIdx = new HashMap<>();
+
         // 预处理建立 Palette 和 三维 State 数组
         int totalBlocks = sizeX * sizeY * sizeZ;
         int[] gridIndices = new int[totalBlocks];
+        int[] biomeIndices = new int[totalBlocks];
 
         int index = 0;
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
@@ -124,7 +142,17 @@ public class BlockDataEncoder {
                         stateToPaletteIdx.put(state, paletteIdx);
                     }
 
-                    gridIndices[index++] = paletteIdx;
+                    String biomeId = getBiomeId(level, mutablePos);
+                    Integer biomeIdx = biomeToIdx.get(biomeId);
+                    if (biomeIdx == null) {
+                        biomeIdx = biomePalette.size();
+                        biomePalette.add(biomeId);
+                        biomeToIdx.put(biomeId, biomeIdx);
+                    }
+
+                    gridIndices[index] = paletteIdx;
+                    biomeIndices[index] = biomeIdx;
+                    index++;
                 }
             }
         }
@@ -160,6 +188,27 @@ public class BlockDataEncoder {
                     out.writeByte(idx & 0xFF);
                 } else {
                     writeShortLE(out, idx);
+                }
+            }
+
+            // Biome Palette Count
+            writeShortLE(out, biomePalette.size());
+            for (String bItem : biomePalette) {
+                byte[] bytes = bItem.getBytes(StandardCharsets.UTF_8);
+                writeShortLE(out, bytes.length);
+                out.write(bytes);
+            }
+
+            // Biome Indices (only write index stream if palette > 1)
+            if (biomePalette.size() > 1) {
+                boolean isByteBiome = biomePalette.size() <= 256;
+                out.writeByte(isByteBiome ? 1 : 2);
+                for (int bIdx : biomeIndices) {
+                    if (isByteBiome) {
+                        out.writeByte(bIdx & 0xFF);
+                    } else {
+                        writeShortLE(out, bIdx);
+                    }
                 }
             }
             out.flush();
@@ -262,8 +311,12 @@ public class BlockDataEncoder {
         List<String> palette = new ArrayList<>();
         Map<BlockState, Integer> stateToPaletteIdx = new IdentityHashMap<>();
 
+        List<String> biomePalette = new ArrayList<>();
+        Map<String, Integer> biomeToIdx = new HashMap<>();
+
         int totalBlocks = sizeX * sizeY * sizeZ;
         int[] gridIndices = new int[totalBlocks];
+        int[] biomeIndices = new int[totalBlocks];
 
         int index = 0;
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
@@ -281,7 +334,17 @@ public class BlockDataEncoder {
                         stateToPaletteIdx.put(state, paletteIdx);
                     }
 
-                    gridIndices[index++] = paletteIdx;
+                    String biomeId = getBiomeId(level, mutablePos);
+                    Integer biomeIdx = biomeToIdx.get(biomeId);
+                    if (biomeIdx == null) {
+                        biomeIdx = biomePalette.size();
+                        biomePalette.add(biomeId);
+                        biomeToIdx.put(biomeId, biomeIdx);
+                    }
+
+                    gridIndices[index] = paletteIdx;
+                    biomeIndices[index] = biomeIdx;
+                    index++;
                 }
             }
         }
@@ -322,6 +385,27 @@ public class BlockDataEncoder {
                     out.writeByte(idx & 0xFF);
                 } else {
                     writeShortLE(out, idx);
+                }
+            }
+
+            // Biome Palette Count
+            writeShortLE(out, biomePalette.size());
+            for (String bItem : biomePalette) {
+                byte[] bytes = bItem.getBytes(StandardCharsets.UTF_8);
+                writeShortLE(out, bytes.length);
+                out.write(bytes);
+            }
+
+            // Biome Indices (only write index stream if palette > 1)
+            if (biomePalette.size() > 1) {
+                boolean isByteBiome = biomePalette.size() <= 256;
+                out.writeByte(isByteBiome ? 1 : 2);
+                for (int bIdx : biomeIndices) {
+                    if (isByteBiome) {
+                        out.writeByte(bIdx & 0xFF);
+                    } else {
+                        writeShortLE(out, bIdx);
+                    }
                 }
             }
             out.flush();
