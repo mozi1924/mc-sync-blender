@@ -34,7 +34,7 @@
   "yefira.hud.hints.ghost": "左键拖拽: 框选 | 中键: 旋转 | F: 聚焦 | O: 面板 | X: 清空",
   "yefira.hud.server.running": "● 服务在线 (%d)",
   "yefira.hud.server.stopped": "○ 服务离线",
-  "yefira.hud.selection.info": "选区: %dx%dx%d (%d 方块)",
+  "yefira.hud.selection.info": "选区: %dx%dx%d (%d 方块) [拖动手柄微调 | 按 X 清空后可重新框选]",
   "yefira.hud.hovered.block": "目标方块: %s (按住左键拖拽框选)",
   "yefira.hud.dragging.info": "📦 正在拖拽选区: %dx%dx%d (%d 方块) [松开左键完成，按右键/ESC取消]",
 

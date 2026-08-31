@@ -33,8 +33,8 @@ public class GhostGizmoRenderer {
             // 清除深度缓冲，确保 Gizmo 坐标轴始终绘制在所有方块与地形的最上层，不被任何方块遮挡！
             GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 
-            // 1. Render Hovered Block Outline in Free Cursor Mode (when not dragging)
-            if (!ghost.isDragging() && !ghost.isBoxCreating() && ghost.getHoveredBlockPos() != null) {
+            // 1. Render Hovered Block Outline in Free Cursor Mode (when not dragging and no selection exists)
+            if (!ghost.isDragging() && !ghost.isBoxCreating() && !mgr.hasSelection() && ghost.getHoveredBlockPos() != null) {
                 BlockPos hPos = ghost.getHoveredBlockPos();
                 AABB blockBox = new AABB(
                     hPos.getX(), hPos.getY(), hPos.getZ(),

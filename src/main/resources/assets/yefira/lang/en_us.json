@@ -34,7 +34,7 @@
   "yefira.hud.hints.ghost": "LMB Drag: Box Select | MMB: Orbit | F: Focus | O: Panel | X: Clear",
   "yefira.hud.server.running": "● WS Active (%d)",
   "yefira.hud.server.stopped": "○ WS Offline",
-  "yefira.hud.selection.info": "Selection: %dx%dx%d (%d blocks)",
+  "yefira.hud.selection.info": "Selection: %dx%dx%d (%d blocks) [Drag Gizmo to adjust | X: Clear to re-select]",
   "yefira.hud.hovered.block": "Target: %s (Hold LMB & Drag to select)",
   "yefira.hud.dragging.info": "📦 Drag-Selecting: %dx%dx%d (%d blocks) [Release LMB to finish, RMB/ESC to cancel]",
 

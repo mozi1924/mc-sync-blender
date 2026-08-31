@@ -490,8 +490,8 @@ public class GhostModeManager {
                 if (hoveredCorner != CORNER_NONE && hoveredAxis != AXIS_NONE) {
                     startGizmoDrag(hoveredCorner, hoveredAxis);
                     return true;
-                } else if (hoveredBlockPos != null) {
-                    // Start 3D Drag-to-Select
+                } else if (!SelectionManager.getInstance().hasSelection() && hoveredBlockPos != null) {
+                    // Anti-accidental touch: Start 3D Drag-to-Select ONLY when no active selection exists
                     isBoxCreating = true;
                     boxCreateStartPos = hoveredBlockPos;
                     boxCreateCurrentPos = hoveredBlockPos;
@@ -799,9 +799,13 @@ public class GhostModeManager {
         hoveredAxis = bestAxis;
 
         if (hoveredCorner == CORNER_NONE) {
-            net.minecraft.world.phys.BlockHitResult hit = raycastBlockFromMouse(256.0);
-            if (hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
-                hoveredBlockPos = hit.getBlockPos();
+            if (!SelectionManager.getInstance().hasSelection()) {
+                net.minecraft.world.phys.BlockHitResult hit = raycastBlockFromMouse(256.0);
+                if (hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                    hoveredBlockPos = hit.getBlockPos();
+                } else {
+                    hoveredBlockPos = null;
+                }
             } else {
                 hoveredBlockPos = null;
             }
