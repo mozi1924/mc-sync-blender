@@ -59,7 +59,7 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
         String name = blockId.startsWith("minecraft:") ? blockId.substring(10) : blockId;
 
         int blockType = 0;
-        if (name.equals("air") || name.equals("cave_air") || name.equals("void_air")) {
+        if (name.equals("air") || name.equals("cave_air") || name.equals("void_air") || name.equals("bubble_column") || name.equals("structure_void")) {
             blockType = 7;
         } else if (name.equals("water") || name.equals("flowing_water") || name.equals("lava") || name.equals("flowing_lava")) {
             blockType = 6;
@@ -71,7 +71,7 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
             blockType = 4;
         }
 
-        boolean isOpaque = !name.contains("glass") && !name.contains("leaves") && !name.contains("ice") && !name.contains("water") && !name.contains("air");
+        boolean isOpaque = !name.contains("glass") && !name.contains("leaves") && !name.contains("ice") && !name.contains("water") && !name.contains("air") && !name.equals("bubble_column") && !name.equals("structure_void");
         boolean isEmissive = name.contains("glowstone") || name.contains("sea_lantern") || name.contains("shroomlight") || name.contains("magma") || name.contains("lava") || name.contains("fire") || name.contains("lantern");
         float emissiveLevel = isEmissive ? 1.0f : 0.0f;
 

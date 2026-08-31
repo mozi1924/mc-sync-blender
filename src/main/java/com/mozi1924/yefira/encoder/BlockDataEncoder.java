@@ -35,10 +35,21 @@ public class BlockDataEncoder {
     private static final Map<BlockState, byte[]> STATE_UTF8_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
+     * 判断方块是否为空气或应被忽略的无网格方块（如气泡柱、结构空位等）
+     */
+    public static boolean isAirOrIgnored(BlockState state) {
+        if (state == null || state.isAir()) {
+            return true;
+        }
+        return state.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)
+                || state.is(net.minecraft.world.level.block.Blocks.STRUCTURE_VOID);
+    }
+
+    /**
      * 将 BlockState 序列化为规范字符串标识，例如 "minecraft:oak_log[axis=y,facing=north]"
      */
     public static String serializeBlockState(BlockState state) {
-        if (state == null || state.isAir()) {
+        if (isAirOrIgnored(state)) {
             return "minecraft:air";
         }
         String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
@@ -482,7 +493,7 @@ public class BlockDataEncoder {
                 for (int z = startZ; z <= endZ; z++) {
                     mutablePos.set(x, y, z);
                     BlockState state = level.getBlockState(mutablePos);
-                    if (!state.isAir()) {
+                    if (!isAirOrIgnored(state)) {
                         return true;
                     }
                 }
