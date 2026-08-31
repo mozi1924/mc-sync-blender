@@ -41,6 +41,13 @@ public class KeyboardHandlerMixin {
                 ci.cancel();
                 return;
             }
+            if (ghost.isBoxCreating()) {
+                if (action == GLFW.GLFW_PRESS) {
+                    ghost.cancelBoxDrag();
+                }
+                ci.cancel();
+                return;
+            }
             // Allow ESC to open pause screen in normal ghost mode
             return;
         }

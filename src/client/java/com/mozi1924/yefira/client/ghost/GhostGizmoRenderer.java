@@ -29,22 +29,19 @@ public class GhostGizmoRenderer {
             if (!ghost.isActive()) return;
 
             SelectionManager mgr = SelectionManager.getInstance();
-            if (mgr.getDimension() != null && !mc.level.dimension().equals(mgr.getDimension())) {
-                return;
-            }
 
             // 清除深度缓冲，确保 Gizmo 坐标轴始终绘制在所有方块与地形的最上层，不被任何方块遮挡！
             GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 
-            // 1. Render Hovered Block Outline in Free Cursor Mode (when not dragging gizmos)
+            // 1. Render Hovered Block Outline in Free Cursor Mode (when not dragging)
             if (!ghost.isDragging() && !ghost.isBoxCreating() && ghost.getHoveredBlockPos() != null) {
                 BlockPos hPos = ghost.getHoveredBlockPos();
                 AABB blockBox = new AABB(
                     hPos.getX(), hPos.getY(), hPos.getZ(),
                     hPos.getX() + 1.0, hPos.getY() + 1.0, hPos.getZ() + 1.0
                 );
-                // Bright cyan stroke, faint fill
-                Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(0xFF00FFFF, 2.5f, 0x2200FFFF));
+                // Glowing Cyan-White Stroke with subtle fill
+                Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(0xFF00FFEE, 3.0f, 0x3300FFEE));
             }
 
             // 2. Render Box Creation Preview when dragging to create
@@ -57,9 +54,21 @@ public class GhostGizmoRenderer {
                         bMin.getX(), bMin.getY(), bMin.getZ(),
                         bMax.getX() + 1.0, bMax.getY() + 1.0, bMax.getZ() + 1.0
                     );
-                    // Bright Lime Green stroke and fill for creating selection
-                    Gizmos.cuboid(createBox, GizmoStyle.strokeAndFill(0xFF55FF55, 3.0f, 0x4455FF55));
+                    // Vibrant Lime Green stroke and fill for drag selection
+                    Gizmos.cuboid(createBox, GizmoStyle.strokeAndFill(0xFF00FF55, 3.5f, 0x4000FF55));
+
+                    // Corner indicators
+                    Vec3 startCorner = new Vec3(bMin.getX() + 0.5, bMin.getY() + 0.5, bMin.getZ() + 0.5);
+                    Vec3 endCorner = new Vec3(bMax.getX() + 0.5, bMax.getY() + 0.5, bMax.getZ() + 0.5);
+                    Gizmos.point(startCorner, 0xFF00FF55, 8.0f);
+                    Gizmos.point(endCorner, 0xFFFFFF55, 8.0f);
                 }
+                return; // Do not render old gizmos while actively dragging a new box
+            }
+
+            // Dimension check for committed selection gizmos
+            if (mgr.hasSelection() && mgr.getDimension() != null && !mc.level.dimension().equals(mgr.getDimension())) {
+                return;
             }
 
             BlockPos pos1 = ghost.getEffectivePos1();

@@ -491,6 +491,7 @@ public class GhostModeManager {
                     startGizmoDrag(hoveredCorner, hoveredAxis);
                     return true;
                 } else if (hoveredBlockPos != null) {
+                    // Start 3D Drag-to-Select
                     isBoxCreating = true;
                     boxCreateStartPos = hoveredBlockPos;
                     boxCreateCurrentPos = hoveredBlockPos;
@@ -513,16 +514,12 @@ public class GhostModeManager {
             }
         }
 
-        // Intercept right click in normal mode: set Pos2 or start selection
+        // Right-click: cancel drag if active, otherwise consumed
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             if (action == GLFW.GLFW_PRESS) {
-                updateGizmoHover();
-                if (hoveredBlockPos != null && mc.level != null) {
-                    if (!SelectionManager.getInstance().hasSelection() || SelectionManager.getInstance().getPos1() == null) {
-                        SelectionManager.getInstance().setPositions(mc.level, hoveredBlockPos, hoveredBlockPos);
-                    } else {
-                        SelectionManager.getInstance().setPos2(mc.level, hoveredBlockPos);
-                    }
+                if (isBoxCreating) {
+                    // Cancel active box drag selection
+                    cancelBoxDrag();
                     return true;
                 }
             }
@@ -530,6 +527,14 @@ public class GhostModeManager {
         }
 
         return true;
+    }
+
+    public void cancelBoxDrag() {
+        if (isBoxCreating) {
+            isBoxCreating = false;
+            boxCreateStartPos = null;
+            boxCreateCurrentPos = null;
+        }
     }
 
     /**
@@ -597,8 +602,8 @@ public class GhostModeManager {
 
     private Ray getScreenRay(double mouseX, double mouseY) {
         Minecraft mc = Minecraft.getInstance();
-        int width = mc.getWindow().getWidth();
-        int height = mc.getWindow().getHeight();
+        int width = mc.getWindow().getScreenWidth();
+        int height = mc.getWindow().getScreenHeight();
 
         if (width <= 0 || height <= 0) {
             return new Ray(cameraPos, getForwardVector(yaw, pitch));
@@ -630,8 +635,8 @@ public class GhostModeManager {
      */
     private Vec2 projectToScreen(Vec3 worldPos) {
         Minecraft mc = Minecraft.getInstance();
-        int width = mc.getWindow().getWidth();
-        int height = mc.getWindow().getHeight();
+        int width = mc.getWindow().getScreenWidth();
+        int height = mc.getWindow().getScreenHeight();
         if (width <= 0 || height <= 0) return null;
 
         Vec3 forward = getForwardVector(yaw, pitch);
@@ -691,12 +696,6 @@ public class GhostModeManager {
     private void updateGizmoHover() {
         BlockPos pos1 = getEffectivePos1();
         BlockPos pos2 = getEffectivePos2();
-
-        if (pos1 == null && pos2 == null) {
-            hoveredCorner = CORNER_NONE;
-            hoveredAxis = AXIS_NONE;
-            return;
-        }
 
         Minecraft mc = Minecraft.getInstance();
         double mouseX = mc.mouseHandler.xpos();

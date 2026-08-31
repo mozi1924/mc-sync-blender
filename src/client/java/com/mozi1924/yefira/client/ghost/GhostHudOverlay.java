@@ -57,10 +57,19 @@ public class GhostHudOverlay implements HudElement {
         int statusWidth = font.width(serverStatusComp);
         graphics.text(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
 
-        // Selection details (bottom left)
+        // Selection & Dragging details (bottom left)
         SelectionManager mgr = SelectionManager.getInstance();
         int bottomY = mc.getWindow().getGuiScaledHeight() - 25;
-        if (mgr.hasSelection()) {
+
+        if (ghost.isBoxCreating()) {
+            SelectionBox sel = ghost.getBoxCreateSelection();
+            if (sel != null) {
+                Component dragInfo = Component.translatable("yefira.hud.dragging.info",
+                    sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
+                graphics.fill(6, bottomY - 3, 8 + font.width(dragInfo) + 4, bottomY + 11, 0xAA003300);
+                graphics.text(font, dragInfo, 8, bottomY, 0xFF55FF55, true);
+            }
+        } else if (mgr.hasSelection()) {
             SelectionBox sel = mgr.getCurrentSelection();
             Component selInfo = Component.translatable("yefira.hud.selection.info",
                 sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
