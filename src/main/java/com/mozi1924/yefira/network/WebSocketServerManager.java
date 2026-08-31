@@ -378,9 +378,8 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         SelectionManager selectionManager = SelectionManager.getInstance();
         if (!selectionManager.hasSelection() || selectionManager.getCurrentLevel() == null) return;
 
-        // Broadcast manifest if edits occurred and 20 ticks elapsed, or at least every 100 ticks (5s)
-        if ((hasEditsSinceLastManifest && currentTick - lastManifestBroadcastTick >= 20)
-                || (currentTick - lastManifestBroadcastTick >= 100)) {
+        // Broadcast manifest only when edits occurred and debounce cooldown (20 ticks / 1s) has elapsed
+        if (hasEditsSinceLastManifest && currentTick - lastManifestBroadcastTick >= 20) {
             lastManifestBroadcastTick = currentTick;
             hasEditsSinceLastManifest = false;
             broadcastManifest(selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
