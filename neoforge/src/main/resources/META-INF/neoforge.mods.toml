@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="GPL-3.0"
+
+[[mods]]
+modId="yefira"
+version="${version}"
+displayName="Yefira"
+description="Real-time bidirectional synchronization bridge between Minecraft and Blender (MoziToolKit) via WebSocket."
+authors="mozi1924"
+logoFile="assets/yefira/icon.png"
+
+[[dependencies.yefira]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.0,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.yefira]]
+modId="minecraft"
+type="required"
+versionRange="[1.21,)"
+ordering="NONE"
+side="BOTH"

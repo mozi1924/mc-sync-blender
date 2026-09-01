@@ -1,0 +1,53 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+
+evaluationDependsOn(':common')
+
+loom {
+    splitEnvironmentSourceSets()
+
+    runs {
+        client {
+            client()
+            setConfigName("Minecraft NeoForge Client")
+            ideConfigGenerated(true)
+            runDir("run")
+            vmArgs("-XstartOnFirstThread")
+        }
+    }
+
+    mods {
+        "yefira" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+            sourceSet rootProject.project(':common').sourceSets.main
+            sourceSet rootProject.project(':common').sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    compileOnly "net.neoforged:neoforge:${project.neoforge_version}:universal"
+    compileOnly "net.neoforged:bus:8.0.5"
+    compileOnly "net.neoforged.fancymodloader:loader:11.0.16"
+    clientCompileOnly "net.neoforged:neoforge:${project.neoforge_version}:universal"
+    clientCompileOnly "net.neoforged:bus:8.0.5"
+    clientCompileOnly "net.neoforged.fancymodloader:loader:11.0.16"
+
+    implementation project(':common')
+    clientImplementation rootProject.project(':common').sourceSets.main.output
+    clientImplementation rootProject.project(':common').sourceSets.client.output
+
+    implementation "org.java-websocket:Java-WebSocket:1.5.6"
+}
+
+processResources {
+    def version = project.version
+    inputs.property "version", version
+
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": version
+    }
+}

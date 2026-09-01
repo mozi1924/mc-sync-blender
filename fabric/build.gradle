@@ -1,0 +1,50 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+
+evaluationDependsOn(':common')
+
+loom {
+    splitEnvironmentSourceSets()
+
+    runs {
+        client {
+            client()
+            setConfigName("Minecraft Fabric Client")
+            ideConfigGenerated(true)
+            runDir("run")
+            vmArgs("-XstartOnFirstThread")
+        }
+    }
+
+    mods {
+        "yefira" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+            sourceSet rootProject.project(':common').sourceSets.main
+            sourceSet rootProject.project(':common').sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    implementation project(':common')
+    clientImplementation rootProject.project(':common').sourceSets.main.output
+    clientImplementation rootProject.project(':common').sourceSets.client.output
+
+    implementation "org.java-websocket:Java-WebSocket:1.5.6"
+    include "org.java-websocket:Java-WebSocket:1.5.6"
+}
+
+processResources {
+    def version = project.version
+    inputs.property "version", version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": version
+    }
+}

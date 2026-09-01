@@ -1,8 +1,9 @@
 # Yefira (MC Sync Blender)
 
 [![Fabric](https://img.shields.io/badge/Fabric-Mod-blue.svg)](https://fabricmc.net/)
+[![NeoForge](https://img.shields.io/badge/NeoForge-Mod-orange.svg)](https://neoforged.net/)
 [![License](https://img.shields.io/badge/License-GPL_3.0-blue.svg)](LICENSE)
-[![Blender](https://img.shields.io/badge/Companion-MoziToolKit-orange.svg)](https://github.com/mozi1924/MoziToolKit)
+[![Blender](https://img.shields.io/badge/Companion-MoziToolKit-green.svg)](https://github.com/mozi1924/MoziToolKit)
 
 **Yefira** 是专为 **Minecraft (Fabric)** 与 **Blender ([MoziToolKit](https://github.com/mozi1924/MoziToolKit))** 打造的高性能、低延迟实时双向同步模组。
 
@@ -107,20 +108,38 @@
 
 ## 🛠️ 构建与开发 (Building & Development)
 
-### 编译 Mod Jar
+本项目采用模块化多工程架构 (`common` 核心层 + `fabric` 绑定层 + `neoforge` 绑定层，并已为 `paper` 服务端预留接口)。
+
+### 全量构建 (Build All)
 ```bash
 ./gradlew build
 ```
-编译产物位于 `build/libs/yefira-<version>.jar`。
+编译产物位于：
+- `fabric/build/libs/fabric-<version>.jar` (Fabric 模组)
+- `neoforge/build/libs/neoforge-<version>.jar` (NeoForge 模组)
+- `common/build/libs/common-<version>.jar` (通用核心逻辑)
 
-### 运行测试用例
+### 单独编译特定加载器
+```bash
+# 仅编译 Fabric 版本
+./gradlew :fabric:build
+
+# 仅编译 NeoForge 版本
+./gradlew :neoforge:build
+```
+
+### 运行全量单元测试
 ```bash
 ./gradlew test
 ```
 
 ### 启动测试客户端
 ```bash
-./gradlew runClient
+# 启动 Fabric 调试客户端
+./gradlew :fabric:runClient
+
+# 启动 NeoForge 调试客户端
+./gradlew :neoforge:runClient
 ```
 
 ---
