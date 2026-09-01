@@ -3,13 +3,14 @@
 	"id": "yefira",
 	"version": "${version}",
 	"name": "Yefira",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Real-time bidirectional synchronization bridge between Minecraft and Blender (MoziToolKit) via WebSocket.",
 	"authors": [
-		"Me!"
+		"mozi1924"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://github.com/mozi1924/mc-sync-blender",
+		"sources": "https://github.com/mozi1924/mc-sync-blender",
+		"issues": "https://github.com/mozi1924/mc-sync-blender/issues"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/yefira/icon.png",
