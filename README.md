@@ -1,7 +1,7 @@
 # Yefira (MC Sync Blender)
 
 [![Fabric](https://img.shields.io/badge/Fabric-Mod-blue.svg)](https://fabricmc.net/)
-[![License](https://img.shields.io/badge/License-CC0_1.0-lightgrey.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL_3.0-blue.svg)](LICENSE)
 [![Blender](https://img.shields.io/badge/Companion-MoziToolKit-orange.svg)](https://github.com/mozi1924/MoziToolKit)
 
 **Yefira** 是专为 **Minecraft (Fabric)** 与 **Blender ([MoziToolKit](https://github.com/mozi1924/MoziToolKit))** 打造的高性能、低延迟实时双向同步模组。
@@ -124,4 +124,4 @@
 
 ## 📄 开源许可 (License)
 
-本项目采用 [CC0 1.0 Universal](LICENSE) 许可开源。
+本项目采用 [GNU General Public License v3.0 (GPL-3.0)](LICENSE) 许可开源。
