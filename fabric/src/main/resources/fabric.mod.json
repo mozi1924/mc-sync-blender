@@ -1,18 +1,18 @@
 {
 	"schemaVersion": 1,
-	"id": "yefira",
+	"id": "${mod_id}",
 	"version": "${version}",
-	"name": "Yefira",
-	"description": "Real-time bidirectional synchronization bridge between Minecraft and Blender (MoziToolKit) via WebSocket.",
+	"name": "${mod_name}",
+	"description": "${description}",
 	"authors": [
-		"mozi1924"
+		"${mod_author}"
 	],
 	"contact": {
 		"homepage": "https://github.com/mozi1924/mc-sync-blender",
 		"sources": "https://github.com/mozi1924/mc-sync-blender",
 		"issues": "https://github.com/mozi1924/mc-sync-blender/issues"
 	},
-	"license": "GPL-3.0",
+	"license": "${license}",
 	"icon": "assets/yefira/icon.png",
 	"environment": "*",
 	"entrypoints": {

@@ -5,7 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mozi1924.yefira.Yefira;
-import net.fabricmc.loader.api.FabricLoader;
+import com.mozi1924.yefira.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -28,7 +28,7 @@ public class SelectionStorageManager {
 
     public static Path getServerStoragePath(String serverIp) {
         String cleanIp = sanitizeFileName(serverIp);
-        Path configDir = FabricLoader.getInstance().getConfigDir().resolve("yefira").resolve("servers");
+        Path configDir = Services.PLATFORM.getConfigDirectory().resolve("yefira").resolve("servers");
         try {
             Files.createDirectories(configDir);
         } catch (Exception e) {

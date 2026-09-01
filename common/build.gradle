@@ -1,14 +1,15 @@
 plugins {
-    id 'net.fabricmc.fabric-loom'
+    id 'multiloader-common'
+    id 'net.neoforged.moddev'
 }
 
-loom {
-    splitEnvironmentSourceSets()
+neoForge {
+    neoFormVersion = neo_form_version
 }
 
 dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    compileOnly('net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7')
+    compileOnly(annotationProcessor('io.github.llamalad7:mixinextras-common:0.5.3'))
 
     // WebSocket Library
     implementation "org.java-websocket:Java-WebSocket:1.5.6"
@@ -21,4 +22,39 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+configurations {
+    commonJava {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+    commonResources {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+}
+
+artifacts {
+    commonJava sourceSets.main.java.sourceDirectories.singleFile
+    commonResources sourceSets.main.resources.sourceDirectories.singleFile
+}
+
+// Implement mcgradleconventions loader attribute
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
+    configurations.named(variant) {
+        attributes {
+            attribute(loaderAttribute, 'common')
+        }
+    }
+}
+sourceSets.configureEach {
+    [it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName].each { variant ->
+        configurations.named(variant) {
+            attributes {
+                attribute(loaderAttribute, 'common')
+            }
+        }
+    }
 }

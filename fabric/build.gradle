@@ -1,56 +1,50 @@
 plugins {
+    id 'multiloader-loader'
     id 'net.fabricmc.fabric-loom'
 }
 
-evaluationDependsOn(':common')
-
-loom {
-    splitEnvironmentSourceSets()
-
-    runs {
-        client {
-            client()
-            setConfigName("Minecraft Fabric Client")
-            ideConfigGenerated(true)
-            runDir("../run/fabric")
-            vmArgs("-XstartOnFirstThread")
-        }
-        server {
-            server()
-            setConfigName("Minecraft Fabric Server")
-            ideConfigGenerated(true)
-            runDir("../run/fabric_server")
-        }
-    }
-
-    mods {
-        "yefira" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
-            sourceSet rootProject.project(':common').sourceSets.main
-            sourceSet rootProject.project(':common').sourceSets.client
-        }
-    }
-}
-
 dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-
-    implementation project(':common')
-    clientImplementation rootProject.project(':common').sourceSets.main.output
-    clientImplementation rootProject.project(':common').sourceSets.client.output
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 
     implementation "org.java-websocket:Java-WebSocket:1.5.6"
     include "org.java-websocket:Java-WebSocket:1.5.6"
 }
 
-processResources {
-    def version = project.version
-    inputs.property "version", version
+loom {
+    runs {
+        client {
+            client()
+            setConfigName('Fabric Client')
+            ideConfigGenerated(true)
+            runDir('../../run/fabric')
+            vmArgs("-XstartOnFirstThread")
+        }
+        server {
+            server()
+            setConfigName('Fabric Server')
+            ideConfigGenerated(true)
+            runDir('../../run/fabric_server')
+        }
+    }
+}
 
-    filesMatching("fabric.mod.json") {
-        expand "version": version
+// Implement mcgradleconventions loader attribute
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements', 'includeInternal', 'modCompileClasspath'].each { variant ->
+    configurations.named(variant) {
+        attributes {
+            attribute(loaderAttribute, 'fabric')
+        }
+    }
+}
+sourceSets.configureEach {
+    [it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName].each { variant ->
+        configurations.named(variant) {
+            attributes {
+                attribute(loaderAttribute, 'fabric')
+            }
+        }
     }
 }
