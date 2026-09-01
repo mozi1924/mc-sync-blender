@@ -780,8 +780,6 @@ public class GhostModeManager {
             int dy = (int) Math.round(offset.y);
             int dz = (int) Math.round(offset.z);
 
-            if (dx == 0 && dy == 0 && dz == 0) return;
-
             if (draggingCorner == CORNER_POS1 && initialPos1 != null) {
                 dragPreviewPos1 = initialPos1.offset(dx, dy, dz);
             } else if (draggingCorner == CORNER_POS2 && initialPos2 != null) {
@@ -796,8 +794,6 @@ public class GhostModeManager {
             double currentParam = intersectRayWithAxisPlane(ray, dragStartOrigin, axisDir);
             double deltaParam = currentParam - dragStartParam;
             int blockDelta = (int) Math.round(deltaParam);
-
-            if (blockDelta == 0) return;
 
             int dx = (draggingAxis == AXIS_X) ? blockDelta : 0;
             int dy = (draggingAxis == AXIS_Y) ? blockDelta : 0;
