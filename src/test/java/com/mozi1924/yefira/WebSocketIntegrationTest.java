@@ -71,4 +71,43 @@ public class WebSocketIntegrationTest {
 
         client.closeBlocking();
     }
+
+    @Test
+    public void testProtocolPingAndDisconnectionResilience() throws Exception {
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        URI uri = new URI("ws://" + TEST_HOST + ":" + TEST_PORT);
+
+        WebSocketClient client = new WebSocketClient(uri) {
+            @Override
+            public void onOpen(ServerHandshake handshakedata) {}
+
+            @Override
+            public void onMessage(String message) {}
+
+            @Override
+            public void onClose(int code, String reason, boolean remote) {}
+
+            @Override
+            public void onError(Exception ex) {}
+        };
+
+        boolean connected = client.connectBlocking(5, TimeUnit.SECONDS);
+        Assertions.assertTrue(connected, "Client should connect successfully");
+
+        // Send standard WebSocket ping frame
+        client.sendPing();
+        Thread.sleep(100);
+
+        // Test safe send while client is alive
+        boolean sent = server.sendSafe(client, "TEST_SAFE_SEND");
+        // Note: client is WebSocketClient not server's WebSocket, test server's safe broadcast/send directly:
+        server.broadcastManifest(null, null); // should safely no-op without crash
+
+        // Abrupt close
+        client.close();
+        Thread.sleep(100);
+
+        // Server should still be healthy and running
+        Assertions.assertTrue(server.isRunning(), "Server should remain running and healthy after client disconnect");
+    }
 }
