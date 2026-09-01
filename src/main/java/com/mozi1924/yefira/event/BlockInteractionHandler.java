@@ -19,11 +19,7 @@ public class BlockInteractionHandler {
     public static void register() {
         // 左键攻击/点击方块设置 Pos1 并拦截破坏方块 (手持金镐，需在配置中开启)
         AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
-            if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool() && isHoldingSelectionTool(player, hand)) {
-                if (!level.isClientSide()) {
-                    SelectionManager.getInstance().setPos1(level, pos);
-                    player.sendSystemMessage(Component.translatable("yefira.command.pos1.set", pos.toShortString()));
-                }
+            if (handleLeftClick(player, level, hand, pos)) {
                 return InteractionResult.SUCCESS;
             }
             return InteractionResult.PASS;
@@ -31,17 +27,34 @@ public class BlockInteractionHandler {
 
         // 右键交互方块设置 Pos2 (手持金镐，需在配置中开启)
         UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> {
-            if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool()
-                    && hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
-                if (!level.isClientSide()) {
-                    BlockPos pos = hitResult.getBlockPos();
-                    SelectionManager.getInstance().setPos2(level, pos);
-                    player.sendSystemMessage(Component.translatable("yefira.command.pos2.set", pos.toShortString()));
-                }
+            if (handleRightClick(player, level, hand, hitResult.getBlockPos())) {
                 return InteractionResult.SUCCESS;
             }
             return InteractionResult.PASS;
         });
+    }
+
+    public static boolean handleLeftClick(Player player, Level level, InteractionHand hand, BlockPos pos) {
+        if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool() && isHoldingSelectionTool(player, hand)) {
+            if (!level.isClientSide()) {
+                SelectionManager.getInstance().setPos1(level, pos);
+                player.sendSystemMessage(Component.translatable("yefira.command.pos1.set", pos.toShortString()));
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean handleRightClick(Player player, Level level, InteractionHand hand, BlockPos pos) {
+        if (com.mozi1924.yefira.config.YefiraConfig.getInstance().isEnableLegacyPickaxeTool()
+                && hand == InteractionHand.MAIN_HAND && isHoldingSelectionTool(player, hand)) {
+            if (!level.isClientSide()) {
+                SelectionManager.getInstance().setPos2(level, pos);
+                player.sendSystemMessage(Component.translatable("yefira.command.pos2.set", pos.toShortString()));
+            }
+            return true;
+        }
+        return false;
     }
 
     private static boolean isHoldingSelectionTool(Player player, InteractionHand hand) {

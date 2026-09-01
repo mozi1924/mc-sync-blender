@@ -20,6 +20,10 @@ public class GhostHudOverlay implements HudElement {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
+        renderOverlay(graphics);
+    }
+
+    public static void renderOverlay(GuiGraphicsExtractor graphics) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (!ghost.isActive()) return;
 

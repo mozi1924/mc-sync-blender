@@ -5,7 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mozi1924.yefira.Yefira;
-import net.fabricmc.loader.api.FabricLoader;
+import com.mozi1924.yefira.platform.Services;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,9 +15,9 @@ public class YefiraConfig {
 
     private static Path getConfigPath() {
         try {
-            FabricLoader loader = FabricLoader.getInstance();
-            if (loader != null && loader.getConfigDir() != null) {
-                return loader.getConfigDir().resolve("yefira.json");
+            Path dir = Services.PLATFORM.getConfigDirectory();
+            if (dir != null) {
+                return dir.resolve("yefira.json");
             }
         } catch (Throwable ignored) {}
         return java.nio.file.Paths.get("config", "yefira.json");
