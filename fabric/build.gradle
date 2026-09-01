@@ -12,8 +12,14 @@ loom {
             client()
             setConfigName("Minecraft Fabric Client")
             ideConfigGenerated(true)
-            runDir("run")
+            runDir("run/fabric")
             vmArgs("-XstartOnFirstThread")
+        }
+        server {
+            server()
+            setConfigName("Minecraft Fabric Server")
+            ideConfigGenerated(true)
+            runDir("run/fabric_server")
         }
     }
 

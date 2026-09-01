@@ -12,8 +12,14 @@ loom {
             client()
             setConfigName("Minecraft NeoForge Client")
             ideConfigGenerated(true)
-            runDir("run")
+            runDir("run/neoforge")
             vmArgs("-XstartOnFirstThread")
+        }
+        server {
+            server()
+            setConfigName("Minecraft NeoForge Server")
+            ideConfigGenerated(true)
+            runDir("run/neoforge_server")
         }
     }
 
