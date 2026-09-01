@@ -24,7 +24,7 @@ public class MouseHandlerMixin {
             return;
         }
         GhostModeManager ghost = GhostModeManager.getInstance();
-        if (ghost.isActive() && !ghost.isFlyLooking()) {
+        if (ghost.isActive()) {
             ghost.onMouseMove(xpos, ypos);
         }
     }
@@ -33,15 +33,6 @@ public class MouseHandlerMixin {
     private void onTurnPlayer(double delta, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            if (this.minecraft.gui == null || this.minecraft.gui.screen() == null) {
-                if (ghost.isFlyLooking()) {
-                    double sens = this.minecraft.options.sensitivity().get() * 0.6 + 0.2;
-                    double mult = sens * sens * sens * 8.0;
-                    double dx = this.accumulatedDX * mult;
-                    double dy = this.accumulatedDY * mult;
-                    ghost.onMouseTurn(dx, dy);
-                }
-            }
             this.accumulatedDX = 0.0;
             this.accumulatedDY = 0.0;
             ci.cancel();

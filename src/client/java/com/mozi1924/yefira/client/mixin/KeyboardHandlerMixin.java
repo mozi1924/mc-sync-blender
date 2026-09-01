@@ -34,13 +34,6 @@ public class KeyboardHandlerMixin {
 
         // 1. ESC key handling
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            if (ghost.isFlyLooking()) {
-                if (action == GLFW.GLFW_PRESS) {
-                    ghost.exitFlyNavigation();
-                }
-                ci.cancel();
-                return;
-            }
             if (ghost.isBoxCreating()) {
                 if (action == GLFW.GLFW_PRESS) {
                     ghost.cancelBoxDrag();
@@ -61,27 +54,17 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 3. Blender Fly Navigation toggle
-        if ((YefiraClient.keyFlyNav != null && YefiraClient.keyFlyNav.matches(keyEvent))
-                || key == GLFW.GLFW_KEY_GRAVE_ACCENT || key == GLFW.GLFW_KEY_WORLD_1) {
-            if (action == GLFW.GLFW_PRESS) {
-                ghost.toggleFlyNavigation();
-            }
-            ci.cancel();
-            return;
-        }
-
-        // 4. Focus on Selection: Numpad . or keyFocus
+        // 3. Focus on Selection: Numpad . or keyFocus
         if ((YefiraClient.keyFocus != null && YefiraClient.keyFocus.matches(keyEvent))
                 || key == GLFW.GLFW_KEY_KP_DECIMAL) {
-            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+            if (action == GLFW.GLFW_PRESS) {
                 ghost.focusSelection();
             }
             ci.cancel();
             return;
         }
 
-        // 5. Open Settings / Control Screen: keyOpenGui
+        // 4. Open Settings / Control Screen: keyOpenGui
         if (YefiraClient.keyOpenGui != null && YefiraClient.keyOpenGui.matches(keyEvent)) {
             if (action == GLFW.GLFW_PRESS) {
                 this.minecraft.setScreenAndShow(new com.mozi1924.yefira.client.gui.YefiraScreen());
@@ -90,19 +73,19 @@ public class KeyboardHandlerMixin {
             return;
         }
 
-        // 6. Clear Selection: keyClear or DELETE
+        // 5. Clear Selection: keyClear or DELETE
         if ((YefiraClient.keyClear != null && YefiraClient.keyClear.matches(keyEvent))
                 || key == GLFW.GLFW_KEY_DELETE) {
-            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+            if (action == GLFW.GLFW_PRESS) {
                 com.mozi1924.yefira.selection.SelectionManager.getInstance().clearSelection();
             }
             ci.cancel();
             return;
         }
 
-        // 7. Create Preset Box (16x16x16): keyPresetBox
+        // 6. Create Preset Box (16x16x16): keyPresetBox
         if (YefiraClient.keyPresetBox != null && YefiraClient.keyPresetBox.matches(keyEvent)) {
-            if (action == GLFW.GLFW_PRESS && !ghost.isFlyLooking()) {
+            if (action == GLFW.GLFW_PRESS) {
                 ghost.createPresetBoxAtCursorOrPivot(16);
             }
             ci.cancel();
@@ -110,7 +93,6 @@ public class KeyboardHandlerMixin {
         }
 
         // In Ghost Mode, block all vanilla gameplay key events (hotbar, drop item, chat, attack, use item)
-        // Movement keys (WASD, Space, Shift, Ctrl, Q, E) are polled directly by GhostModeManager in tickMovement()
         ci.cancel();
     }
 }

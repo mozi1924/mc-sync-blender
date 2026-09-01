@@ -27,25 +27,19 @@ public class GhostHudOverlay implements HudElement {
         Font font = mc.font;
         int screenWidth = mc.getWindow().getGuiScaledWidth();
 
-        boolean isFly = ghost.isFlyLooking();
-
         // Top Status Bar
         int barHeight = 22;
         graphics.fill(0, 0, screenWidth, barHeight, 0xB0000000); // 70% dark background
-        int accentColor = isFly ? 0xFFFF9900 : 0xFF00FFCC; // Orange in Fly mode, Cyan in Free mode
+        int accentColor = 0xFF00FFCC; // Cyan accent
         graphics.fill(0, barHeight - 1, screenWidth, barHeight, accentColor);
 
         // Title
-        Component titleComp = isFly
-            ? Component.translatable("yefira.hud.title.fly")
-            : Component.translatable("yefira.hud.title.ghost");
-        int titleColor = isFly ? 0xFFFFAA33 : 0xFF00FFFF;
+        Component titleComp = Component.translatable("yefira.hud.title.ghost");
+        int titleColor = 0xFF00FFFF;
         graphics.text(font, titleComp, 8, 6, titleColor, true);
 
         // Control Hints
-        Component hintsComp = isFly
-            ? Component.translatable("yefira.hud.hints.fly")
-            : Component.translatable("yefira.hud.hints.ghost");
+        Component hintsComp = Component.translatable("yefira.hud.hints.ghost");
         graphics.centeredText(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
 
         // Server Status & Fly Speed (top right)

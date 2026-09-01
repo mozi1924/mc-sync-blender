@@ -14,9 +14,8 @@ public class HudMixin {
 
     @Inject(method = "extractCrosshair", at = @At("HEAD"), cancellable = true)
     private void onExtractCrosshair(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
-        GhostModeManager ghost = GhostModeManager.getInstance();
-        if (ghost.isActive() && !ghost.isFlyLooking()) {
-            // Only show crosshair in Fly Navigation mode, hide in normal Ghost Mode
+        if (GhostModeManager.getInstance().isActive()) {
+            // Hide crosshair in Ghost Mode (free cursor mode)
             ci.cancel();
         }
     }
