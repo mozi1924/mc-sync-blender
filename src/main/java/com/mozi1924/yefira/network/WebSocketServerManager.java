@@ -48,6 +48,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     private final Map<WebSocket, ClientConfig> clientConfigs = new ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService streamingExecutor = java.util.concurrent.Executors.newCachedThreadPool();
 
     public static WebSocketServerManager getInstance() {
         return INSTANCE;
@@ -149,7 +150,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
             SelectionManager selectionManager = SelectionManager.getInstance();
             if (selectionManager.hasSelection() && selectionManager.getCurrentLevel() != null) {
-                sendHandshakeManifestToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection());
+                streamingExecutor.submit(() -> sendHandshakeManifestToClient(conn, selectionManager.getCurrentLevel(), selectionManager.getCurrentSelection()));
             }
         }
 
@@ -326,24 +327,42 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
             if (packetType == BlockDataEncoder.PACKET_C2S_REQ_FULL_SYNC) {
                 Yefira.LOGGER.info("Client {} requested FULL SYNC.", conn.getRemoteSocketAddress());
-                sendSnapshotToClient(conn, level, selection);
+                streamingExecutor.submit(() -> sendSnapshotToClient(conn, level, selection));
             } else if (packetType == BlockDataEncoder.PACKET_C2S_REQ_SECTION_SYNC) {
                 if (message.remaining() < 2) return;
                 int count = message.getShort() & 0xFFFF;
                 Yefira.LOGGER.info("Client {} requested section sync for {} sections.", conn.getRemoteSocketAddress(), count);
 
+                List<BlockDataEncoder.SectionPos> requestedPositions = new ArrayList<>(count);
                 for (int i = 0; i < count; i++) {
                     if (message.remaining() < 12) break;
-                    if (conn == null || !conn.isOpen()) break;
                     int secX = message.getInt();
                     int secY = message.getInt();
                     int secZ = message.getInt();
-                    BlockDataEncoder.SectionPos secPos = new BlockDataEncoder.SectionPos(secX, secY, secZ);
-                    byte[] sectionSnapshot = BlockDataEncoder.encodeSectionSnapshot(level, selection, secPos);
-                    if (!sendSafe(conn, sectionSnapshot)) {
-                        break;
-                    }
+                    requestedPositions.add(new BlockDataEncoder.SectionPos(secX, secY, secZ));
                 }
+
+                streamingExecutor.submit(() -> {
+                    long streamId = globalSeqId.incrementAndGet();
+                    byte[] beginPacket = BlockDataEncoder.encodeStreamBegin(streamId, requestedPositions.size(), 0);
+                    if (!sendSafe(conn, beginPacket)) return;
+
+                    int sent = 0;
+                    for (BlockDataEncoder.SectionPos secPos : requestedPositions) {
+                        if (conn == null || !conn.isOpen()) break;
+                        byte[] sectionSnapshot = BlockDataEncoder.encodeSectionSnapshot(level, selection, secPos);
+                        if (!sendSafe(conn, sectionSnapshot)) {
+                            break;
+                        }
+                        sent++;
+                        if ((sent % 16) == 0) {
+                            Thread.yield();
+                        }
+                    }
+
+                    byte[] endPacket = BlockDataEncoder.encodeStreamEnd(streamId, sent, 0);
+                    sendSafe(conn, endPacket);
+                });
             }
         } catch (Exception e) {
             Yefira.LOGGER.error("Error handling binary message from DCC client", e);
@@ -358,7 +377,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         clearPendingDeltaChanges();
         BlockDataEncoder.clearSectionCRCCache();
         Yefira.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
-        broadcastSnapshot(level, selection);
+        streamingExecutor.submit(() -> broadcastSnapshot(level, selection));
     }
 
     @Override
@@ -406,9 +425,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 sendSafe(conn, snapshotBytes);
             } else {
                 // 大选区/调试模式世界：流式分块按 Section 发送非空快照，避免单包超过 1MB/20MB 造成内存暴涨或网络超限
-                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, bytes -> {
-                    sendSafe(conn, bytes);
-                });
+                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, snapshotSeqId, bytes -> sendSafe(conn, bytes));
             }
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
@@ -435,10 +452,14 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                     sendSafe(client, snapshotBytes);
                 }
             } else {
-                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, bytes -> {
+                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, snapshotSeqId, bytes -> {
+                    boolean anySuccess = false;
                     for (WebSocket client : List.copyOf(clients)) {
-                        sendSafe(client, bytes);
+                        if (sendSafe(client, bytes)) {
+                            anySuccess = true;
+                        }
                     }
+                    return anySuccess || clients.isEmpty();
                 });
             }
         } catch (Exception e) {

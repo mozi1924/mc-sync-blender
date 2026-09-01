@@ -26,6 +26,8 @@ public class BlockDataEncoder {
     public static final byte PACKET_SECTION_MANIFEST = 0x05;
     public static final byte PACKET_SECTION_SNAPSHOT = 0x06;
     public static final byte PACKET_HANDSHAKE_INFO = 0x07;
+    public static final byte PACKET_STREAM_BEGIN = 0x08;
+    public static final byte PACKET_STREAM_END = 0x09;
 
     // C2S Request Packet Types
     public static final byte PACKET_C2S_REQ_FULL_SYNC = (byte) 0x80;
@@ -479,6 +481,52 @@ public class BlockDataEncoder {
         return list;
     }
 
+    private static final long[] EMPTY_CRC_TABLE = new long[4097];
+    static {
+        byte[] airBytes = "minecraft:air".getBytes(StandardCharsets.UTF_8);
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        EMPTY_CRC_TABLE[0] = 0L;
+        for (int i = 1; i <= 4096; i++) {
+            crc.update(airBytes);
+            EMPTY_CRC_TABLE[i] = crc.getValue();
+        }
+    }
+
+    public static long getEmptySectionCRC(int blockCount) {
+        if (blockCount >= 0 && blockCount < EMPTY_CRC_TABLE.length) {
+            return EMPTY_CRC_TABLE[blockCount];
+        }
+        byte[] airBytes = "minecraft:air".getBytes(StandardCharsets.UTF_8);
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        for (int i = 0; i < blockCount; i++) {
+            crc.update(airBytes);
+        }
+        return crc.getValue();
+    }
+
+    private static boolean isChunkSectionAllAir(Level level, int secX, int secY, int secZ) {
+        if (level == null) return false;
+        int minSectionY = level.getMinSectionY();
+        int maxSectionY = level.getMaxSectionY();
+        if (secY < minSectionY || secY > maxSectionY) return true;
+
+        try {
+            net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunk(secX, secZ);
+            if (chunk != null) {
+                int sectionIndex = level.getSectionIndexFromSectionY(secY);
+                net.minecraft.world.level.chunk.LevelChunkSection[] sections = chunk.getSections();
+                if (sectionIndex >= 0 && sectionIndex < sections.length) {
+                    net.minecraft.world.level.chunk.LevelChunkSection section = sections[sectionIndex];
+                    if (section != null && section.hasOnlyAir()) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
     public static boolean isSectionNonEmpty(Level level, SelectionBox selection, SectionPos secPos) {
         int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
         int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
@@ -486,6 +534,13 @@ public class BlockDataEncoder {
         int endY = Math.min(selection.getMax().getY(), (secPos.y << 4) + 15);
         int startZ = Math.max(selection.getMin().getZ(), secPos.z << 4);
         int endZ = Math.min(selection.getMax().getZ(), (secPos.z << 4) + 15);
+
+        if (startX > endX || startY > endY || startZ > endZ) return false;
+
+        // O(1) Fast path: pure air chunk section skips scanning 4096 blocks
+        if (isChunkSectionAllAir(level, secPos.x, secPos.y, secPos.z)) {
+            return false;
+        }
 
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         for (int x = startX; x <= endX; x++) {
@@ -502,15 +557,49 @@ public class BlockDataEncoder {
         return false;
     }
 
-    public static int countNonEmptySections(Level level, SelectionBox selection) {
-        List<SectionPos> sections = getCoveredSections(selection);
-        int count = 0;
-        for (SectionPos sec : sections) {
+    public static List<SectionPos> getNonEmptySections(Level level, SelectionBox selection) {
+        List<SectionPos> covered = getCoveredSections(selection);
+        List<SectionPos> nonEmpty = new ArrayList<>();
+        for (SectionPos sec : covered) {
             if (isSectionNonEmpty(level, selection, sec)) {
-                count++;
+                nonEmpty.add(sec);
             }
         }
-        return count;
+        return nonEmpty;
+    }
+
+    public static int countNonEmptySections(Level level, SelectionBox selection) {
+        return getNonEmptySections(level, selection).size();
+    }
+
+    public static byte[] encodeStreamBegin(long streamId, int totalSections, int flags) {
+        ByteBuffer buf = ByteBuffer.allocate(4 + 4 + 4 + 2);
+        buf.order(ByteOrder.LITTLE_ENDIAN);
+
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(PACKET_STREAM_BEGIN);
+
+        buf.putInt((int) streamId);
+        buf.putInt(totalSections);
+        buf.putShort((short) flags);
+
+        return buf.array();
+    }
+
+    public static byte[] encodeStreamEnd(long streamId, int sentSections, int status) {
+        ByteBuffer buf = ByteBuffer.allocate(4 + 4 + 4 + 2);
+        buf.order(ByteOrder.LITTLE_ENDIAN);
+
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(PACKET_STREAM_END);
+
+        buf.putInt((int) streamId);
+        buf.putInt(sentSections);
+        buf.putShort((short) status);
+
+        return buf.array();
     }
 
     public static byte[] encodeHandshakeInfo(int totalSections, int nonEmptySections, long totalVolume, String dimension, int flags) {
@@ -536,14 +625,34 @@ public class BlockDataEncoder {
         return buf.array();
     }
 
-    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, java.util.function.Consumer<byte[]> sender) {
-        List<SectionPos> sections = getCoveredSections(selection);
-        for (SectionPos sec : sections) {
-            if (isSectionNonEmpty(level, selection, sec)) {
-                byte[] sectionSnapshot = encodeSectionSnapshot(level, selection, sec);
-                sender.accept(sectionSnapshot);
+    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, long streamId, java.util.function.Predicate<byte[]> sender) {
+        List<SectionPos> nonEmpty = getNonEmptySections(level, selection);
+        byte[] beginPacket = encodeStreamBegin(streamId, nonEmpty.size(), 0);
+        if (!sender.test(beginPacket)) {
+            return;
+        }
+
+        int sent = 0;
+        for (SectionPos sec : nonEmpty) {
+            byte[] sectionSnapshot = encodeSectionSnapshot(level, selection, sec);
+            if (!sender.test(sectionSnapshot)) {
+                return;
+            }
+            sent++;
+            if ((sent % 16) == 0) {
+                Thread.yield();
             }
         }
+
+        byte[] endPacket = encodeStreamEnd(streamId, sent, 0);
+        sender.test(endPacket);
+    }
+
+    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, java.util.function.Consumer<byte[]> sender) {
+        streamNonEmptySectionSnapshots(level, selection, 0L, bytes -> {
+            sender.accept(bytes);
+            return true;
+        });
     }
 
     private static final Map<SectionPos, Long> SECTION_CRC_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
@@ -564,16 +673,26 @@ public class BlockDataEncoder {
             return cached;
         }
 
-        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
         int startX = Math.max(selection.getMin().getX(), secPos.x << 4);
         int endX = Math.min(selection.getMax().getX(), (secPos.x << 4) + 15);
-
         int startY = Math.max(selection.getMin().getY(), secPos.y << 4);
         int endY = Math.min(selection.getMax().getY(), (secPos.y << 4) + 15);
-
         int startZ = Math.max(selection.getMin().getZ(), secPos.z << 4);
         int endZ = Math.min(selection.getMax().getZ(), (secPos.z << 4) + 15);
 
+        int totalBlocks = Math.max(0, endX - startX + 1) * Math.max(0, endY - startY + 1) * Math.max(0, endZ - startZ + 1);
+        if (totalBlocks == 0) {
+            return 0L;
+        }
+
+        // O(1) Fast path: pure air chunk section returns precomputed canonical CRC
+        if (isChunkSectionAllAir(level, secPos.x, secPos.y, secPos.z)) {
+            long result = getEmptySectionCRC(totalBlocks);
+            SECTION_CRC_CACHE.put(secPos, result);
+            return result;
+        }
+
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         for (int x = startX; x <= endX; x++) {
             for (int y = startY; y <= endY; y++) {
