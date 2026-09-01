@@ -8,7 +8,13 @@ version="${version}"
 displayName="${mod_name}"
 description='''${description}'''
 authors="${mod_author}"
-logoFile="assets/yefira/icon.png"
+iconFile="assets/yefira/icon.png"
+
+[[mixins]]
+config = "yefira.mixins.json"
+
+[[mixins]]
+config = "yefira.client.mixins.json"
 
 [[dependencies.${mod_id}]]
 modId="neoforge"
