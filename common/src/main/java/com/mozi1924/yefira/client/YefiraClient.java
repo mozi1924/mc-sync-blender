@@ -90,47 +90,41 @@ public class YefiraClient {
     }
 
     private static KeyMapping createKeyMapping(String name, InputConstants.Type type, int key, String categoryName) {
-        try {
-            Class<?> categoryClass = null;
-            for (Class<?> nested : KeyMapping.class.getDeclaredClasses()) {
-                if ("Category".equals(nested.getSimpleName())) {
-                    categoryClass = nested;
-                    break;
-                }
-            }
-            if (categoryClass != null) {
-                java.lang.reflect.Constructor<?> ctor = null;
-                for (java.lang.reflect.Constructor<?> c : KeyMapping.class.getConstructors()) {
-                    Class<?>[] params = c.getParameterTypes();
-                    if (params.length == 4 && params[0] == String.class && params[1] == InputConstants.Type.class && params[2] == int.class && params[3] == categoryClass) {
-                        ctor = c;
-                        break;
-                    }
-                }
-                if (ctor != null) {
-                    Object categoryObj = null;
+        for (java.lang.reflect.Constructor<?> ctor : KeyMapping.class.getConstructors()) {
+            Class<?>[] params = ctor.getParameterTypes();
+            if (params.length == 4 && params[0] == String.class && params[2] == int.class) {
+                if (params[3] == String.class) {
                     try {
-                        java.lang.reflect.Method registerMethod = categoryClass.getMethod("register", net.minecraft.resources.ResourceLocation.class);
-                        categoryObj = registerMethod.invoke(null, Yefira.id("selection"));
-                    } catch (Throwable ignored) {
-                        try {
-                            java.lang.reflect.Method registerMethod = categoryClass.getMethod("register", String.class);
-                            categoryObj = registerMethod.invoke(null, categoryName);
-                        } catch (Throwable ignored2) {}
+                        return (KeyMapping) ctor.newInstance(name, type, key, categoryName);
+                    } catch (Throwable ignored) {}
+                } else {
+                    Class<?> catClass = params[3];
+                    Object catObj = null;
+                    for (java.lang.reflect.Method m : catClass.getMethods()) {
+                        if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterCount() == 1) {
+                            Class<?> pType = m.getParameterTypes()[0];
+                            if (pType.getName().endsWith("ResourceLocation") || pType.getSimpleName().equals("ResourceLocation") || pType.getName().contains("class_2960")) {
+                                try {
+                                    catObj = m.invoke(null, Yefira.id("selection"));
+                                    if (catObj != null) break;
+                                } catch (Throwable ignored) {}
+                            } else if (pType == String.class) {
+                                try {
+                                    catObj = m.invoke(null, categoryName);
+                                    if (catObj != null) break;
+                                } catch (Throwable ignored) {}
+                            }
+                        }
                     }
-                    if (categoryObj != null) {
-                        return (KeyMapping) ctor.newInstance(name, type, key, categoryObj);
+                    if (catObj != null) {
+                        try {
+                            return (KeyMapping) ctor.newInstance(name, type, key, catObj);
+                        } catch (Throwable ignored) {}
                     }
                 }
             }
-        } catch (Throwable ignored) {}
-
-        try {
-            java.lang.reflect.Constructor<KeyMapping> legacyCtor = KeyMapping.class.getConstructor(String.class, InputConstants.Type.class, int.class, String.class);
-            return legacyCtor.newInstance(name, type, key, categoryName);
-        } catch (Throwable t) {
-            return new KeyMapping(name, type, key, categoryName);
         }
+        throw new RuntimeException("Could not initialize KeyMapping for " + name);
     }
 
     public static void onClientJoinServer(Minecraft client) {
