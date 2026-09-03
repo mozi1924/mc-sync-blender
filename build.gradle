@@ -76,6 +76,9 @@ tasks.register('buildAll') {
 
     doLast {
         def distDir = file('build/dist')
+        if (distDir.exists()) {
+            distDir.deleteDir()
+        }
         distDir.mkdirs()
 
         def loaderDirs = [

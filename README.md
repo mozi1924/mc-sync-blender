@@ -51,11 +51,19 @@ mc-sync-blender/
 
 ## 📦 支持的版本与模组加载器 (Supported Versions & Loaders)
 
-| Minecraft 大版本 | 对应 Java 运行环境 | 支持的模组加载器 (Mod Loaders) | 特性与渲染管线 |
+| Minecraft 兼容纪元 (Era) | 对应 Java 运行环境 | 支持的模组加载器 (Mod Loaders) | 特性与渲染管线 |
 | :--- | :--- | :--- | :--- |
-| **1.20.1** | Java 17 | **Fabric** & **Forge** (47.3.0) | 自定义 3D 箭头与抗遮挡视口渲染兼容层 |
-| **1.21.1** | Java 21 | **Fabric** & **NeoForge** (21.1.80) | 独立缓冲区与多批次渲染兼容层 |
-| **26.2** | Java 25 | **Fabric** & **NeoForge** (26.2.0.75) | 原生 `Gizmos` 视口手柄与最新实体交互监听 |
+| **1.20 - 1.20.1** (Era 1) | Java 17 | **Fabric** & **Forge** (47.3.0) | 自定义 3D 箭头与抗遮挡视口渲染兼容层 (旧 VertexConsumer) |
+| **1.20.5 - 1.21.1** (Era 3) | Java 21 | **Fabric** & **NeoForge** (21.1.80) | 独立缓冲区与多批次渲染兼容层 (新 VertexConsumer, DeltaTracker) |
+| **26.2** (Era 5) | Java 25 | **Fabric** & **NeoForge** (26.2.0.75) | 原生 `Gizmos` 视口手柄、`Identifier` 命名系统与最新输入架构 |
+
+> [!IMPORTANT]
+> **Minecraft 子版本破坏性重构与隔离策略说明**：
+> Minecraft 官方在各个子版本中引入了诸多不可向下兼容的重大底层重构，因此模组必须按纪元严格隔离编译产物：
+> 1. **1.20.2 断层**：Mojang 彻底废弃了旧版 `Checkbox` 构造器改用 Builder 模式，并修改了 `MouseHandler.turnPlayer(double)` 签名与网络生命周期，因此 `1.20.1` 产物绝对不可跨至 `1.20.2+`。
+> 2. **1.20.5 断层**：Minecraft 强升 **Java 21**，引入 **Data Components** 彻底替换 NBT，重写了 `VertexConsumer`（移除 `endVertex()`）并引入 `DeltaTracker`。
+> 3. **1.21.2 断层**：重写了 `Camera.update(DeltaTracker)`（移除旧 `setup` 方法），并用 `ClientInput` 重构了原 `KeyboardInput` 输入字段。
+> 4. **26.2 断层**：Minecraft 强升 **Java 25**（字节码 69），将 `ResourceLocation` 更名为 `net.minecraft.resources.Identifier`，并引入原生 `Gizmos` 渲染系统。严禁将 Java 25 产物声明在 Java 21 环境（如 1.21.x）运行。
 
 ---
 
@@ -141,12 +149,12 @@ mc-sync-blender/
 ./gradlew buildAll
 ```
 该任务将按序编译 `1.20.1`、`1.21.1`、`26.2` 的所有加载器版本，并将最终可执行模组 Jar 自动归集到 `build/dist/` 目录：
-- `build/dist/yefira-fabric-1.20.1-1.0.0.jar`
-- `build/dist/yefira-forge-1.20.1-1.0.0.jar`
-- `build/dist/yefira-fabric-1.21.1-1.0.0.jar`
-- `build/dist/yefira-neoforge-1.21.1-1.0.0.jar`
-- `build/dist/yefira-fabric-26.2-1.0.0.jar`
-- `build/dist/yefira-neoforge-26.2-1.0.0.jar`
+- `build/dist/yefira-fabric-mc1.20-1.20.1-1.0.0.jar`
+- `build/dist/yefira-forge-mc1.20-1.20.1-1.0.0.jar`
+- `build/dist/yefira-fabric-mc1.20.5-1.21.1-1.0.0.jar`
+- `build/dist/yefira-neoforge-mc1.20.5-1.21.1-1.0.0.jar`
+- `build/dist/yefira-fabric-mc26.2-1.0.0.jar`
+- `build/dist/yefira-neoforge-mc26.2-1.0.0.jar`
 
 ### 单独编译特定版本
 如果仅需要编译某个特定大版本，可执行对应的单版本构建任务：
