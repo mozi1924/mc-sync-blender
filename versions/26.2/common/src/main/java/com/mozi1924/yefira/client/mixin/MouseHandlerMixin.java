@@ -18,7 +18,7 @@ public class MouseHandlerMixin {
     @Shadow private double accumulatedDX;
     @Shadow private double accumulatedDY;
 
-    @Inject(method = "onMove", at = @At("HEAD"))
+    @Inject(method = "onMove", at = @At("HEAD"), require = 0)
     private void onMouseMove(long window, double xpos, double ypos, CallbackInfo ci) {
         if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
             return;
@@ -29,7 +29,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true, require = 0)
     private void onTurnPlayer(double delta, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
@@ -39,7 +39,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "onButton", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onButton", at = @At("HEAD"), cancellable = true, require = 0)
     private void onMouseButton(long window, MouseButtonInfo buttonInfo, int action, CallbackInfo ci) {
         if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
             return;
@@ -51,7 +51,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true, require = 0)
     private void onMouseScroll(long window, double xoffset, double yoffset, CallbackInfo ci) {
         if (this.minecraft.gui != null && this.minecraft.gui.screen() != null) {
             return;

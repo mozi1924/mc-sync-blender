@@ -17,7 +17,7 @@ public class MouseHandlerMixin {
     @Shadow private double accumulatedDX;
     @Shadow private double accumulatedDY;
 
-    @Inject(method = "onMove", at = @At("HEAD"))
+    @Inject(method = "onMove", at = @At("HEAD"), require = 0)
     private void onMouseMove(long window, double xpos, double ypos, CallbackInfo ci) {
         if (this.minecraft.screen != null) {
             return;
@@ -38,7 +38,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "onPress", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onPress", at = @At("HEAD"), cancellable = true, require = 0)
     private void onMouseButton(long window, int button, int action, int mods, CallbackInfo ci) {
         if (this.minecraft.screen != null) {
             return;
@@ -50,7 +50,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true, require = 0)
     private void onMouseScroll(long window, double xoffset, double yoffset, CallbackInfo ci) {
         if (this.minecraft.screen != null) {
             return;

@@ -102,17 +102,22 @@ public class YefiraClient {
             return;
         }
 
-        // Global shortcut: toggle Ghost Mode (the only shortcut monitored outside Ghost Mode)
+        // Global shortcuts
         if (keyGhostMode != null) {
             while (keyGhostMode.consumeClick()) {
                 GhostModeManager.getInstance().toggle();
             }
         }
 
-        // All other shortcuts are strictly active ONLY in Ghost Mode
+        if (keyOpenGui != null) {
+            while (keyOpenGui.consumeClick()) {
+                client.setScreen(new YefiraScreen());
+            }
+        }
+
+        // Shortcuts strictly active ONLY in Ghost Mode
         if (!GhostModeManager.getInstance().isActive()) {
             // Drain any pending clicks to avoid accidental triggering on mode entry
-            if (keyOpenGui != null) while (keyOpenGui.consumeClick()) {}
             if (keyFocus != null) while (keyFocus.consumeClick()) {}
             if (keyClear != null) while (keyClear.consumeClick()) {}
             if (keyPresetBox != null) while (keyPresetBox.consumeClick()) {}
@@ -121,12 +126,6 @@ public class YefiraClient {
 
         // Ghost Mode active logic
         GhostModeManager.getInstance().tickMovement();
-
-        if (keyOpenGui != null) {
-            while (keyOpenGui.consumeClick()) {
-                client.setScreen(new YefiraScreen());
-            }
-        }
 
         if (keyFocus != null) {
             while (keyFocus.consumeClick()) {

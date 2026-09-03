@@ -227,19 +227,21 @@ public class YefiraScreen extends Screen {
         // Server Status display
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         boolean running = server.isRunning();
+        String host = server.getHost() != null ? server.getHost() : "0.0.0.0";
         Component statusComponent = running
-                ? Component.translatable("yefira.gui.status.running", server.getHost(), server.getPort(), server.getConnectedCount())
+                ? Component.translatable("yefira.gui.status.running", host, String.valueOf(server.getPort()), String.valueOf(server.getConnectedCount()))
                 : Component.translatable("yefira.gui.status.stopped");
         int statusColor = running ? 0x55FF55 : 0xFF5555;
         graphics.drawCenteredString(this.font, statusComponent, centerX, startY + 202, statusColor);
 
         // Selection info display
         SelectionManager mgr = SelectionManager.getInstance();
-        if (mgr.hasSelection()) {
-            SelectionBox sel = mgr.getCurrentSelection();
+        SelectionBox sel = mgr.getCurrentSelection();
+        if (sel != null && sel.getMin() != null && sel.getMax() != null) {
             Component selText = Component.translatable("yefira.gui.selection.info",
                     sel.getMin().toShortString(), sel.getMax().toShortString(),
-                    sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
+                    String.valueOf(sel.getSizeX()), String.valueOf(sel.getSizeY()),
+                    String.valueOf(sel.getSizeZ()), String.valueOf(sel.getVolume()));
             graphics.drawCenteredString(this.font, selText, centerX, startY + 218, 0x55FFFF);
         } else {
             graphics.drawCenteredString(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 218, 0xAAAAAA);

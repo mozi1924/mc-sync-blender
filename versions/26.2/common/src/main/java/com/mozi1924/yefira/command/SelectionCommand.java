@@ -18,7 +18,10 @@ import net.minecraft.network.chat.Component;
 public class SelectionCommand {
 
     private static boolean hasAdminPermission(CommandSourceStack source) {
-        return !source.getServer().isDedicatedServer() ||
+        if (source.getServer() != null && !source.getServer().isDedicatedServer()) {
+            return true;
+        }
+        return source.permissions() != null &&
                 source.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
     }
 

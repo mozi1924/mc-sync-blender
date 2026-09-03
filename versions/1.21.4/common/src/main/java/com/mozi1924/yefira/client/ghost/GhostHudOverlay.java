@@ -63,16 +63,19 @@ public class GhostHudOverlay {
                 graphics.fill(6, bottomY - 3, 8 + font.width(dragInfo) + 4, bottomY + 11, 0xAA003300);
                 graphics.drawString(font, dragInfo, 8, bottomY, 0xFF55FF55, true);
             }
-        } else if (mgr.hasSelection()) {
+        } else {
             SelectionBox sel = mgr.getCurrentSelection();
-            Component selInfo = Component.translatable("yefira.hud.selection.info",
-                sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
-            graphics.fill(6, bottomY - 3, 8 + font.width(selInfo) + 4, bottomY + 11, 0x88000000);
-            graphics.drawString(font, selInfo, 8, bottomY, 0xFF55FFFF, true);
-        } else if (ghost.getHoveredBlockPos() != null) {
-            Component hoverInfo = Component.translatable("yefira.hud.hovered.block", ghost.getHoveredBlockPos().toShortString());
-            graphics.fill(6, bottomY - 3, 8 + font.width(hoverInfo) + 4, bottomY + 11, 0x88000000);
-            graphics.drawString(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
+            if (sel != null) {
+                Component selInfo = Component.translatable("yefira.hud.selection.info",
+                    String.valueOf(sel.getSizeX()), String.valueOf(sel.getSizeY()),
+                    String.valueOf(sel.getSizeZ()), String.valueOf(sel.getVolume()));
+                graphics.fill(6, bottomY - 3, 8 + font.width(selInfo) + 4, bottomY + 11, 0x88000000);
+                graphics.drawString(font, selInfo, 8, bottomY, 0xFF55FFFF, true);
+            } else if (ghost.getHoveredBlockPos() != null) {
+                Component hoverInfo = Component.translatable("yefira.hud.hovered.block", ghost.getHoveredBlockPos().toShortString());
+                graphics.fill(6, bottomY - 3, 8 + font.width(hoverInfo) + 4, bottomY + 11, 0x88000000);
+                graphics.drawString(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
+            }
         }
     }
 }

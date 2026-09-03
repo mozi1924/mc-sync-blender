@@ -18,7 +18,7 @@ import net.minecraft.network.chat.Component;
 public class SelectionCommand {
 
     private static boolean hasAdminPermission(CommandSourceStack source) {
-        return !source.getServer().isDedicatedServer() || source.hasPermission(2);
+        return (source.getServer() != null && !source.getServer().isDedicatedServer()) || source.hasPermission(2);
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
