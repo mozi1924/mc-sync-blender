@@ -19,7 +19,6 @@ loom {
             setConfigName('Fabric Client')
             ideConfigGenerated(true)
             runDir(rootProject.file('run/fabric').path)
-            vmArgs("-XstartOnFirstThread")
         }
         server {
             server()
