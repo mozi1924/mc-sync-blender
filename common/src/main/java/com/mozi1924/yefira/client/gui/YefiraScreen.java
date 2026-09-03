@@ -1,5 +1,6 @@
 package com.mozi1924.yefira.client.gui;
 
+import com.mozi1924.yefira.client.compat.GuiCompat;
 import com.mozi1924.yefira.config.YefiraConfig;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
@@ -90,26 +91,28 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.portEdit);
 
         // AutoStart Checkbox
-        this.autoStartCheckbox = Checkbox.builder(Component.translatable("yefira.gui.autostart"), this.font)
-                .pos(centerX - 100, startY + 90)
-                .selected(cfg.isAutoStartOnWorldLoad())
-                .onValueChange((cb, val) -> {
-                    cfg.setAutoStartOnWorldLoad(val);
-                    YefiraConfig.save();
-                })
-                .build();
+        this.autoStartCheckbox = GuiCompat.createCheckbox(
+            centerX - 100, startY + 90, 200, 20,
+            Component.translatable("yefira.gui.autostart"),
+            cfg.isAutoStartOnWorldLoad(),
+            val -> {
+                cfg.setAutoStartOnWorldLoad(val);
+                YefiraConfig.save();
+            }
+        );
         this.autoStartCheckbox.active = !isServerMode;
         this.addRenderableWidget(this.autoStartCheckbox);
 
         // Legacy Pickaxe Checkbox
-        this.legacyPickaxeCheckbox = Checkbox.builder(Component.translatable("yefira.gui.legacy_pickaxe"), this.font)
-                .pos(centerX - 100, startY + 115)
-                .selected(cfg.isEnableLegacyPickaxeTool())
-                .onValueChange((cb, val) -> {
-                    cfg.setEnableLegacyPickaxeTool(val);
-                    YefiraConfig.save();
-                })
-                .build();
+        this.legacyPickaxeCheckbox = GuiCompat.createCheckbox(
+            centerX - 100, startY + 115, 200, 20,
+            Component.translatable("yefira.gui.legacy_pickaxe"),
+            cfg.isEnableLegacyPickaxeTool(),
+            val -> {
+                cfg.setEnableLegacyPickaxeTool(val);
+                YefiraConfig.save();
+            }
+        );
         this.addRenderableWidget(this.legacyPickaxeCheckbox);
 
         // Server Start / Stop Button

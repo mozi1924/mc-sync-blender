@@ -2,6 +2,7 @@ package com.mozi1924.yefira.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mozi1924.yefira.Yefira;
+import com.mozi1924.yefira.client.compat.KeyMappingCompat;
 import com.mozi1924.yefira.client.ghost.GhostModeManager;
 import com.mozi1924.yefira.client.gui.YefiraScreen;
 import com.mozi1924.yefira.client.model.ClientBlockModelProvider;
@@ -39,92 +40,54 @@ public class YefiraClient {
     }
 
     public static void createKeyMappings() {
-        keyPos1 = createKeyMapping(
+        keyPos1 = KeyMappingCompat.createKeyMapping(
             "key.yefira.pos1",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_LEFT,
             YEFIRA_CATEGORY
         );
 
-        keyPos2 = createKeyMapping(
+        keyPos2 = KeyMappingCompat.createKeyMapping(
             "key.yefira.pos2",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_RIGHT,
             YEFIRA_CATEGORY
         );
 
-        keyGhostMode = createKeyMapping(
+        keyGhostMode = KeyMappingCompat.createKeyMapping(
             "key.yefira.ghost_mode",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_G,
             YEFIRA_CATEGORY
         );
 
-        keyOpenGui = createKeyMapping(
+        keyOpenGui = KeyMappingCompat.createKeyMapping(
             "key.yefira.open_gui",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_O,
             YEFIRA_CATEGORY
         );
 
-        keyFocus = createKeyMapping(
+        keyFocus = KeyMappingCompat.createKeyMapping(
             "key.yefira.focus",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_F,
             YEFIRA_CATEGORY
         );
 
-        keyClear = createKeyMapping(
+        keyClear = KeyMappingCompat.createKeyMapping(
             "key.yefira.clear",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_X,
             YEFIRA_CATEGORY
         );
 
-        keyPresetBox = createKeyMapping(
+        keyPresetBox = KeyMappingCompat.createKeyMapping(
             "key.yefira.preset_box",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_C,
             YEFIRA_CATEGORY
         );
-    }
-
-    private static KeyMapping createKeyMapping(String name, InputConstants.Type type, int key, String categoryName) {
-        for (java.lang.reflect.Constructor<?> ctor : KeyMapping.class.getConstructors()) {
-            Class<?>[] params = ctor.getParameterTypes();
-            if (params.length == 4 && params[0] == String.class && params[2] == int.class) {
-                if (params[3] == String.class) {
-                    try {
-                        return (KeyMapping) ctor.newInstance(name, type, key, categoryName);
-                    } catch (Throwable ignored) {}
-                } else {
-                    Class<?> catClass = params[3];
-                    Object catObj = null;
-                    for (java.lang.reflect.Method m : catClass.getMethods()) {
-                        if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterCount() == 1) {
-                            Class<?> pType = m.getParameterTypes()[0];
-                            if (pType.getName().endsWith("ResourceLocation") || pType.getSimpleName().equals("ResourceLocation") || pType.getName().contains("class_2960")) {
-                                try {
-                                    catObj = m.invoke(null, Yefira.id("selection"));
-                                    if (catObj != null) break;
-                                } catch (Throwable ignored) {}
-                            } else if (pType == String.class) {
-                                try {
-                                    catObj = m.invoke(null, categoryName);
-                                    if (catObj != null) break;
-                                } catch (Throwable ignored) {}
-                            }
-                        }
-                    }
-                    if (catObj != null) {
-                        try {
-                            return (KeyMapping) ctor.newInstance(name, type, key, catObj);
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-        }
-        throw new RuntimeException("Could not initialize KeyMapping for " + name);
     }
 
     public static void onClientJoinServer(Minecraft client) {

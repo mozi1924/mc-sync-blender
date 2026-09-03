@@ -2,6 +2,7 @@ package com.mozi1924.yefira.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mozi1924.yefira.client.compat.RenderCompat;
 import com.mozi1924.yefira.client.ghost.GhostModeManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
@@ -43,9 +44,9 @@ public class SelectionBoxRenderer {
 
         // Bright Cyan Stroke (0.0f, 1.0f, 1.0f, 0.9f)
         VertexConsumer lineBuffer = bufferSource.getBuffer(RenderType.lines());
-        LevelRenderer.renderLineBox(poseStack, lineBuffer, box, 0.0f, 1.0f, 1.0f, 0.9f);
+        RenderCompat.renderLineBox(poseStack, lineBuffer, box, 0.0f, 1.0f, 1.0f, 0.9f);
         // Translucent Cyan Fill (0.0f, 1.0f, 1.0f, 0.2f)
-        DebugRenderer.renderFilledBox(poseStack, bufferSource, box, 0.0f, 1.0f, 1.0f, 0.2f);
+        RenderCompat.renderFilledBox(poseStack, bufferSource, box, 0.0f, 1.0f, 1.0f, 0.2f);
 
         // Render Green Drag Preview Box if actively dragging in Ghost Mode
         GhostModeManager ghost = GhostModeManager.getInstance();
@@ -59,9 +60,9 @@ public class SelectionBoxRenderer {
                     pMax.getX() + 1.0 - camPos.x, pMax.getY() + 1.0 - camPos.y, pMax.getZ() + 1.0 - camPos.z
                 );
                 // Bright Lime Green Stroke (0.0f, 1.0f, 0.0f, 0.9f)
-                LevelRenderer.renderLineBox(poseStack, lineBuffer, previewBox, 0.0f, 1.0f, 0.0f, 0.9f);
+                RenderCompat.renderLineBox(poseStack, lineBuffer, previewBox, 0.0f, 1.0f, 0.0f, 0.9f);
                 // Translucent Green Fill (0.0f, 1.0f, 0.0f, 0.25f)
-                DebugRenderer.renderFilledBox(poseStack, bufferSource, previewBox, 0.0f, 1.0f, 0.0f, 0.25f);
+                RenderCompat.renderFilledBox(poseStack, bufferSource, previewBox, 0.0f, 1.0f, 0.0f, 0.25f);
             }
         }
     }

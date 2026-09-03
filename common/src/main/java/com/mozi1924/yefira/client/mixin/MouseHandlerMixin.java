@@ -28,7 +28,7 @@ public class MouseHandlerMixin {
         }
     }
 
-    @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true, require = 0)
     private void onTurnPlayer(double delta, CallbackInfo ci) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
