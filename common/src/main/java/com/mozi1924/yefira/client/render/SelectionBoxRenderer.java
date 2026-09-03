@@ -8,10 +8,7 @@ import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -42,28 +39,38 @@ public class SelectionBoxRenderer {
             max.getX() + 1.0 - camPos.x, max.getY() + 1.0 - camPos.y, max.getZ() + 1.0 - camPos.z
         );
 
-        // Bright Cyan Stroke (0.0f, 1.0f, 1.0f, 0.9f)
-        VertexConsumer lineBuffer = bufferSource.getBuffer(RenderType.lines());
-        RenderCompat.renderLineBox(poseStack, lineBuffer, box, 0.0f, 1.0f, 1.0f, 0.9f);
-        // Translucent Cyan Fill (0.0f, 1.0f, 1.0f, 0.2f)
-        RenderCompat.renderFilledBox(poseStack, bufferSource, box, 0.0f, 1.0f, 1.0f, 0.2f);
-
-        // Render Green Drag Preview Box if actively dragging in Ghost Mode
         GhostModeManager ghost = GhostModeManager.getInstance();
+        AABB previewBox = null;
         if (ghost.isDragging()) {
             SelectionBox previewSel = ghost.getDragPreviewSelection();
             if (previewSel != null) {
                 BlockPos pMin = previewSel.getMin();
                 BlockPos pMax = previewSel.getMax();
-                AABB previewBox = new AABB(
+                previewBox = new AABB(
                     pMin.getX() - camPos.x, pMin.getY() - camPos.y, pMin.getZ() - camPos.z,
                     pMax.getX() + 1.0 - camPos.x, pMax.getY() + 1.0 - camPos.y, pMax.getZ() + 1.0 - camPos.z
                 );
-                // Bright Lime Green Stroke (0.0f, 1.0f, 0.0f, 0.9f)
-                RenderCompat.renderLineBox(poseStack, lineBuffer, previewBox, 0.0f, 1.0f, 0.0f, 0.9f);
-                // Translucent Green Fill (0.0f, 1.0f, 0.0f, 0.25f)
-                RenderCompat.renderFilledBox(poseStack, bufferSource, previewBox, 0.0f, 1.0f, 0.0f, 0.25f);
             }
         }
+
+        // Pass 1: Translucent fills (depth test on, depth write off, no culling)
+        // Bright Cyan Fill (0.0f, 1.0f, 1.0f, 0.2f)
+        RenderCompat.renderSelectionFilledBox(poseStack, bufferSource, box, 0.0f, 1.0f, 1.0f, 0.2f);
+        if (previewBox != null) {
+            // Translucent Green Fill (0.0f, 1.0f, 0.0f, 0.25f)
+            RenderCompat.renderSelectionFilledBox(poseStack, bufferSource, previewBox, 0.0f, 1.0f, 0.0f, 0.25f);
+        }
+
+        // Pass 2: Line strokes (depth test on, depth write off)
+        // Bright Cyan Stroke (0.0f, 1.0f, 1.0f, 0.9f)
+        VertexConsumer lineBuffer = bufferSource.getBuffer(YefiraRenderTypes.selectionLines());
+        RenderCompat.renderLineBox(poseStack, lineBuffer, box, 0.0f, 1.0f, 1.0f, 0.9f);
+        if (previewBox != null) {
+            // Bright Lime Green Stroke (0.0f, 1.0f, 0.0f, 0.9f)
+            RenderCompat.renderLineBox(poseStack, lineBuffer, previewBox, 0.0f, 1.0f, 0.0f, 0.9f);
+        }
+
+        // Flush selection box batch immediately so gizmos render cleanly on top
+        RenderCompat.endLastBatch(bufferSource);
     }
 }

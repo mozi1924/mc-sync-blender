@@ -14,10 +14,6 @@ import com.mozi1924.yefira.selection.SelectionStorageManager;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
@@ -26,8 +22,6 @@ public class YefiraClient {
 
     public static final String YEFIRA_CATEGORY = "key.categories.yefira";
 
-    public static KeyMapping keyPos1;
-    public static KeyMapping keyPos2;
     public static KeyMapping keyGhostMode;
     public static KeyMapping keyOpenGui;
     public static KeyMapping keyFocus;
@@ -40,20 +34,6 @@ public class YefiraClient {
     }
 
     public static void createKeyMappings() {
-        keyPos1 = KeyMappingCompat.createKeyMapping(
-            "key.yefira.pos1",
-            InputConstants.Type.MOUSE,
-            GLFW.GLFW_MOUSE_BUTTON_LEFT,
-            YEFIRA_CATEGORY
-        );
-
-        keyPos2 = KeyMappingCompat.createKeyMapping(
-            "key.yefira.pos2",
-            InputConstants.Type.MOUSE,
-            GLFW.GLFW_MOUSE_BUTTON_RIGHT,
-            YEFIRA_CATEGORY
-        );
-
         keyGhostMode = KeyMappingCompat.createKeyMapping(
             "key.yefira.ghost_mode",
             InputConstants.Type.KEYSYM,
@@ -85,7 +65,7 @@ public class YefiraClient {
         keyPresetBox = KeyMappingCompat.createKeyMapping(
             "key.yefira.preset_box",
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_C,
+            GLFW.GLFW_KEY_B,
             YEFIRA_CATEGORY
         );
     }
@@ -112,7 +92,7 @@ public class YefiraClient {
             GhostModeManager.getInstance().disable();
         }
         if (!client.hasSingleplayerServer()) {
-            SelectionManager.getInstance().setActiveStoragePath(null);
+            SelectionManager.getInstance().clearSelection();
             WebSocketServerManager.getInstance().stopServer();
         }
     }
@@ -122,11 +102,25 @@ public class YefiraClient {
             return;
         }
 
+        // Global shortcut: toggle Ghost Mode (the only shortcut monitored outside Ghost Mode)
         if (keyGhostMode != null) {
             while (keyGhostMode.consumeClick()) {
                 GhostModeManager.getInstance().toggle();
             }
         }
+
+        // All other shortcuts are strictly active ONLY in Ghost Mode
+        if (!GhostModeManager.getInstance().isActive()) {
+            // Drain any pending clicks to avoid accidental triggering on mode entry
+            if (keyOpenGui != null) while (keyOpenGui.consumeClick()) {}
+            if (keyFocus != null) while (keyFocus.consumeClick()) {}
+            if (keyClear != null) while (keyClear.consumeClick()) {}
+            if (keyPresetBox != null) while (keyPresetBox.consumeClick()) {}
+            return;
+        }
+
+        // Ghost Mode active logic
+        GhostModeManager.getInstance().tickMovement();
 
         if (keyOpenGui != null) {
             while (keyOpenGui.consumeClick()) {
@@ -134,38 +128,21 @@ public class YefiraClient {
             }
         }
 
-        if (GhostModeManager.getInstance().isActive()) {
-            GhostModeManager.getInstance().tickMovement();
+        if (keyFocus != null) {
+            while (keyFocus.consumeClick()) {
+                GhostModeManager.getInstance().focusSelection();
+            }
         }
 
-        // Check if legacy pickaxe tool is enabled in config
-        boolean legacyEnabled = YefiraConfig.getInstance().isEnableLegacyPickaxeTool();
-        if (legacyEnabled) {
-            boolean holdingTool = client.player.getMainHandItem().is(Items.GOLDEN_PICKAXE) ||
-                                  client.player.getOffhandItem().is(Items.GOLDEN_PICKAXE);
-
-            if (keyPos1 != null) {
-                while (keyPos1.consumeClick()) {
-                    if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
-                        BlockHitResult blockHit = (BlockHitResult) client.hitResult;
-                        BlockPos pos = blockHit.getBlockPos();
-                        if (client.player.connection != null) {
-                            client.player.connection.sendCommand("yefira pos1 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
-                        }
-                    }
-                }
+        if (keyClear != null) {
+            while (keyClear.consumeClick()) {
+                SelectionManager.getInstance().clearSelection();
             }
+        }
 
-            if (keyPos2 != null) {
-                while (keyPos2.consumeClick()) {
-                    if (holdingTool && client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
-                        BlockHitResult blockHit = (BlockHitResult) client.hitResult;
-                        BlockPos pos = blockHit.getBlockPos();
-                        if (client.player.connection != null) {
-                            client.player.connection.sendCommand("yefira pos2 " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
-                        }
-                    }
-                }
+        if (keyPresetBox != null) {
+            while (keyPresetBox.consumeClick()) {
+                GhostModeManager.getInstance().createPresetBoxAtCursorOrPivot(16);
             }
         }
     }

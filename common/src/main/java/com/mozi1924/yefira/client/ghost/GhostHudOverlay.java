@@ -29,10 +29,6 @@ public class GhostHudOverlay {
         int titleColor = 0xFF00FFFF;
         graphics.drawString(font, titleComp, 8, 6, titleColor, true);
 
-        // Control Hints
-        Component hintsComp = Component.translatable("yefira.hud.hints.ghost");
-        graphics.drawCenteredString(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
-
         // Server Status & Fly Speed (top right)
         WebSocketServerManager ws = WebSocketServerManager.getInstance();
         Component serverStatusComp = ws.isRunning()
@@ -41,6 +37,19 @@ public class GhostHudOverlay {
         int statusColor = ws.isRunning() ? 0x55FF55 : 0xFF7777;
         int statusWidth = font.width(serverStatusComp);
         graphics.drawString(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
+
+        // Control Hints (centered if space permits, avoiding overlap with title)
+        Component hintsComp = Component.translatable("yefira.hud.hints.ghost");
+        int titleRight = 8 + font.width(titleComp) + 12;
+        int maxRight = screenWidth - statusWidth - 12;
+        int hintsWidth = font.width(hintsComp);
+        int hintsX = (screenWidth - hintsWidth) / 2;
+        if (hintsX < titleRight) {
+            hintsX = titleRight;
+        }
+        if (hintsX + hintsWidth <= maxRight) {
+            graphics.drawString(font, hintsComp, hintsX, 6, 0xFFE0E0E0, true);
+        }
 
         // Selection & Dragging details (bottom left)
         SelectionManager mgr = SelectionManager.getInstance();

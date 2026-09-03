@@ -7,24 +7,12 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
 public class SelectionCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("yefira")
-            .then(Commands.literal("pos1")
-                .requires(source -> source.hasPermission(2))
-                .executes(SelectionCommand::setPos1Current)
-                .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                    .executes(ctx -> setPos1Specific(ctx, BlockPosArgument.getLoadedBlockPos(ctx, "pos")))))
-            .then(Commands.literal("pos2")
-                .requires(source -> source.hasPermission(2))
-                .executes(SelectionCommand::setPos2Current)
-                .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                    .executes(ctx -> setPos2Specific(ctx, BlockPosArgument.getLoadedBlockPos(ctx, "pos")))))
             .then(Commands.literal("clear")
                 .requires(source -> source.hasPermission(2))
                 .executes(SelectionCommand::clearSelection))
@@ -114,36 +102,6 @@ public class SelectionCommand {
             source.sendFailure(Component.translatable("yefira.command.dump.failed", e.getMessage()));
         }
         return count;
-    }
-
-    private static int setPos1Current(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack source = ctx.getSource();
-        BlockPos pos = BlockPos.containing(source.getPosition());
-        SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.translatable("yefira.command.pos1.set", pos.toShortString()), true);
-        return 1;
-    }
-
-    private static int setPos1Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
-        CommandSourceStack source = ctx.getSource();
-        SelectionManager.getInstance().setPos1(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.translatable("yefira.command.pos1.set", pos.toShortString()), true);
-        return 1;
-    }
-
-    private static int setPos2Current(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack source = ctx.getSource();
-        BlockPos pos = BlockPos.containing(source.getPosition());
-        SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.translatable("yefira.command.pos2.set", pos.toShortString()), true);
-        return 1;
-    }
-
-    private static int setPos2Specific(CommandContext<CommandSourceStack> ctx, BlockPos pos) {
-        CommandSourceStack source = ctx.getSource();
-        SelectionManager.getInstance().setPos2(source.getLevel(), pos);
-        source.sendSuccess(() -> Component.translatable("yefira.command.pos2.set", pos.toShortString()), true);
-        return 1;
     }
 
     private static int clearSelection(CommandContext<CommandSourceStack> ctx) {

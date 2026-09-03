@@ -1,7 +1,5 @@
 {
   "key.category.yefira.selection": "Yefira Selection & Sync",
-  "key.yefira.pos1": "Set Selection Pos1",
-  "key.yefira.pos2": "Set Selection Pos2",
   "key.yefira.ghost_mode": "Toggle Ghost Mode",
   "key.yefira.open_gui": "Open Yefira Control Panel",
   "key.yefira.focus": "Focus Camera on Selection",
@@ -17,7 +15,6 @@
   "yefira.gui.port": "Port",
   "yefira.gui.port.label": "Listen Port (1024-65535):",
   "yefira.gui.autostart": "Auto-start WebSocket on World Load",
-  "yefira.gui.legacy_pickaxe": "Enable Legacy Golden Pickaxe Tool",
   "yefira.gui.server.start": "Start Server",
   "yefira.gui.server.stop": "Stop Server",
   "yefira.gui.server.restart": "Restart Server",
@@ -35,8 +32,6 @@
   "yefira.hud.hovered.block": "Target: %s (Hold LMB & Drag to select)",
   "yefira.hud.dragging.info": "📦 Drag-Selecting: %dx%dx%d (%d blocks) [Release LMB to finish, RMB/ESC to cancel]",
 
-  "yefira.command.pos1.set": "§a[Yefira] First position set to %s",
-  "yefira.command.pos2.set": "§a[Yefira] Second position set to %s",
   "yefira.command.clear.success": "§e[Yefira] Selection cleared.",
   "yefira.command.refresh.success": "§a[Yefira] Full snapshot re-broadcasted.",
   "yefira.command.refresh.no_selection": "§c[Yefira] No active selection to refresh.",
