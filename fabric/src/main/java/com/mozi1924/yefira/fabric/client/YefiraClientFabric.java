@@ -7,10 +7,8 @@ import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 
 public class YefiraClientFabric implements ClientModInitializer {
 
@@ -20,22 +18,22 @@ public class YefiraClientFabric implements ClientModInitializer {
         YefiraClient.createKeyMappings();
 
         // Register keymappings
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyPos1);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyPos2);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyGhostMode);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyOpenGui);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyFocus);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyClear);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyPresetBox);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyPos1);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyPos2);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyGhostMode);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyOpenGui);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyFocus);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyClear);
+        KeyBindingHelper.registerKeyBinding(YefiraClient.keyPresetBox);
 
         // Register 3D Level Renderers (Selection box & Ghost gizmos)
-        LevelRenderEvents.BEFORE_GIZMOS.register(context -> {
-            SelectionBoxRenderer.render();
-            GhostGizmoRenderer.render();
+        net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
+            SelectionBoxRenderer.render(context.matrixStack(), context.consumers(), context.camera());
+            GhostGizmoRenderer.render(context.matrixStack(), context.consumers(), context.camera());
         });
 
         // Register Ghost Mode HUD Overlay
-        HudElementRegistry.addLast(Yefira.id("ghost_hud"), (graphics, deltaTracker) -> {
+        net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register((graphics, deltaTracker) -> {
             GhostHudOverlay.renderOverlay(graphics);
         });
 

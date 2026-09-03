@@ -1,16 +1,23 @@
 package com.mozi1924.yefira.client.render;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mozi1924.yefira.client.ghost.GhostModeManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gizmos.GizmoStyle;
-import net.minecraft.gizmos.Gizmos;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class SelectionBoxRenderer {
 
-    public static void render() {
+    public static void render(PoseStack poseStack, MultiBufferSource bufferSource, Camera camera) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
@@ -25,32 +32,36 @@ public class SelectionBoxRenderer {
         SelectionBox selection = mgr.getCurrentSelection();
         if (selection == null) return;
 
+        Vec3 camPos = camera.getPosition();
         BlockPos min = selection.getMin();
         BlockPos max = selection.getMax();
 
         AABB box = new AABB(
-            min.getX(), min.getY(), min.getZ(),
-            max.getX() + 1.0, max.getY() + 1.0, max.getZ() + 1.0
+            min.getX() - camPos.x, min.getY() - camPos.y, min.getZ() - camPos.z,
+            max.getX() + 1.0 - camPos.x, max.getY() + 1.0 - camPos.y, max.getZ() + 1.0 - camPos.z
         );
 
-        // Bright Cyan Stroke (90% opacity), Translucent Cyan Fill (20% opacity) for committed selection
-        GizmoStyle style = GizmoStyle.strokeAndFill(0xE600FFFF, 2.0f, 0x3300FFFF);
-        Gizmos.cuboid(box, style);
+        // Bright Cyan Stroke (0.0f, 1.0f, 1.0f, 0.9f)
+        VertexConsumer lineBuffer = bufferSource.getBuffer(RenderType.lines());
+        LevelRenderer.renderLineBox(poseStack, lineBuffer, box, 0.0f, 1.0f, 1.0f, 0.9f);
+        // Translucent Cyan Fill (0.0f, 1.0f, 1.0f, 0.2f)
+        DebugRenderer.renderFilledBox(poseStack, bufferSource, box, 0.0f, 1.0f, 1.0f, 0.2f);
 
         // Render Green Drag Preview Box if actively dragging in Ghost Mode
-        com.mozi1924.yefira.client.ghost.GhostModeManager ghost = com.mozi1924.yefira.client.ghost.GhostModeManager.getInstance();
+        GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isDragging()) {
             SelectionBox previewSel = ghost.getDragPreviewSelection();
             if (previewSel != null) {
                 BlockPos pMin = previewSel.getMin();
                 BlockPos pMax = previewSel.getMax();
                 AABB previewBox = new AABB(
-                    pMin.getX(), pMin.getY(), pMin.getZ(),
-                    pMax.getX() + 1.0, pMax.getY() + 1.0, pMax.getZ() + 1.0
+                    pMin.getX() - camPos.x, pMin.getY() - camPos.y, pMin.getZ() - camPos.z,
+                    pMax.getX() + 1.0 - camPos.x, pMax.getY() + 1.0 - camPos.y, pMax.getZ() + 1.0 - camPos.z
                 );
-                // Bright Lime Green Stroke (90% opacity), Translucent Green Fill (25% opacity)
-                GizmoStyle previewStyle = GizmoStyle.strokeAndFill(0xE600FF00, 2.5f, 0x4000FF00);
-                Gizmos.cuboid(previewBox, previewStyle);
+                // Bright Lime Green Stroke (0.0f, 1.0f, 0.0f, 0.9f)
+                LevelRenderer.renderLineBox(poseStack, lineBuffer, previewBox, 0.0f, 1.0f, 0.0f, 0.9f);
+                // Translucent Green Fill (0.0f, 1.0f, 0.0f, 0.25f)
+                DebugRenderer.renderFilledBox(poseStack, bufferSource, previewBox, 0.0f, 1.0f, 0.0f, 0.25f);
             }
         }
     }

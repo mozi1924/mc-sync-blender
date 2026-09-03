@@ -8,7 +8,7 @@ import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.platform.Services;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
@@ -57,7 +57,7 @@ public class SelectionStorageManager {
             ResourceKey<Level> dimension = Level.OVERWORLD;
             if (json.has("dimension")) {
                 String dimStr = json.get("dimension").getAsString();
-                Identifier dimId = Identifier.parse(dimStr);
+                ResourceLocation dimId = ResourceLocation.tryParse(dimStr);
                 if (dimId != null) {
                     dimension = ResourceKey.create(Registries.DIMENSION, dimId);
                 }
@@ -95,7 +95,7 @@ public class SelectionStorageManager {
             json.add("pos2", p2);
 
             if (dimension != null) {
-                json.addProperty("dimension", dimension.identifier().toString());
+                json.addProperty("dimension", dimension.location().toString());
             }
 
             try (Writer writer = Files.newBufferedWriter(path)) {

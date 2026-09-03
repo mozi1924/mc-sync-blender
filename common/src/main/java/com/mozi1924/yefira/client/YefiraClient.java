@@ -23,7 +23,7 @@ import java.nio.file.Path;
 
 public class YefiraClient {
 
-    public static final KeyMapping.Category YEFIRA_CATEGORY = KeyMapping.Category.register(Yefira.id("selection"));
+    public static final String YEFIRA_CATEGORY = "key.categories.yefira";
 
     public static KeyMapping keyPos1;
     public static KeyMapping keyPos2;
@@ -129,7 +129,7 @@ public class YefiraClient {
 
         if (keyOpenGui != null) {
             while (keyOpenGui.consumeClick()) {
-                client.setScreenAndShow(new YefiraScreen());
+                client.setScreen(new YefiraScreen());
             }
         }
 

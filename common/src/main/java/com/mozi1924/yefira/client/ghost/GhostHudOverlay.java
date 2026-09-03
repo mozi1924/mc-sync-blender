@@ -5,12 +5,12 @@ import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 public class GhostHudOverlay {
 
-    public static void renderOverlay(GuiGraphicsExtractor graphics) {
+    public static void renderOverlay(GuiGraphics graphics) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (!ghost.isActive()) return;
 
@@ -27,11 +27,11 @@ public class GhostHudOverlay {
         // Title
         Component titleComp = Component.translatable("yefira.hud.title.ghost");
         int titleColor = 0xFF00FFFF;
-        graphics.text(font, titleComp, 8, 6, titleColor, true);
+        graphics.drawString(font, titleComp, 8, 6, titleColor, true);
 
         // Control Hints
         Component hintsComp = Component.translatable("yefira.hud.hints.ghost");
-        graphics.centeredText(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
+        graphics.drawCenteredString(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
 
         // Server Status & Fly Speed (top right)
         WebSocketServerManager ws = WebSocketServerManager.getInstance();
@@ -40,7 +40,7 @@ public class GhostHudOverlay {
             : Component.translatable("yefira.hud.server.stopped");
         int statusColor = ws.isRunning() ? 0x55FF55 : 0xFF7777;
         int statusWidth = font.width(serverStatusComp);
-        graphics.text(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
+        graphics.drawString(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
 
         // Selection & Dragging details (bottom left)
         SelectionManager mgr = SelectionManager.getInstance();
@@ -52,18 +52,18 @@ public class GhostHudOverlay {
                 Component dragInfo = Component.translatable("yefira.hud.dragging.info",
                     sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
                 graphics.fill(6, bottomY - 3, 8 + font.width(dragInfo) + 4, bottomY + 11, 0xAA003300);
-                graphics.text(font, dragInfo, 8, bottomY, 0xFF55FF55, true);
+                graphics.drawString(font, dragInfo, 8, bottomY, 0xFF55FF55, true);
             }
         } else if (mgr.hasSelection()) {
             SelectionBox sel = mgr.getCurrentSelection();
             Component selInfo = Component.translatable("yefira.hud.selection.info",
                 sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
             graphics.fill(6, bottomY - 3, 8 + font.width(selInfo) + 4, bottomY + 11, 0x88000000);
-            graphics.text(font, selInfo, 8, bottomY, 0xFF55FFFF, true);
+            graphics.drawString(font, selInfo, 8, bottomY, 0xFF55FFFF, true);
         } else if (ghost.getHoveredBlockPos() != null) {
             Component hoverInfo = Component.translatable("yefira.hud.hovered.block", ghost.getHoveredBlockPos().toShortString());
             graphics.fill(6, bottomY - 3, 8 + font.width(hoverInfo) + 4, bottomY + 11, 0x88000000);
-            graphics.text(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
+            graphics.drawString(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
         }
     }
 }

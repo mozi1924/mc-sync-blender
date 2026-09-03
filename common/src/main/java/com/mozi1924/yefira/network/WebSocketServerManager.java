@@ -416,7 +416,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             int totalSections = BlockDataEncoder.getCoveredSections(selection).size();
             int nonEmptySections = BlockDataEncoder.countNonEmptySections(level, selection);
             long totalVolume = selection.getVolume();
-            String dimName = level.dimension().identifier().toString();
+            String dimName = level.dimension().location().toString();
             byte[] handshakeBytes = BlockDataEncoder.encodeHandshakeInfo(totalSections, nonEmptySections, totalVolume, dimName, 0);
             if (!sendSafe(conn, handshakeBytes)) return;
 

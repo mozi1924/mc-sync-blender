@@ -5,7 +5,7 @@ import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
@@ -42,7 +42,7 @@ public class YefiraScreen extends Screen {
 
     private boolean hasOpPermission() {
         Minecraft mc = Minecraft.getInstance();
-        return mc.player != null && mc.player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
+        return mc.player != null && mc.player.hasPermissions(2);
     }
 
     @Override
@@ -211,25 +211,25 @@ public class YefiraScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
 
         int centerX = this.width / 2;
         boolean multi = isMultiplayer();
         int startY = multi ? 50 : 35;
 
         // Title
-        graphics.centeredText(this.font, this.title, centerX, multi ? 8 : 12, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, this.title, centerX, multi ? 8 : 12, 0xFFFFFF);
 
         // Labels
-        graphics.text(this.font, Component.translatable("yefira.gui.host.label"), centerX - 100, startY + 8, 0xAAAAAA);
-        graphics.text(this.font, Component.translatable("yefira.gui.port.label"), centerX - 100, startY + 48, 0xAAAAAA);
+        graphics.drawString(this.font, Component.translatable("yefira.gui.host.label"), centerX - 100, startY + 8, 0xAAAAAA);
+        graphics.drawString(this.font, Component.translatable("yefira.gui.port.label"), centerX - 100, startY + 48, 0xAAAAAA);
 
         if (currentMode == SyncMode.SERVER) {
             boolean op = hasOpPermission();
             if (!op) {
                 Component noOpText = Component.translatable("yefira.gui.mode.server.no_op");
-                graphics.centeredText(this.font, noOpText, centerX, startY + 138, 0xFF5555);
+                graphics.drawCenteredString(this.font, noOpText, centerX, startY + 138, 0xFF5555);
             }
         }
 
@@ -240,7 +240,7 @@ public class YefiraScreen extends Screen {
                 ? Component.translatable("yefira.gui.status.running", server.getHost(), server.getPort(), server.getConnectedCount())
                 : Component.translatable("yefira.gui.status.stopped");
         int statusColor = running ? 0x55FF55 : 0xFF5555;
-        graphics.centeredText(this.font, statusComponent, centerX, startY + 202, statusColor);
+        graphics.drawCenteredString(this.font, statusComponent, centerX, startY + 202, statusColor);
 
         // Selection info display
         SelectionManager mgr = SelectionManager.getInstance();
@@ -249,9 +249,9 @@ public class YefiraScreen extends Screen {
             Component selText = Component.translatable("yefira.gui.selection.info",
                     sel.getMin().toShortString(), sel.getMax().toShortString(),
                     sel.getSizeX(), sel.getSizeY(), sel.getSizeZ(), sel.getVolume());
-            graphics.centeredText(this.font, selText, centerX, startY + 218, 0x55FFFF);
+            graphics.drawCenteredString(this.font, selText, centerX, startY + 218, 0x55FFFF);
         } else {
-            graphics.centeredText(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 218, 0xAAAAAA);
+            graphics.drawCenteredString(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 218, 0xAAAAAA);
         }
     }
 

@@ -117,7 +117,7 @@ public class BlockDataEncoder {
             return "minecraft:plains";
         }
         try {
-            return level.getBiome(pos).unwrapKey().map(k -> k.identifier().toString()).orElse("minecraft:plains");
+            return level.getBiome(pos).unwrapKey().map(k -> k.location().toString()).orElse("minecraft:plains");
         } catch (Exception e) {
             return "minecraft:plains";
         }
@@ -511,8 +511,8 @@ public class BlockDataEncoder {
 
     private static boolean isChunkSectionAllAir(Level level, int secX, int secY, int secZ) {
         if (level == null) return false;
-        int minSectionY = level.getMinSectionY();
-        int maxSectionY = level.getMaxSectionY();
+        int minSectionY = level.getMinSection();
+        int maxSectionY = level.getMaxSection();
         if (secY < minSectionY || secY > maxSectionY) return true;
 
         try {

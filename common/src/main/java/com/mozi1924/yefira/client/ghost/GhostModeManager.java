@@ -5,7 +5,6 @@ import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec2;
@@ -265,7 +264,7 @@ public class GhostModeManager {
     public void tickMovement() {
         if (!active) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.gui != null && mc.gui.screen() != null) return;
+        if (mc.screen != null) return;
 
         if (mc.mouseHandler.isMouseGrabbed()) {
             mc.mouseHandler.releaseMouse();
@@ -342,10 +341,9 @@ public class GhostModeManager {
     /**
      * Mouse button event handler. Returns true if consumed.
      */
-    public boolean onMouseButton(MouseButtonInfo buttonInfo, int action) {
+    public boolean onMouseButton(int button, int action) {
         if (!active) return false;
         Minecraft mc = Minecraft.getInstance();
-        int button = buttonInfo.button();
 
         // Free Cursor mode interaction
         if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
@@ -353,7 +351,7 @@ public class GhostModeManager {
                 lastMouseX = mc.mouseHandler.xpos();
                 lastMouseY = mc.mouseHandler.ypos();
 
-                var window = mc.getWindow();
+                long window = mc.getWindow().getWindow();
                 boolean shiftHeld = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT) ||
                                     InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
                 boolean ctrlHeld = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_CONTROL) ||
@@ -498,10 +496,7 @@ public class GhostModeManager {
         float nx = (float) ((2.0 * mouseX / width) - 1.0);
         float ny = (float) (1.0 - (2.0 * mouseY / height));
 
-        float fov = 70.0f;
-        if (mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
-            fov = mc.gameRenderer.mainCamera().getFov();
-        }
+        float fov = (float) mc.options.fov().get().intValue();
 
         float aspect = (float) width / (float) height;
         float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
@@ -535,10 +530,7 @@ public class GhostModeManager {
             return null; // Behind camera
         }
 
-        float fov = 70.0f;
-        if (mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
-            fov = mc.gameRenderer.mainCamera().getFov();
-        }
+        float fov = (float) mc.options.fov().get().intValue();
 
         float aspect = (float) width / (float) height;
         float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));

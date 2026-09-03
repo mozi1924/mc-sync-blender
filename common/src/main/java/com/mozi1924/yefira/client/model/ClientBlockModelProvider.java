@@ -5,20 +5,15 @@ import com.mozi1924.yefira.encoder.BlockFaceData;
 import com.mozi1924.yefira.encoder.BlockModelExtractor;
 import com.mozi1924.yefira.encoder.BlockStateModelData;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.geom.builders.UVPair;
-import net.minecraft.client.renderer.block.BlockStateModelSet;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
-import org.joml.Vector3fc;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvider {
@@ -40,16 +35,11 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
         }
 
         ModelManager modelManager = client.getModelManager();
-        if (modelManager == null) {
+        if (modelManager == null || modelManager.getBlockModelShaper() == null) {
             return BlockModelExtractor.FallbackModelProvider.extract(state);
         }
 
-        BlockStateModelSet modelSet = modelManager.getBlockStateModelSet();
-        if (modelSet == null) {
-            return BlockModelExtractor.FallbackModelProvider.extract(state);
-        }
-
-        BlockStateModel model = modelSet.get(state);
+        BakedModel model = modelManager.getBlockModelShaper().getBlockModel(state);
         if (model == null) {
             return BlockModelExtractor.FallbackModelProvider.extract(state);
         }
@@ -76,37 +66,25 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
         float emissiveLevel = isEmissive ? 1.0f : 0.0f;
 
         RandomSource random = RandomSource.create(42L);
-        List<BlockStateModelPart> parts = new ArrayList<>();
-        try {
-            model.collectParts(random, parts);
-        } catch (Throwable ignored) {}
-
         BlockFaceData[] faces = new BlockFaceData[6];
 
         for (int i = 0; i < 6; i++) {
             Direction dir = MC_DIRECTIONS[i];
             BakedQuad chosenQuad = null;
 
-            if (parts != null) {
-                for (BlockStateModelPart part : parts) {
-                    List<BakedQuad> quads = part.getQuads(dir);
-                    if (quads != null && !quads.isEmpty()) {
-                        chosenQuad = quads.get(0);
-                        break;
-                    }
-                }
-                if (chosenQuad == null) {
-                    // Try unculled quads (null direction)
-                    for (BlockStateModelPart part : parts) {
-                        List<BakedQuad> quads = part.getQuads(null);
-                        if (quads != null && !quads.isEmpty()) {
-                            for (BakedQuad q : quads) {
-                                if (q.direction() == dir) {
-                                    chosenQuad = q;
-                                    break;
-                                }
-                            }
-                            if (chosenQuad != null) break;
+            List<BakedQuad> quads = model.getQuads(state, dir, random);
+            if (quads != null && !quads.isEmpty()) {
+                chosenQuad = quads.get(0);
+            }
+
+            if (chosenQuad == null) {
+                // Try unculled quads (null direction)
+                List<BakedQuad> unculled = model.getQuads(state, null, random);
+                if (unculled != null && !unculled.isEmpty()) {
+                    for (BakedQuad q : unculled) {
+                        if (q.getDirection() == dir) {
+                            chosenQuad = q;
+                            break;
                         }
                     }
                 }
@@ -127,9 +105,9 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
     }
 
     private BlockFaceData extractFaceFromQuad(BakedQuad quad, Direction dir) {
-        TextureAtlasSprite sprite = quad.materialInfo() != null ? quad.materialInfo().sprite() : null;
+        TextureAtlasSprite sprite = quad.getSprite();
         String spriteName = sprite != null && sprite.contents() != null ? sprite.contents().name().toString() : "";
-        int tintIndex = quad.materialInfo() != null ? quad.materialInfo().tintIndex() : -1;
+        int tintIndex = quad.getTintIndex();
 
         if (sprite == null) {
             return new BlockFaceData(spriteName, 0.0f, new float[]{0.0f, 0.0f, 1.0f, 1.0f}, tintIndex);
@@ -149,18 +127,17 @@ public class ClientBlockModelProvider implements BlockModelExtractor.IModelProvi
         float[] nu = new float[4];
         float[] nv = new float[4];
 
+        int[] vertices = quad.getVertices();
         for (int v = 0; v < 4; v++) {
-            Vector3fc pos = quad.position(v);
-            long packedUV = quad.packedUV(v);
-            float u = UVPair.unpackU(packedUV);
-            float vCoord = UVPair.unpackV(packedUV);
+            int offset = v * 8;
+            float x = Float.intBitsToFloat(vertices[offset]);
+            float y = Float.intBitsToFloat(vertices[offset + 1]);
+            float z = Float.intBitsToFloat(vertices[offset + 2]);
+            float u = Float.intBitsToFloat(vertices[offset + 4]);
+            float vCoord = Float.intBitsToFloat(vertices[offset + 5]);
 
             nu[v] = (u - u0) / duRange;
             nv[v] = (vCoord - v0) / dvRange;
-
-            float x = pos.x();
-            float y = pos.y();
-            float z = pos.z();
 
             // Compute local 2D (s, t) on the given face plane
             switch (dir) {
