@@ -1,56 +1,187 @@
 # Yefira (MC Sync Blender)
 
-[![Fabric](https://img.shields.io/badge/Fabric-Mod-blue.svg)](https://fabricmc.net/)
-[![NeoForge](https://img.shields.io/badge/NeoForge-Mod-orange.svg)](https://neoforged.net/)
+[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1%20%7C%2026.2-blue.svg)](https://fabricmc.net/)
+[![Forge](https://img.shields.io/badge/Forge-1.20.1-orange.svg)](https://files.minecraftforge.net/)
+[![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1%20%7C%2026.2-orange.svg)](https://neoforged.net/)
+[![Build CI](https://github.com/mozi1924/mc-sync-blender/actions/workflows/build.yml/badge.svg)](https://github.com/mozi1924/mc-sync-blender/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-GPL_3.0-blue.svg)](LICENSE)
 [![Blender](https://img.shields.io/badge/Companion-MoziToolKit-green.svg)](https://github.com/mozi1924/MoziToolKit)
 
-**Yefira** 是专为 **Minecraft (Fabric)** 与 **Blender ([MoziToolKit](https://github.com/mozi1924/MoziToolKit))** 打造的高性能、低延迟实时双向同步模组。
+**Yefira** 是专为 **Minecraft** 与 **Blender ([MoziToolKit](https://github.com/mozi1924/MoziToolKit))** 打造的高性能、低延迟实时双向同步模组。
 
 通过内置轻量化 WebSocket 通信架构与高频方块状态编码器，Yefira 能够将游戏内指定 3D 选区的方块数据、增量变化实时推送至 Blender 视口中构建三维点云与模型；同时支持类似 Blender 视口的 Ghost 模式自由漫游与射线选区操作。
 
 ---
 
-## ✨ 核心特性 (Features)
+## 🏛️ 项目多版本架构 (Multi-Version Architecture)
 
-1. **⚡ 毫秒级方块差异增量同步 (Real-time Delta Sync)**
-   - 监听服务端与客户端的世界方块变更 (`setBlock`)，通过变长整数 (`VarInt`) 与压缩调色板进行超轻量编码，单 Tick 内聚合推送差异，零延迟联动 Blender 视口。
-2. **🎯 3D 视觉选区系统 (3D Visual Selection)**
-   - 支持高亮线框与半透明体积填充渲染；
-   - 快捷金镐交互（左键设 Pos1，右键设 Pos2）；
-   - 游戏内完整指令 `/yefira` 支持。
-3. **👻 Blender 风格幽灵摄像机 (Ghost Mode & DCC Viewport)**
-   - **自由观察**：解耦玩家身体与摄像机，通过中键旋转、Shift+中键平移、Ctrl+中键/滚轮平滑缩放；
-   - **自适应置顶手柄 (Always-on-Top Gizmo)**：3D 坐标轴手柄随视口距离动态缩放（拉远放大、拉近缩小，保持屏幕恒定尺寸），并在任意场景与遮挡物前置顶透视显示，随时随地精准拖拽；
-   - **射线投射拖选**：无需物理移动即可在视口中点击方块拖拽出立体选区。
-4. **🌐 双端运行模式 (Client / Server Dual Mode)**
-   - **单人游戏 / 本地客户端**：一键直连本地 Blender 插件；
-   - **多人服务器**：支持专用服务器运行，多玩家协同编辑并向 Blender 工作站广播。
-5. **💾 选区持久化与自动恢复**
-   - 选区数据自动按世界目录隔离存储 (`.yefira_selection.dat`)，重进世界无缝恢复。
+项目采用 **主分支统一维护 (Unified Main Branch)** 架构，将核心业务逻辑与版本特化兼容层（Compatibility Layer）严格解耦，并通过版本独立的子工程隔离构建环境与加载器生态：
+
+```text
+mc-sync-blender/
+├── common-core/                        # 跨版本共享核心层 (Pure Core Logic)
+│   ├── network/                        # WebSocketServerManager 通信管理与帧调度
+│   ├── selection/                      # SelectionBox 数学几何、坐标换算与状态流
+│   ├── config/                         # YefiraConfig 统一配置管理
+│   ├── encoder/                        # 方块状态调色板压缩与 DTO 序列化
+│   └── compat/                         # 统一版本抽象契约 (ILevelCompat / VersionCompat)
+│
+├── versions/
+│   ├── 1.20.1/                         # Minecraft 1.20.1 (Java 17, Fabric & Forge)
+│   │   ├── common/                     # 1.20.1 特化兼容层 (LevelCompat120, GuiCompat, RenderCompat)
+│   │   ├── fabric/                     # Fabric 加载器绑定
+│   │   └── forge/                      # MinecraftForge 加载器绑定
+│   │
+│   ├── 1.21.1/                         # Minecraft 1.21.1 (Java 21, Fabric & NeoForge)
+│   │   ├── common/                     # 1.21.1 特化兼容层 (LevelCompat121, GuiCompat, RenderCompat)
+│   │   ├── fabric/                     # Fabric 加载器绑定
+│   │   └── neoforge/                   # NeoForge 加载器绑定
+│   │
+│   └── 26.2/                           # Minecraft 26.2 (Java 25, Fabric & NeoForge)
+│       ├── common/                     # 26.2 特化兼容层 (LevelCompat26, 原生 Gizmos 接入)
+│       ├── fabric/                     # Fabric 加载器绑定
+│       └── neoforge/                   # NeoForge 加载器绑定
+│
+├── build.gradle                        # 根目录聚合构建脚本 (提供全局快捷命令与发布聚合)
+├── settings.gradle                     # 根工程设置
+└── .github/workflows/build.yml         # GitHub Actions 并行矩阵 CI
+```
 
 ---
 
-## 📦 兼容性与运行环境 (Compatibility & Requirements)
+## 📦 支持的版本与模组加载器 (Supported Versions & Loaders)
 
-### 1. 运行依赖 (Dependencies)
-| 依赖项 | 最低要求 / 推荐版本 | 说明 |
-| :--- | :--- | :--- |
-| **Fabric Loader** | `>= 0.14.0` (推荐最新) | 模组加载器 |
-| **Fabric API** | 对应 MC 版本最新版 | 提供事件与生命周期钩子 |
-| **Java Runtime** | Java 21+ (MC 1.20.5+) / Java 17 (MC 1.18 - 1.20.4) | 依据 Minecraft 版本 |
-| **Java-WebSocket** | `1.5.6` | **已内置 (Shadowed/Included)**，无需额外安装 |
-| **Blender 插件** | [MoziToolKit](https://github.com/mozi1924/MoziToolKit) (4.2+ LTS) | Blender 端实时接收与渲染器 |
-
-### 2. Minecraft 版本适配规划 (Version Support Matrix)
-| 版本梯队 | Minecraft 版本 | 适配状态 | 说明 |
+| Minecraft 大版本 | 对应 Java 运行环境 | 支持的模组加载器 (Mod Loaders) | 特性与渲染管线 |
 | :--- | :--- | :--- | :--- |
-| **主线开发 (Mainline)** | `26.2` / `1.21.4+` | 🟢 官方支持 | 最新版 API 与 Gizmo 视口渲染体系 |
-| **主流 LTS 现代化版本** | `1.20.1` / `1.21.1` | 🟡 计划向下兼容 | 社区主流模组包推荐版本 |
-| **长期经典版本** | `1.16.5` / `1.19.2` | 🔵 规划中 | 适配经典历史模组生态 |
+| **1.20.1** | Java 17 | **Fabric** & **Forge** (47.3.0) | 自定义 3D 箭头与抗遮挡视口渲染兼容层 |
+| **1.21.1** | Java 21 | **Fabric** & **NeoForge** (21.1.80) | 独立缓冲区与多批次渲染兼容层 |
+| **26.2** | Java 25 | **Fabric** & **NeoForge** (26.2.0.75) | 原生 `Gizmos` 视口手柄与最新实体交互监听 |
 
-> [!NOTE]
-> Yefira 的网络通信协议（JSON RPC + WebSocket 二进制/文本载荷）是**版本无关 (Version-Agnostic)** 的。跨版本适配主要涉及 Minecraft 内部渲染器（`Gizmos` / `WorldRenderEvents`）与输入事件系统的接口平移。
+---
+
+## 🚀 启动与调试方式 (Development Run Commands)
+
+在仓库根目录下，即可通过 `./gradlew` 直接启动不同大版本、不同模组加载器的客户端或独立服务端进行本地调试开发。
+
+### 1. 启动客户端 (Client)
+
+#### Minecraft 1.20.1 (需 Java 17)
+```bash
+# 启动 1.20.1 Fabric 客户端
+./gradlew run120FabricClient
+
+# 启动 1.20.1 Forge 客户端
+./gradlew run120ForgeClient
+```
+
+#### Minecraft 1.21.1 (需 Java 21)
+```bash
+# 启动 1.21.1 Fabric 客户端
+./gradlew run121FabricClient
+
+# 启动 1.21.1 NeoForge 客户端
+./gradlew run121NeoForgeClient
+```
+
+#### Minecraft 26.2 (需 Java 25)
+```bash
+# 启动 26.2 Fabric 客户端
+./gradlew run26FabricClient
+
+# 启动 26.2 NeoForge 客户端
+./gradlew run26NeoForgeClient
+```
+
+---
+
+### 2. 启动服务端 (Dedicated Server)
+
+#### Minecraft 1.20.1
+```bash
+# 启动 1.20.1 Fabric 服务端
+./gradlew run120FabricServer
+
+# 启动 1.20.1 Forge 服务端
+./gradlew run120ForgeServer
+```
+
+#### Minecraft 1.21.1
+```bash
+# 启动 1.21.1 Fabric 服务端
+./gradlew run121FabricServer
+
+# 启动 1.21.1 NeoForge 服务端
+./gradlew run121NeoForgeServer
+```
+
+#### Minecraft 26.2
+```bash
+# 启动 26.2 Fabric 服务端
+./gradlew run26FabricServer
+
+# 启动 26.2 NeoForge 服务端
+./gradlew run26NeoForgeServer
+```
+
+> [!TIP]
+> **多 JDK 环境变量配置**：
+> 根目录脚本支持通过环境变量自动绑定对应的 Java 路径，例如：
+> - `JAVA_17_HOME=/path/to/jdk-17`
+> - `JAVA_21_HOME=/path/to/jdk-21`
+> - `JAVA_25_HOME=/path/to/jdk-25`
+> 若未设置上述变量，脚本将优先探测系统默认安装的 JVM 路径或使用当前终端的 `JAVA_HOME`。
+
+---
+
+## 🔨 编译与打包 (Building Artifacts)
+
+### 一键全量打包 (Build All Versions & Loaders)
+在根目录下执行：
+```bash
+./gradlew buildAll
+```
+该任务将按序编译 `1.20.1`、`1.21.1`、`26.2` 的所有加载器版本，并将最终可执行模组 Jar 自动归集到 `build/dist/` 目录：
+- `build/dist/yefira-fabric-1.20.1-1.0.0.jar`
+- `build/dist/yefira-forge-1.20.1-1.0.0.jar`
+- `build/dist/yefira-fabric-1.21.1-1.0.0.jar`
+- `build/dist/yefira-neoforge-1.21.1-1.0.0.jar`
+- `build/dist/yefira-fabric-26.2-1.0.0.jar`
+- `build/dist/yefira-neoforge-26.2-1.0.0.jar`
+
+### 单独编译特定版本
+如果仅需要编译某个特定大版本，可执行对应的单版本构建任务：
+```bash
+# 仅编译 1.20.1 (Fabric & Forge)
+./gradlew build120
+
+# 仅编译 1.21.1 (Fabric & NeoForge)
+./gradlew build121
+
+# 仅编译 26.2 (Fabric & NeoForge)
+./gradlew build26
+```
+
+或直接进入对应的子项目目录进行原生操作：
+```bash
+# 例如进入 1.21.1 子工程
+cd versions/1.21.1
+./gradlew build
+```
+
+---
+
+## 🤖 持续集成 (GitHub Actions CI)
+
+项目配置了完整的多版本并行矩阵构建工作流 (`.github/workflows/build.yml`)：
+
+1. **并行构建矩阵 (Parallel Matrix)**：
+   - 每一个 PR 或 Push 提交都会同时启动 3 个独立 Runner：
+     - **Job 1 (1.20.1)**: Ubuntu 24.04 + Temurin JDK 17
+     - **Job 2 (1.21.1)**: Ubuntu 24.04 + Temurin JDK 21
+     - **Job 3 (26.2)**: Ubuntu 24.04 + Microsoft JDK 25
+2. **构建工件自动归档 (Artifact Staging)**：
+   - 每个 Runner 自动筛选出该版本的最终可执行模组 Jar（自动排除 sources/javadoc）；
+   - 上传带版本与 Git Ref 命名的 Artifacts 包，便于直接下载测试和发布 Release。
 
 ---
 
@@ -103,44 +234,6 @@
 * `port`: WebSocket 端口（默认 `24892`，需与 Blender MoziToolKit 设置一致）。
 * `autoStartOnWorldLoad`: 进入单人世界或服务器启动时是否自动启动 WebSocket 服务。
 * `legacyPickaxeMode`: 是否启用手持金镐快捷点击方块设置选区。
-
----
-
-## 🛠️ 构建与开发 (Building & Development)
-
-本项目采用模块化多工程架构 (`common` 核心层 + `fabric` 绑定层 + `neoforge` 绑定层，并已为 `paper` 服务端预留接口)。
-
-### 全量构建 (Build All)
-```bash
-./gradlew build
-```
-编译产物位于：
-- `fabric/build/libs/fabric-<version>.jar` (Fabric 模组)
-- `neoforge/build/libs/neoforge-<version>.jar` (NeoForge 模组)
-- `common/build/libs/common-<version>.jar` (通用核心逻辑)
-
-### 单独编译特定加载器
-```bash
-# 仅编译 Fabric 版本
-./gradlew :fabric:build
-
-# 仅编译 NeoForge 版本
-./gradlew :neoforge:build
-```
-
-### 运行全量单元测试
-```bash
-./gradlew test
-```
-
-### 启动测试客户端
-```bash
-# 启动 Fabric 调试客户端
-./gradlew :fabric:runClient
-
-# 启动 NeoForge 调试客户端
-./gradlew :neoforge:runClient
-```
 
 ---
 

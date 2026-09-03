@@ -1,0 +1,28 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
+    id 'net.neoforged.moddev' version '2.0.146' apply false
+}
+
+tasks.register('runFabricClient') {
+    group = 'minecraft'
+    description = 'Runs the Minecraft Fabric Client'
+    dependsOn ':fabric:runClient'
+}
+
+tasks.register('runNeoForgeClient') {
+    group = 'minecraft'
+    description = 'Runs the Minecraft NeoForge Client'
+    dependsOn ':neoforge:runClient'
+}
+
+tasks.register('runFabricServer') {
+    group = 'minecraft'
+    description = 'Runs the Minecraft Fabric Dedicated Server'
+    dependsOn ':fabric:runServer'
+}
+
+tasks.register('runNeoForgeServer') {
+    group = 'minecraft'
+    description = 'Runs the Minecraft NeoForge Dedicated Server'
+    dependsOn ':neoforge:runServer'
+}

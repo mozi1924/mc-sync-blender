@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "com.mozi1924.yefira.mixin",
+	"compatibilityLevel": "JAVA_${java_version}",
+	"refmap": "yefira-refmap.json",
+	"mixins": [
+		"LevelMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

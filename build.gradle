@@ -1,28 +1,106 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 plugins {
-    id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
-    id 'net.neoforged.moddev' version '2.0.146' apply false
+    id 'base'
 }
 
-tasks.register('runFabricClient') {
-    group = 'minecraft'
-    description = 'Runs the Minecraft Fabric Client'
-    dependsOn ':fabric:runClient'
+ext.isWindows = Os.isFamily(Os.FAMILY_WINDOWS)
+ext.gradlewCmd = ext.isWindows ? 'gradlew.bat' : './gradlew'
+
+// Helper method to detect appropriate JAVA_HOME for a target Java version
+def findJavaHome(int targetVersion) {
+    def envVar = "JAVA_${targetVersion}_HOME"
+    if (System.getenv(envVar)) {
+        return System.getenv(envVar)
+    }
+
+    def candidates = [
+        17: ['/usr/lib/jvm/java-17-temurin-jdk', '/usr/lib/jvm/temurin-17-jdk', '/usr/lib/jvm/java-17-openjdk'],
+        21: ['/home/mozi/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2', '/usr/lib/jvm/java-21-openjdk'],
+        25: ['/usr/lib/jvm/java-25-openjdk', '/usr/lib/jvm/java-25']
+    ]
+
+    if (candidates.containsKey(targetVersion)) {
+        for (String path : candidates[targetVersion]) {
+            def dir = new File(path)
+            if (dir.exists() && new File(dir, project.ext.isWindows ? 'bin/java.exe' : 'bin/java').exists()) {
+                return path
+            }
+        }
+    }
+
+    return System.getenv('JAVA_HOME')
 }
 
-tasks.register('runNeoForgeClient') {
-    group = 'minecraft'
-    description = 'Runs the Minecraft NeoForge Client'
-    dependsOn ':neoforge:runClient'
+def registerVersionExec(String taskName, String versionDir, int javaVer, String subtask, String desc) {
+    return tasks.register(taskName, Exec) {
+        group = 'yefira'
+        description = desc
+        workingDir = file("versions/${versionDir}")
+        
+        def jh = findJavaHome(javaVer)
+        if (jh) {
+            environment 'JAVA_HOME', jh
+        }
+
+        commandLine project.ext.isWindows ? ['cmd', '/c', project.ext.gradlewCmd, subtask] : [project.ext.gradlewCmd, subtask]
+    }
 }
 
-tasks.register('runFabricServer') {
-    group = 'minecraft'
-    description = 'Runs the Minecraft Fabric Dedicated Server'
-    dependsOn ':fabric:runServer'
-}
+// Build tasks per version
+registerVersionExec('build120', '1.20.1', 17, 'build', 'Builds Minecraft 1.20.1 artifacts (Fabric & Forge)')
+registerVersionExec('build121', '1.21.1', 21, 'build', 'Builds Minecraft 1.21.1 artifacts (Fabric & NeoForge)')
+registerVersionExec('build26', '26.2', 25, 'build', 'Builds Minecraft 26.2 artifacts (Fabric & NeoForge)')
 
-tasks.register('runNeoForgeServer') {
-    group = 'minecraft'
-    description = 'Runs the Minecraft NeoForge Dedicated Server'
-    dependsOn ':neoforge:runServer'
+// Run Client tasks
+registerVersionExec('run120FabricClient', '1.20.1', 17, ':fabric:runClient', 'Runs Minecraft 1.20.1 Fabric Client')
+registerVersionExec('run120ForgeClient', '1.20.1', 17, ':forge:runClient', 'Runs Minecraft 1.20.1 Forge Client')
+registerVersionExec('run121FabricClient', '1.21.1', 21, ':fabric:runClient', 'Runs Minecraft 1.21.1 Fabric Client')
+registerVersionExec('run121NeoForgeClient', '1.21.1', 21, ':neoforge:runClient', 'Runs Minecraft 1.21.1 NeoForge Client')
+registerVersionExec('run26FabricClient', '26.2', 25, ':fabric:runClient', 'Runs Minecraft 26.2 Fabric Client')
+registerVersionExec('run26NeoForgeClient', '26.2', 25, ':neoforge:runClient', 'Runs Minecraft 26.2 NeoForge Client')
+
+// Run Server tasks
+registerVersionExec('run120FabricServer', '1.20.1', 17, ':fabric:runServer', 'Runs Minecraft 1.20.1 Fabric Server')
+registerVersionExec('run120ForgeServer', '1.20.1', 17, ':forge:runServer', 'Runs Minecraft 1.20.1 Forge Server')
+registerVersionExec('run121FabricServer', '1.21.1', 21, ':fabric:runServer', 'Runs Minecraft 1.21.1 Fabric Server')
+registerVersionExec('run121NeoForgeServer', '1.21.1', 21, ':neoforge:runServer', 'Runs Minecraft 1.21.1 NeoForge Server')
+registerVersionExec('run26FabricServer', '26.2', 25, ':fabric:runServer', 'Runs Minecraft 26.2 Fabric Server')
+registerVersionExec('run26NeoForgeServer', '26.2', 25, ':neoforge:runServer', 'Runs Minecraft 26.2 NeoForge Server')
+
+// Global aggregation task: buildAll
+tasks.register('buildAll') {
+    group = 'yefira'
+    description = 'Builds all Minecraft versions and collects executable mod jars into build/dist/'
+    dependsOn 'build120', 'build121', 'build26'
+
+    doLast {
+        def distDir = file('build/dist')
+        distDir.mkdirs()
+
+        def loaderDirs = [
+            'versions/1.20.1/fabric/build/libs',
+            'versions/1.20.1/forge/build/libs',
+            'versions/1.21.1/fabric/build/libs',
+            'versions/1.21.1/neoforge/build/libs',
+            'versions/26.2/fabric/build/libs',
+            'versions/26.2/neoforge/build/libs'
+        ]
+
+        loaderDirs.each { path ->
+            def dir = file(path)
+            if (dir.exists()) {
+                dir.eachFile { f ->
+                    if (f.name.endsWith('.jar') && !f.name.endsWith('-sources.jar') && !f.name.endsWith('-javadoc.jar')) {
+                        copy {
+                            from f
+                            into distDir
+                        }
+                        println "Staged executable mod jar: ${f.name}"
+                    }
+                }
+            }
+        }
+        println "\nAll mod jars successfully staged at: ${distDir.absolutePath}"
+    }
 }
