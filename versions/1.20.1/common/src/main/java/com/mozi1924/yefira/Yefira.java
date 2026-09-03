@@ -61,6 +61,6 @@ public class Yefira {
     }
 
     public static ResourceLocation id(String path) {
-        return new ResourceLocation(MOD_ID, path);
+        return ResourceLocation.tryParse(MOD_ID + ":" + path);
     }
 }
