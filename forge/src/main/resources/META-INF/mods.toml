@@ -10,22 +10,16 @@ description='''${description}'''
 authors="${mod_author}"
 iconFile="assets/yefira/icon.png"
 
-[[mixins]]
-config = "yefira.mixins.json"
-
-[[mixins]]
-config = "yefira.client.mixins.json"
-
 [[dependencies.${mod_id}]]
 modId="forge"
-type="required"
-versionRange="[${forge_version},)"
+mandatory=true
+versionRange="${forge_loader_version_range}"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
-type="required"
+mandatory=true
 versionRange="${minecraft_version_range}"
 ordering="NONE"
 side="BOTH"

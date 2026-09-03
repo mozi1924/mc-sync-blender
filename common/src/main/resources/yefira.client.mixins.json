@@ -1,7 +1,8 @@
 {
 	"required": true,
 	"package": "com.mozi1924.yefira.client.mixin",
-	"compatibilityLevel": "JAVA_25",
+	"compatibilityLevel": "JAVA_${java_version}",
+	"refmap": "yefira-refmap.json",
 	"client": [
 		"CameraMixin",
 		"ClientInputMixin",
