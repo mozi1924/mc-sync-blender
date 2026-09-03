@@ -14,6 +14,10 @@ dependencies {
 }
 
 loom {
+    mixin {
+        defaultRefmapName.set("yefira-refmap.json")
+    }
+
     runs {
         client {
             client()
