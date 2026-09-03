@@ -11,6 +11,7 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import java.util.function.Consumer;
 
 public class YefiraScreen extends Screen {
 
@@ -90,34 +91,28 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.portEdit);
 
         // AutoStart Checkbox
-        this.autoStartCheckbox = new Checkbox(
+        this.autoStartCheckbox = new ConfigCheckbox(
             centerX - 100, startY + 90, 200, 20,
             Component.translatable("yefira.gui.autostart"),
-            cfg.isAutoStartOnWorldLoad()
-        ) {
-            @Override
-            public void onPress() {
-                super.onPress();
-                cfg.setAutoStartOnWorldLoad(this.selected());
+            cfg.isAutoStartOnWorldLoad(),
+            selected -> {
+                cfg.setAutoStartOnWorldLoad(selected);
                 YefiraConfig.save();
             }
-        };
+        );
         this.autoStartCheckbox.active = !isServerMode;
         this.addRenderableWidget(this.autoStartCheckbox);
 
         // Legacy Pickaxe Checkbox
-        this.legacyPickaxeCheckbox = new Checkbox(
+        this.legacyPickaxeCheckbox = new ConfigCheckbox(
             centerX - 100, startY + 115, 200, 20,
             Component.translatable("yefira.gui.legacy_pickaxe"),
-            cfg.isEnableLegacyPickaxeTool()
-        ) {
-            @Override
-            public void onPress() {
-                super.onPress();
-                cfg.setEnableLegacyPickaxeTool(this.selected());
+            cfg.isEnableLegacyPickaxeTool(),
+            selected -> {
+                cfg.setEnableLegacyPickaxeTool(selected);
                 YefiraConfig.save();
             }
-        };
+        );
         this.addRenderableWidget(this.legacyPickaxeCheckbox);
 
         // Server Start / Stop Button
@@ -266,5 +261,22 @@ public class YefiraScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private static class ConfigCheckbox extends Checkbox {
+        private final Consumer<Boolean> onToggle;
+
+        public ConfigCheckbox(int x, int y, int width, int height, Component message, boolean selected, Consumer<Boolean> onToggle) {
+            super(x, y, width, height, message, selected);
+            this.onToggle = onToggle;
+        }
+
+        @Override
+        public void onPress() {
+            super.onPress();
+            if (this.onToggle != null) {
+                this.onToggle.accept(this.selected());
+            }
+        }
     }
 }
