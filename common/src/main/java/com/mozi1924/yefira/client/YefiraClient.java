@@ -39,54 +39,98 @@ public class YefiraClient {
     }
 
     public static void createKeyMappings() {
-        keyPos1 = new KeyMapping(
+        keyPos1 = createKeyMapping(
             "key.yefira.pos1",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_LEFT,
             YEFIRA_CATEGORY
         );
 
-        keyPos2 = new KeyMapping(
+        keyPos2 = createKeyMapping(
             "key.yefira.pos2",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_RIGHT,
             YEFIRA_CATEGORY
         );
 
-        keyGhostMode = new KeyMapping(
+        keyGhostMode = createKeyMapping(
             "key.yefira.ghost_mode",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_G,
             YEFIRA_CATEGORY
         );
 
-        keyOpenGui = new KeyMapping(
+        keyOpenGui = createKeyMapping(
             "key.yefira.open_gui",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_O,
             YEFIRA_CATEGORY
         );
 
-        keyFocus = new KeyMapping(
+        keyFocus = createKeyMapping(
             "key.yefira.focus",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_F,
             YEFIRA_CATEGORY
         );
 
-        keyClear = new KeyMapping(
+        keyClear = createKeyMapping(
             "key.yefira.clear",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_X,
             YEFIRA_CATEGORY
         );
 
-        keyPresetBox = new KeyMapping(
+        keyPresetBox = createKeyMapping(
             "key.yefira.preset_box",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_C,
             YEFIRA_CATEGORY
         );
+    }
+
+    private static KeyMapping createKeyMapping(String name, InputConstants.Type type, int key, String categoryName) {
+        try {
+            Class<?> categoryClass = null;
+            for (Class<?> nested : KeyMapping.class.getDeclaredClasses()) {
+                if ("Category".equals(nested.getSimpleName())) {
+                    categoryClass = nested;
+                    break;
+                }
+            }
+            if (categoryClass != null) {
+                java.lang.reflect.Constructor<?> ctor = null;
+                for (java.lang.reflect.Constructor<?> c : KeyMapping.class.getConstructors()) {
+                    Class<?>[] params = c.getParameterTypes();
+                    if (params.length == 4 && params[0] == String.class && params[1] == InputConstants.Type.class && params[2] == int.class && params[3] == categoryClass) {
+                        ctor = c;
+                        break;
+                    }
+                }
+                if (ctor != null) {
+                    Object categoryObj = null;
+                    try {
+                        java.lang.reflect.Method registerMethod = categoryClass.getMethod("register", net.minecraft.resources.ResourceLocation.class);
+                        categoryObj = registerMethod.invoke(null, Yefira.id("selection"));
+                    } catch (Throwable ignored) {
+                        try {
+                            java.lang.reflect.Method registerMethod = categoryClass.getMethod("register", String.class);
+                            categoryObj = registerMethod.invoke(null, categoryName);
+                        } catch (Throwable ignored2) {}
+                    }
+                    if (categoryObj != null) {
+                        return (KeyMapping) ctor.newInstance(name, type, key, categoryObj);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            java.lang.reflect.Constructor<KeyMapping> legacyCtor = KeyMapping.class.getConstructor(String.class, InputConstants.Type.class, int.class, String.class);
+            return legacyCtor.newInstance(name, type, key, categoryName);
+        } catch (Throwable t) {
+            return new KeyMapping(name, type, key, categoryName);
+        }
     }
 
     public static void onClientJoinServer(Minecraft client) {
