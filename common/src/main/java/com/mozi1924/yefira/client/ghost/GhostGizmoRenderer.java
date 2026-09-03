@@ -135,18 +135,22 @@ public class GhostGizmoRenderer {
             return;
         }
 
-        // Pass 1: Render Translucent Filled Boxes
+        // Pass 1: Render Always-On-Top Translucent Filled Boxes (No depth test)
         for (GizmoData gizmo : gizmos) {
-            RenderCompat.renderFilledBox(poseStack, bufferSource, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, gizmo.fillAlpha);
+            RenderCompat.renderGizmoFilledBox(poseStack, bufferSource, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, gizmo.fillAlpha);
         }
 
-        // Pass 2: Render Lines (Center box wireframes & Axis lines)
-        VertexConsumer lineBuffer = bufferSource.getBuffer(RenderType.lines());
+        // Pass 2: Render Always-On-Top Lines (Center box wireframes & 3D Axis Arrows)
+        VertexConsumer lineBuffer = bufferSource.getBuffer(com.mozi1924.yefira.client.render.YefiraRenderTypes.gizmoLines());
         for (GizmoData gizmo : gizmos) {
             LevelRenderer.renderLineBox(poseStack, lineBuffer, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, 1.0f);
-            drawLine(poseStack, lineBuffer, gizmo.relOrigin, gizmo.relOrigin.add(gizmo.axisLength, 0, 0), gizmo.colorX);
-            drawLine(poseStack, lineBuffer, gizmo.relOrigin, gizmo.relOrigin.add(0, gizmo.axisLength, 0), gizmo.colorY);
-            drawLine(poseStack, lineBuffer, gizmo.relOrigin, gizmo.relOrigin.add(0, 0, gizmo.axisLength), gizmo.colorZ);
+
+            // X Axis (Red)
+            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(1, 0, 0), new Vec3(0, 1, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorX);
+            // Y Axis (Green)
+            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(0, 1, 0), new Vec3(1, 0, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorY);
+            // Z Axis (Blue)
+            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(0, 0, 1), new Vec3(1, 0, 0), new Vec3(0, 1, 0), gizmo.axisLength, gizmo.colorZ);
         }
     }
 
@@ -155,7 +159,7 @@ public class GhostGizmoRenderer {
         Vec3 cameraPos = ghost.getCameraPos();
         double dist = Math.max(0.5, origin.distanceTo(cameraPos));
         float axisLength = (float) (dist * 0.15);
-        float centerHalf = (float) (dist * 0.018);
+        float centerHalf = (float) (dist * 0.020);
 
         int hoveredCorner = ghost.getHoveredCorner();
         int hoveredAxis = ghost.getHoveredAxis();
@@ -197,7 +201,7 @@ public class GhostGizmoRenderer {
         Vec3 cameraPos = ghost.getCameraPos();
         double dist = Math.max(0.5, center.distanceTo(cameraPos));
         float axisLength = (float) (dist * 0.15);
-        float centerHalf = (float) (dist * 0.015);
+        float centerHalf = (float) (dist * 0.024);
 
         int hoveredCorner = ghost.getHoveredCorner();
         int hoveredAxis = ghost.getHoveredAxis();
@@ -235,24 +239,46 @@ public class GhostGizmoRenderer {
         return new GizmoData(centerBox, cr, cg, cb, 0.6f, relCenter, axisLength, colorX, colorY, colorZ);
     }
 
+    private static void drawAxisArrow(PoseStack poseStack, VertexConsumer lines,
+                                      Vec3 origin, Vec3 dir, Vec3 u, Vec3 v,
+                                      float axisLength, int color) {
+        Vec3 tip = origin.add(dir.scale(axisLength));
+        float headLen = axisLength * 0.28f;
+        float headRadius = headLen * 0.42f;
+        Vec3 base = tip.subtract(dir.scale(headLen));
+
+        // 1. Shaft line from origin to tip
+        drawLine(poseStack, lines, origin, tip, color);
+
+        // 2. Base perimeter vertices on the plane orthogonal to dir
+        Vec3 b0 = base.add(u.scale(headRadius));
+        Vec3 b1 = base.add(v.scale(headRadius));
+        Vec3 b2 = base.subtract(u.scale(headRadius));
+        Vec3 b3 = base.subtract(v.scale(headRadius));
+
+        // 3. Four side edges pointing to tip (forming 3D pyramid arrowhead)
+        drawLine(poseStack, lines, b0, tip, color);
+        drawLine(poseStack, lines, b1, tip, color);
+        drawLine(poseStack, lines, b2, tip, color);
+        drawLine(poseStack, lines, b3, tip, color);
+
+        // 4. Closed base ring
+        drawLine(poseStack, lines, b0, b1, color);
+        drawLine(poseStack, lines, b1, b2, color);
+        drawLine(poseStack, lines, b2, b3, color);
+        drawLine(poseStack, lines, b3, b0, color);
+
+        // 5. Cross diagonals on base
+        drawLine(poseStack, lines, b0, b2, color);
+        drawLine(poseStack, lines, b1, b3, color);
+    }
+
     private static void drawLine(PoseStack poseStack, VertexConsumer lines, Vec3 p1, Vec3 p2, int argb) {
         float a = ((argb >> 24) & 0xFF) / 255.0f;
         float r = ((argb >> 16) & 0xFF) / 255.0f;
         float g = ((argb >> 8) & 0xFF) / 255.0f;
         float b = (argb & 0xFF) / 255.0f;
 
-        float dx = (float) (p2.x - p1.x);
-        float dy = (float) (p2.y - p1.y);
-        float dz = (float) (p2.z - p1.z);
-        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (len > 1e-5f) {
-            dx /= len;
-            dy /= len;
-            dz /= len;
-        } else {
-            dy = 1.0f;
-        }
-
-        RenderCompat.drawGizmoLine(poseStack, lines, p1, p2, r, g, b, a, dx, dy, dz);
+        RenderCompat.drawGizmoLine(poseStack, lines, p1, p2, r, g, b, a);
     }
 }

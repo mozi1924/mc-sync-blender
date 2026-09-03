@@ -1,7 +1,5 @@
 {
   "key.category.yefira.selection": "Yefira 选区与同步",
-  "key.yefira.pos1": "设置选区点 Pos1",
-  "key.yefira.pos2": "设置选区点 Pos2",
   "key.yefira.ghost_mode": "切换幽灵模式 (Ghost Mode)",
   "key.yefira.open_gui": "打开 Yefira 控制面板",
   "key.yefira.focus": "镜头聚焦至当前选区",
@@ -17,7 +15,6 @@
   "yefira.gui.port": "端口",
   "yefira.gui.port.label": "监听端口 (1024-65535):",
   "yefira.gui.autostart": "进入存档/世界时自动启动 WebSocket",
-  "yefira.gui.legacy_pickaxe": "启用遗留的金镐选区交互工具",
   "yefira.gui.server.start": "启动服务",
   "yefira.gui.server.stop": "停止服务",
   "yefira.gui.server.restart": "重启服务",
@@ -35,8 +32,6 @@
   "yefira.hud.hovered.block": "目标方块: %s (按住左键拖拽框选)",
   "yefira.hud.dragging.info": "📦 正在拖拽选区: %dx%dx%d (%d 方块) [松开左键完成，按右键/ESC取消]",
 
-  "yefira.command.pos1.set": "§a[Yefira] 第一点坐标已设为 %s",
-  "yefira.command.pos2.set": "§a[Yefira] 第二点坐标已设为 %s",
   "yefira.command.clear.success": "§e[Yefira] 选区已清空。",
   "yefira.command.refresh.success": "§a[Yefira] 已重新向客户端广播全量快照。",
   "yefira.command.refresh.no_selection": "§c[Yefira] 当前无活动选区，无法刷新。",
