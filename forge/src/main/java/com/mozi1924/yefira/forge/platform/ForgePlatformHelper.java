@@ -1,18 +1,18 @@
-package com.mozi1924.yefira.neoforge.platform;
+package com.mozi1924.yefira.forge.platform;
 
 import com.mozi1924.yefira.platform.IPlatformHelper;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.loading.FMLLoader;
-import net.neoforged.fml.loading.FMLPaths;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class NeoForgePlatformHelper implements IPlatformHelper {
+public class ForgePlatformHelper implements IPlatformHelper {
 
     @Override
     public String getPlatformName() {
-        return "NeoForge";
+        return "Forge";
     }
 
     @Override

@@ -208,7 +208,7 @@ public class GhostGizmoRenderer {
             dy = 1.0f;
         }
 
-        lines.addVertex(poseStack.last(), (float) p1.x, (float) p1.y, (float) p1.z).setColor(r, g, b, a).setNormal(poseStack.last(), dx, dy, dz);
-        lines.addVertex(poseStack.last(), (float) p2.x, (float) p2.y, (float) p2.z).setColor(r, g, b, a).setNormal(poseStack.last(), dx, dy, dz);
+        lines.vertex(poseStack.last().pose(), (float) p1.x, (float) p1.y, (float) p1.z).color(r, g, b, a).normal(poseStack.last().normal(), dx, dy, dz).endVertex();
+        lines.vertex(poseStack.last().pose(), (float) p2.x, (float) p2.y, (float) p2.z).color(r, g, b, a).normal(poseStack.last().normal(), dx, dy, dz).endVertex();
     }
 }

@@ -90,26 +90,34 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.portEdit);
 
         // AutoStart Checkbox
-        this.autoStartCheckbox = Checkbox.builder(Component.translatable("yefira.gui.autostart"), this.font)
-                .pos(centerX - 100, startY + 90)
-                .selected(cfg.isAutoStartOnWorldLoad())
-                .onValueChange((cb, val) -> {
-                    cfg.setAutoStartOnWorldLoad(val);
-                    YefiraConfig.save();
-                })
-                .build();
+        this.autoStartCheckbox = new Checkbox(
+            centerX - 100, startY + 90, 200, 20,
+            Component.translatable("yefira.gui.autostart"),
+            cfg.isAutoStartOnWorldLoad()
+        ) {
+            @Override
+            public void onPress() {
+                super.onPress();
+                cfg.setAutoStartOnWorldLoad(this.selected());
+                YefiraConfig.save();
+            }
+        };
         this.autoStartCheckbox.active = !isServerMode;
         this.addRenderableWidget(this.autoStartCheckbox);
 
         // Legacy Pickaxe Checkbox
-        this.legacyPickaxeCheckbox = Checkbox.builder(Component.translatable("yefira.gui.legacy_pickaxe"), this.font)
-                .pos(centerX - 100, startY + 115)
-                .selected(cfg.isEnableLegacyPickaxeTool())
-                .onValueChange((cb, val) -> {
-                    cfg.setEnableLegacyPickaxeTool(val);
-                    YefiraConfig.save();
-                })
-                .build();
+        this.legacyPickaxeCheckbox = new Checkbox(
+            centerX - 100, startY + 115, 200, 20,
+            Component.translatable("yefira.gui.legacy_pickaxe"),
+            cfg.isEnableLegacyPickaxeTool()
+        ) {
+            @Override
+            public void onPress() {
+                super.onPress();
+                cfg.setEnableLegacyPickaxeTool(this.selected());
+                YefiraConfig.save();
+            }
+        };
         this.addRenderableWidget(this.legacyPickaxeCheckbox);
 
         // Server Start / Stop Button

@@ -1,5 +1,5 @@
 modLoader="javafml"
-loaderVersion="${neoforge_loader_version_range}"
+loaderVersion="${forge_loader_version_range}"
 license="${license}"
 
 [[mods]]
@@ -17,9 +17,9 @@ config = "yefira.mixins.json"
 config = "yefira.client.mixins.json"
 
 [[dependencies.${mod_id}]]
-modId="neoforge"
+modId="forge"
 type="required"
-versionRange="[${neoforge_version},)"
+versionRange="[${forge_version},)"
 ordering="NONE"
 side="BOTH"
 

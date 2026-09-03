@@ -1,4 +1,4 @@
-package com.mozi1924.yefira.neoforge;
+package com.mozi1924.yefira.forge;
 
 import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.command.SelectionCommand;
@@ -7,29 +7,26 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.neoforged.neoforge.event.server.ServerStoppingEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.fml.common.Mod;
 
 @Mod(Yefira.MOD_ID)
-public class YefiraNeoForge {
+public class YefiraForge {
 
-    public YefiraNeoForge(IEventBus modEventBus) {
+    public YefiraForge() {
         Yefira.init();
 
-        // Register gameplay event listeners on NeoForge EventBus
-        NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
-        NeoForge.EVENT_BUS.addListener(this::onServerStarted);
-        NeoForge.EVENT_BUS.addListener(this::onServerStopping);
-        NeoForge.EVENT_BUS.addListener(this::onServerTick);
-        NeoForge.EVENT_BUS.addListener(this::onLeftClickBlock);
-        NeoForge.EVENT_BUS.addListener(this::onRightClickBlock);
-
+        MinecraftForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStarted);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStopping);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(this::onLeftClickBlock);
+        MinecraftForge.EVENT_BUS.addListener(this::onRightClickBlock);
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
@@ -44,8 +41,8 @@ public class YefiraNeoForge {
         Yefira.onServerStopping(event.getServer());
     }
 
-    private void onServerTick(ServerTickEvent.Post event) {
-        if (event.getServer() != null) {
+    private void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && event.getServer() != null) {
             Yefira.onServerTick(event.getServer());
         }
     }

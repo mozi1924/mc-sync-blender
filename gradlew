@@ -116,6 +116,26 @@ esac
 
 
 
+# Auto-detect matching JDK for this branch if JAVA_HOME is not explicitly set
+if [ -z "$JAVA_HOME" ] && [ -f "$APP_HOME/gradle.properties" ]; then
+    REQ_JAVA=$(grep "^java_version=" "$APP_HOME/gradle.properties" 2>/dev/null | cut -d'=' -f2 | tr -d ' \r\n')
+    if [ "$REQ_JAVA" = "21" ]; then
+        for candidate in "$HOME"/.gradle/jdks/*21* /usr/lib/jvm/*21*; do
+            if [ -x "$candidate/bin/java" ]; then
+                JAVA_HOME="$candidate"
+                break
+            fi
+        done
+    elif [ "$REQ_JAVA" = "17" ]; then
+        for candidate in /usr/lib/jvm/*17* "$HOME"/.gradle/jdks/*17*; do
+            if [ -x "$candidate/bin/java" ]; then
+                JAVA_HOME="$candidate"
+                break
+            fi
+        done
+    fi
+fi
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then

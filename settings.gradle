@@ -22,5 +22,5 @@ rootProject.name = 'yefira'
 includeBuild('build-logic')
 include('common')
 include('fabric')
-include('neoforge')
+include('forge')
 
