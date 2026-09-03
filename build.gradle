@@ -49,22 +49,32 @@ def registerVersionExec(String taskName, String versionDir, int javaVer, String 
 
 // Build tasks per version
 registerVersionExec('build120', '1.20.1', 17, 'build', 'Builds Minecraft 1.20.1 artifacts (Fabric & Forge)')
+registerVersionExec('build1204', '1.20.4', 17, 'build', 'Builds Minecraft 1.20.4 artifacts (Fabric & NeoForge)')
 registerVersionExec('build121', '1.21.1', 21, 'build', 'Builds Minecraft 1.21.1 artifacts (Fabric & NeoForge)')
+registerVersionExec('build1214', '1.21.4', 21, 'build', 'Builds Minecraft 1.21.4 artifacts (Fabric & NeoForge)')
 registerVersionExec('build26', '26.2', 25, 'build', 'Builds Minecraft 26.2 artifacts (Fabric & NeoForge)')
 
 // Run Client tasks
 registerVersionExec('run120FabricClient', '1.20.1', 17, ':fabric:runClient', 'Runs Minecraft 1.20.1 Fabric Client')
 registerVersionExec('run120ForgeClient', '1.20.1', 17, ':forge:runClient', 'Runs Minecraft 1.20.1 Forge Client')
+registerVersionExec('run1204FabricClient', '1.20.4', 17, ':fabric:runClient', 'Runs Minecraft 1.20.4 Fabric Client')
+registerVersionExec('run1204NeoForgeClient', '1.20.4', 17, ':neoforge:runClient', 'Runs Minecraft 1.20.4 NeoForge Client')
 registerVersionExec('run121FabricClient', '1.21.1', 21, ':fabric:runClient', 'Runs Minecraft 1.21.1 Fabric Client')
 registerVersionExec('run121NeoForgeClient', '1.21.1', 21, ':neoforge:runClient', 'Runs Minecraft 1.21.1 NeoForge Client')
+registerVersionExec('run1214FabricClient', '1.21.4', 21, ':fabric:runClient', 'Runs Minecraft 1.21.4 Fabric Client')
+registerVersionExec('run1214NeoForgeClient', '1.21.4', 21, ':neoforge:runClient', 'Runs Minecraft 1.21.4 NeoForge Client')
 registerVersionExec('run26FabricClient', '26.2', 25, ':fabric:runClient', 'Runs Minecraft 26.2 Fabric Client')
 registerVersionExec('run26NeoForgeClient', '26.2', 25, ':neoforge:runClient', 'Runs Minecraft 26.2 NeoForge Client')
 
 // Run Server tasks
 registerVersionExec('run120FabricServer', '1.20.1', 17, ':fabric:runServer', 'Runs Minecraft 1.20.1 Fabric Server')
 registerVersionExec('run120ForgeServer', '1.20.1', 17, ':forge:runServer', 'Runs Minecraft 1.20.1 Forge Server')
+registerVersionExec('run1204FabricServer', '1.20.4', 17, ':fabric:runServer', 'Runs Minecraft 1.20.4 Fabric Server')
+registerVersionExec('run1204NeoForgeServer', '1.20.4', 17, ':neoforge:runServer', 'Runs Minecraft 1.20.4 NeoForge Server')
 registerVersionExec('run121FabricServer', '1.21.1', 21, ':fabric:runServer', 'Runs Minecraft 1.21.1 Fabric Server')
 registerVersionExec('run121NeoForgeServer', '1.21.1', 21, ':neoforge:runServer', 'Runs Minecraft 1.21.1 NeoForge Server')
+registerVersionExec('run1214FabricServer', '1.21.4', 21, ':fabric:runServer', 'Runs Minecraft 1.21.4 Fabric Server')
+registerVersionExec('run1214NeoForgeServer', '1.21.4', 21, ':neoforge:runServer', 'Runs Minecraft 1.21.4 NeoForge Server')
 registerVersionExec('run26FabricServer', '26.2', 25, ':fabric:runServer', 'Runs Minecraft 26.2 Fabric Server')
 registerVersionExec('run26NeoForgeServer', '26.2', 25, ':neoforge:runServer', 'Runs Minecraft 26.2 NeoForge Server')
 
@@ -72,7 +82,7 @@ registerVersionExec('run26NeoForgeServer', '26.2', 25, ':neoforge:runServer', 'R
 tasks.register('buildAll') {
     group = 'yefira'
     description = 'Builds all Minecraft versions and collects executable mod jars into build/dist/'
-    dependsOn 'build120', 'build121', 'build26'
+    dependsOn 'build120', 'build1204', 'build121', 'build1214', 'build26'
 
     doLast {
         def distDir = file('build/dist')
@@ -84,8 +94,12 @@ tasks.register('buildAll') {
         def loaderDirs = [
             'versions/1.20.1/fabric/build/libs',
             'versions/1.20.1/forge/build/libs',
+            'versions/1.20.4/fabric/build/libs',
+            'versions/1.20.4/neoforge/build/libs',
             'versions/1.21.1/fabric/build/libs',
             'versions/1.21.1/neoforge/build/libs',
+            'versions/1.21.4/fabric/build/libs',
+            'versions/1.21.4/neoforge/build/libs',
             'versions/26.2/fabric/build/libs',
             'versions/26.2/neoforge/build/libs'
         ]

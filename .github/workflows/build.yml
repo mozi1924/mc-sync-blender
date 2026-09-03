@@ -12,10 +12,18 @@ jobs:
             java: 17
             distribution: "temurin"
             task: "build120"
+          - version: "1.20.4"
+            java: 17
+            distribution: "temurin"
+            task: "build1204"
           - version: "1.21.1"
             java: 21
             distribution: "temurin"
             task: "build121"
+          - version: "1.21.4"
+            java: 21
+            distribution: "temurin"
+            task: "build1214"
           - version: "26.2"
             java: 25
             distribution: "microsoft"

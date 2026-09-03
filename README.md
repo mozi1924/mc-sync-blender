@@ -1,8 +1,8 @@
 # Yefira (MC Sync Blender)
 
-[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1%20%7C%2026.2-blue.svg)](https://fabricmc.net/)
+[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.20.4%20%7C%201.21.1%20%7C%201.21.4%20%7C%2026.2-blue.svg)](https://fabricmc.net/)
 [![Forge](https://img.shields.io/badge/Forge-1.20.1-orange.svg)](https://files.minecraftforge.net/)
-[![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1%20%7C%2026.2-orange.svg)](https://neoforged.net/)
+[![NeoForge](https://img.shields.io/badge/NeoForge-1.20.4%20%7C%201.21.1%20%7C%201.21.4%20%7C%2026.2-orange.svg)](https://neoforged.net/)
 [![Build CI](https://github.com/mozi1924/mc-sync-blender/actions/workflows/build.yml/badge.svg)](https://github.com/mozi1924/mc-sync-blender/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-GPL_3.0-blue.svg)](LICENSE)
 [![Blender](https://img.shields.io/badge/Companion-MoziToolKit-green.svg)](https://github.com/mozi1924/MoziToolKit)
@@ -15,7 +15,7 @@
 
 ## 🏛️ 项目多版本架构 (Multi-Version Architecture)
 
-项目采用 **主分支统一维护 (Unified Main Branch)** 架构，将核心业务逻辑与版本特化兼容层（Compatibility Layer）严格解耦，并通过版本独立的子工程隔离构建环境与加载器生态：
+项目采用 **主分支统一维护 (Unified Main Branch)** 架构，将核心业务逻辑与版本特化兼容层（Compatibility Layer）严格解耦，并通过 5 大独立子工程实现真正的跨版本 API 破坏隔离：
 
 ```text
 mc-sync-blender/
@@ -27,24 +27,34 @@ mc-sync-blender/
 │   └── compat/                         # 统一版本抽象契约 (ILevelCompat / VersionCompat)
 │
 ├── versions/
-│   ├── 1.20.1/                         # Minecraft 1.20.1 (Java 17, Fabric & Forge)
-│   │   ├── common/                     # 1.20.1 特化兼容层 (LevelCompat120, GuiCompat, RenderCompat)
+│   ├── 1.20.1/                         # Era 1: Minecraft 1.20 - 1.20.1 (Java 17, Fabric & Forge)
+│   │   ├── common/                     # LevelCompat120, GuiCompat, RenderCompat
 │   │   ├── fabric/                     # Fabric 加载器绑定
 │   │   └── forge/                      # MinecraftForge 加载器绑定
 │   │
-│   ├── 1.21.1/                         # Minecraft 1.21.1 (Java 21, Fabric & NeoForge)
-│   │   ├── common/                     # 1.21.1 特化兼容层 (LevelCompat121, GuiCompat, RenderCompat)
+│   ├── 1.20.4/                         # Era 2: Minecraft 1.20.2 - 1.20.4 (Java 17, Fabric & NeoForge)
+│   │   ├── common/                     # LevelCompat1204, Checkbox.builder, turnPlayer(double)
 │   │   ├── fabric/                     # Fabric 加载器绑定
 │   │   └── neoforge/                   # NeoForge 加载器绑定
 │   │
-│   └── 26.2/                           # Minecraft 26.2 (Java 25, Fabric & NeoForge)
-│       ├── common/                     # 26.2 特化兼容层 (LevelCompat26, 原生 Gizmos 接入)
+│   ├── 1.21.1/                         # Era 3: Minecraft 1.20.5 - 1.21.1 (Java 21, Fabric & NeoForge)
+│   │   ├── common/                     # LevelCompat121, DeltaTracker, 新 VertexConsumer
+│   │   ├── fabric/                     # Fabric 加载器绑定
+│   │   └── neoforge/                   # NeoForge 加载器绑定
+│   │
+│   ├── 1.21.4/                         # Era 4: Minecraft 1.21.2 - 1.21.4 (Java 21, Fabric & NeoForge)
+│   │   ├── common/                     # LevelCompat1214, ShapeRenderer, ClientInput
+│   │   ├── fabric/                     # Fabric 加载器绑定
+│   │   └── neoforge/                   # NeoForge 加载器绑定
+│   │
+│   └── 26.2/                           # Era 5: Minecraft 26.2 (Java 25, Fabric & NeoForge)
+│       ├── common/                     # LevelCompat26, 原生 Gizmos 接入, Identifier
 │       ├── fabric/                     # Fabric 加载器绑定
 │       └── neoforge/                   # NeoForge 加载器绑定
 │
 ├── build.gradle                        # 根目录聚合构建脚本 (提供全局快捷命令与发布聚合)
 ├── settings.gradle                     # 根工程设置
-└── .github/workflows/build.yml         # GitHub Actions 并行矩阵 CI
+└── .github/workflows/build.yml         # GitHub Actions 5 矩阵并行 CI
 ```
 
 ---
@@ -54,7 +64,9 @@ mc-sync-blender/
 | Minecraft 兼容纪元 (Era) | 对应 Java 运行环境 | 支持的模组加载器 (Mod Loaders) | 特性与渲染管线 |
 | :--- | :--- | :--- | :--- |
 | **1.20 - 1.20.1** (Era 1) | Java 17 | **Fabric** & **Forge** (47.3.0) | 自定义 3D 箭头与抗遮挡视口渲染兼容层 (旧 VertexConsumer) |
+| **1.20.2 - 1.20.4** (Era 2) | Java 17 | **Fabric** & **NeoForge** (20.4.251) | 适配 `Checkbox.builder` 与 `turnPlayer(double)`，保留经典顶点管线 |
 | **1.20.5 - 1.21.1** (Era 3) | Java 21 | **Fabric** & **NeoForge** (21.1.80) | 独立缓冲区与多批次渲染兼容层 (新 VertexConsumer, DeltaTracker) |
+| **1.21.2 - 1.21.4** (Era 4) | Java 21 | **Fabric** & **NeoForge** (21.4.157) | 适配独立 `ShapeRenderer` 辅助管线与全新 `ClientInput` 体系 |
 | **26.2** (Era 5) | Java 25 | **Fabric** & **NeoForge** (26.2.0.75) | 原生 `Gizmos` 视口手柄、`Identifier` 命名系统与最新输入架构 |
 
 > [!IMPORTANT]
@@ -69,7 +81,7 @@ mc-sync-blender/
 
 ## 🚀 启动与调试方式 (Development Run Commands)
 
-在仓库根目录下，即可通过 `./gradlew` 直接启动不同大版本、不同模组加载器的客户端或独立服务端进行本地调试开发。
+在仓库根目录下，即可通过 `./gradlew` 直接启动不同纪元版本、不同模组加载器的客户端或独立服务端进行本地调试开发。
 
 ### 1. 启动客户端 (Client)
 
@@ -82,6 +94,15 @@ mc-sync-blender/
 ./gradlew run120ForgeClient
 ```
 
+#### Minecraft 1.20.4 (需 Java 17)
+```bash
+# 启动 1.20.4 Fabric 客户端
+./gradlew run1204FabricClient
+
+# 启动 1.20.4 NeoForge 客户端
+./gradlew run1204NeoForgeClient
+```
+
 #### Minecraft 1.21.1 (需 Java 21)
 ```bash
 # 启动 1.21.1 Fabric 客户端
@@ -89,6 +110,15 @@ mc-sync-blender/
 
 # 启动 1.21.1 NeoForge 客户端
 ./gradlew run121NeoForgeClient
+```
+
+#### Minecraft 1.21.4 (需 Java 21)
+```bash
+# 启动 1.21.4 Fabric 客户端
+./gradlew run1214FabricClient
+
+# 启动 1.21.4 NeoForge 客户端
+./gradlew run1214NeoForgeClient
 ```
 
 #### Minecraft 26.2 (需 Java 25)
@@ -106,28 +136,31 @@ mc-sync-blender/
 
 #### Minecraft 1.20.1
 ```bash
-# 启动 1.20.1 Fabric 服务端
 ./gradlew run120FabricServer
-
-# 启动 1.20.1 Forge 服务端
 ./gradlew run120ForgeServer
+```
+
+#### Minecraft 1.20.4
+```bash
+./gradlew run1204FabricServer
+./gradlew run1204NeoForgeServer
 ```
 
 #### Minecraft 1.21.1
 ```bash
-# 启动 1.21.1 Fabric 服务端
 ./gradlew run121FabricServer
-
-# 启动 1.21.1 NeoForge 服务端
 ./gradlew run121NeoForgeServer
+```
+
+#### Minecraft 1.21.4
+```bash
+./gradlew run1214FabricServer
+./gradlew run1214NeoForgeServer
 ```
 
 #### Minecraft 26.2
 ```bash
-# 启动 26.2 Fabric 服务端
 ./gradlew run26FabricServer
-
-# 启动 26.2 NeoForge 服务端
 ./gradlew run26NeoForgeServer
 ```
 
@@ -148,11 +181,15 @@ mc-sync-blender/
 ```bash
 ./gradlew buildAll
 ```
-该任务将按序编译 `1.20.1`、`1.21.1`、`26.2` 的所有加载器版本，并将最终可执行模组 Jar 自动归集到 `build/dist/` 目录：
+该任务将按序编译全部 5 大纪元的所有加载器版本，并将最终可执行模组 Jar 自动归集到 `build/dist/` 目录（共 10 款）：
 - `build/dist/yefira-fabric-mc1.20-1.20.1-1.0.0.jar`
 - `build/dist/yefira-forge-mc1.20-1.20.1-1.0.0.jar`
+- `build/dist/yefira-fabric-mc1.20.2-1.20.4-1.0.0.jar`
+- `build/dist/yefira-neoforge-mc1.20.2-1.20.4-1.0.0.jar`
 - `build/dist/yefira-fabric-mc1.20.5-1.21.1-1.0.0.jar`
 - `build/dist/yefira-neoforge-mc1.20.5-1.21.1-1.0.0.jar`
+- `build/dist/yefira-fabric-mc1.21.2-1.21.4-1.0.0.jar`
+- `build/dist/yefira-neoforge-mc1.21.2-1.21.4-1.0.0.jar`
 - `build/dist/yefira-fabric-mc26.2-1.0.0.jar`
 - `build/dist/yefira-neoforge-mc26.2-1.0.0.jar`
 
@@ -162,18 +199,17 @@ mc-sync-blender/
 # 仅编译 1.20.1 (Fabric & Forge)
 ./gradlew build120
 
+# 仅编译 1.20.4 (Fabric & NeoForge)
+./gradlew build1204
+
 # 仅编译 1.21.1 (Fabric & NeoForge)
 ./gradlew build121
 
+# 仅编译 1.21.4 (Fabric & NeoForge)
+./gradlew build1214
+
 # 仅编译 26.2 (Fabric & NeoForge)
 ./gradlew build26
-```
-
-或直接进入对应的子项目目录进行原生操作：
-```bash
-# 例如进入 1.21.1 子工程
-cd versions/1.21.1
-./gradlew build
 ```
 
 ---
@@ -183,10 +219,12 @@ cd versions/1.21.1
 项目配置了完整的多版本并行矩阵构建工作流 (`.github/workflows/build.yml`)：
 
 1. **并行构建矩阵 (Parallel Matrix)**：
-   - 每一个 PR 或 Push 提交都会同时启动 3 个独立 Runner：
+   - 每一个 PR 或 Push 提交都会同时启动 5 个独立 Runner：
      - **Job 1 (1.20.1)**: Ubuntu 24.04 + Temurin JDK 17
-     - **Job 2 (1.21.1)**: Ubuntu 24.04 + Temurin JDK 21
-     - **Job 3 (26.2)**: Ubuntu 24.04 + Microsoft JDK 25
+     - **Job 2 (1.20.4)**: Ubuntu 24.04 + Temurin JDK 17
+     - **Job 3 (1.21.1)**: Ubuntu 24.04 + Temurin JDK 21
+     - **Job 4 (1.21.4)**: Ubuntu 24.04 + Temurin JDK 21
+     - **Job 5 (26.2)**: Ubuntu 24.04 + Microsoft JDK 25
 2. **构建工件自动归档 (Artifact Staging)**：
    - 每个 Runner 自动筛选出该版本的最终可执行模组 Jar（自动排除 sources/javadoc）；
    - 上传带版本与 Git Ref 命名的 Artifacts 包，便于直接下载测试和发布 Release。

@@ -1,0 +1,78 @@
+plugins {
+    id 'multiloader-common'
+    id 'net.neoforged.moddev'
+}
+
+neoForge {
+    neoFormVersion = neo_form_version
+}
+
+dependencies {
+    compileOnly('net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7') { exclude group: 'org.ow2.asm' }
+    compileOnly(annotationProcessor('io.github.llamalad7:mixinextras-common:0.5.3'))
+
+    // WebSocket Library
+    implementation "org.java-websocket:Java-WebSocket:1.5.6"
+
+    // Testing
+    testImplementation platform('org.junit:junit-bom:5.11.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+configurations {
+    commonJava {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+    commonResources {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+sourceSets {
+    main {
+        java.srcDirs += rootProject.file('../../common-core/src/main/java')
+        resources.srcDirs += rootProject.file('../../common-core/src/main/resources')
+    }
+    test {
+        java.srcDirs += rootProject.file('../../common-core/src/test/java')
+    }
+}
+
+artifacts {
+    sourceSets.main.java.srcDirs.each { dir ->
+        commonJava dir
+    }
+    sourceSets.main.resources.srcDirs.each { dir ->
+        commonResources dir
+    }
+}
+
+// Implement mcgradleconventions loader attribute
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
+    configurations.named(variant) {
+        attributes {
+            attribute(loaderAttribute, 'common')
+        }
+    }
+}
+sourceSets.configureEach {
+    [it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName].each { variant ->
+        configurations.named(variant) {
+            attributes {
+                attribute(loaderAttribute, 'common')
+            }
+        }
+    }
+}
