@@ -4,7 +4,8 @@ plugins {
 }
 
 base {
-    archivesName = "${mod_id}-${project.name}-${minecraft_version}"
+    def mcLabel = project.hasProperty('compat_minecraft_label') ? project.compat_minecraft_label : minecraft_version
+    archivesName = "${mod_id}-${project.name}-mc${mcLabel}"
 }
 
 java {
