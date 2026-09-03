@@ -13,7 +13,6 @@ public class ConfigTest {
         Assertions.assertEquals("0.0.0.0", config.getHost());
         Assertions.assertEquals(8765, config.getPort());
         Assertions.assertFalse(config.isAutoStartOnWorldLoad());
-        Assertions.assertFalse(config.isEnableLegacyPickaxeTool());
 
         config.setHost("127.0.0.1");
         Assertions.assertEquals("127.0.0.1", config.getHost());
@@ -30,8 +29,5 @@ public class ConfigTest {
 
         config.setAutoStartOnWorldLoad(true);
         Assertions.assertTrue(config.isAutoStartOnWorldLoad());
-
-        config.setEnableLegacyPickaxeTool(true);
-        Assertions.assertTrue(config.isEnableLegacyPickaxeTool());
     }
 }

@@ -27,11 +27,9 @@ public class YefiraClientNeoForge {
 
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
-        if (YefiraClient.keyPos1 == null) {
+        if (YefiraClient.keyGhostMode == null) {
             YefiraClient.createKeyMappings();
         }
-        if (YefiraClient.keyPos1 != null) event.register(YefiraClient.keyPos1);
-        if (YefiraClient.keyPos2 != null) event.register(YefiraClient.keyPos2);
         if (YefiraClient.keyGhostMode != null) event.register(YefiraClient.keyGhostMode);
         if (YefiraClient.keyOpenGui != null) event.register(YefiraClient.keyOpenGui);
         if (YefiraClient.keyFocus != null) event.register(YefiraClient.keyFocus);

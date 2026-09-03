@@ -190,7 +190,7 @@ cd versions/1.21.1
 | 快捷键 (默认) | 功能说明 | 适用场景 |
 | :--- | :--- | :--- |
 | <kbd>G</kbd> | 开启 / 关闭 **幽灵摄像机模式 (Ghost Mode)** | 全局 |
-| <kbd>O</kbd> | 打开 **Yefira 设置与控制面板 GUI** | 全局 |
+| <kbd>O</kbd> | 打开 **Yefira 设置与控制面板 GUI** | 幽灵模式下 (非幽灵模式可通过 `/yefira gui`) |
 | <kbd>鼠标中键拖拽</kbd> | 围绕轴心旋转视角 (Orbit) | 幽灵模式下 |
 | <kbd>Shift + 鼠标中键</kbd> | 视口平移 (Pan) | 幽灵模式下 |
 | <kbd>滚轮</kbd> / <kbd>Ctrl + 中键</kbd> | 视口平滑缩放 (Zoom) | 幽灵模式下 |
@@ -204,15 +204,22 @@ cd versions/1.21.1
 
 ## ⌨️ 游戏内指令 (Commands)
 
+所有选区与管理命令开箱即用，**无需额外开启作弊**（单人游戏中默认全面开放）：
+
 ```text
-/yefira pos1 [<x> <y> <z>]   # 设置选区起点（不填坐标则为当前脚下）
-/yefira pos2 [<x> <y> <z>]   # 设置选区终点
-/yefira set <x1> <y1> <z1> <x2> <y2> <z2> # 一键指定立体选区
-/yefira clear                # 清空当前选区
-/yefira info                 # 查看当前选区坐标、尺寸与体积
-/yefira export               # 手动触发一次全量选区方块数据导出至 Blender
-/yefira server <start|stop|status|restart> # 控制内部 WebSocket 服务
-/yefira reload               # 重新加载配置文件 (config/yefira.json)
+/yefira pos1 [<x> <y> <z>]                  # 设置选区起点（不填坐标则为当前所在位置）
+/yefira pos2 [<x> <y> <z>]                  # 设置选区终点
+/yefira box <x1> <y1> <z1> <x2> <y2> <z2>   # 一键指定两点立体选区
+/yefira box preset [<size>]                 # 以玩家为中心快速生成预设大小立方体选区（默认 16）
+/yefira clear                               # 清空当前活动选区
+/yefira status                              # 查看当前选区最小/最大坐标、尺寸与总方块数
+/yefira refresh                             # 手动重新向 Blender 客户端广播全量快照
+/yefira gui                                 # 快速呼出 Yefira 设置与控制面板 GUI
+/yefira server <start|stop|restart|status>  # 控制/查看 WebSocket 服务运行状态
+/yefira config                              # 查看当前配置（Host、Port、AutoStart）
+/yefira config host [<ip>]                  # 查看或修改 WebSocket 监听 IP
+/yefira config port [<port>]                # 查看或修改 WebSocket 端口 (1024-65535)
+/yefira config autostart [<true|false>]     # 查看或切换进服自动启动
 ```
 
 ---
@@ -223,17 +230,15 @@ cd versions/1.21.1
 
 ```json
 {
-  "host": "127.0.0.1",
-  "port": 24892,
-  "autoStartOnWorldLoad": true,
-  "legacyPickaxeMode": true
+  "host": "0.0.0.0",
+  "port": 8765,
+  "autoStartOnWorldLoad": false
 }
 ```
 
-* `host`: WebSocket 监听绑定的 IP 地址（默认 `127.0.0.1` 本地回环，若多机联机可配 `0.0.0.0`）。
-* `port`: WebSocket 端口（默认 `24892`，需与 Blender MoziToolKit 设置一致）。
+* `host`: WebSocket 监听绑定的 IP 地址（默认 `0.0.0.0`，允许外部 DCC 工具连接）。
+* `port`: WebSocket 端口（默认 `8765`，需与 Blender 插件设置一致）。
 * `autoStartOnWorldLoad`: 进入单人世界或服务器启动时是否自动启动 WebSocket 服务。
-* `legacyPickaxeMode`: 是否启用手持金镐快捷点击方块设置选区。
 
 ---
 

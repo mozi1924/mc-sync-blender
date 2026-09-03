@@ -1,7 +1,5 @@
 {
   "key.category.yefira.selection": "Yefira 选区与同步",
-  "key.yefira.pos1": "设置选区点 Pos1",
-  "key.yefira.pos2": "设置选区点 Pos2",
   "key.yefira.ghost_mode": "切换幽灵模式 (Ghost Mode)",
   "key.yefira.open_gui": "打开 Yefira 控制面板",
   "key.yefira.focus": "镜头聚焦至当前选区",
@@ -17,7 +15,6 @@
   "yefira.gui.port": "端口",
   "yefira.gui.port.label": "监听端口 (1024-65535):",
   "yefira.gui.autostart": "进入存档/世界时自动启动 WebSocket",
-  "yefira.gui.legacy_pickaxe": "启用遗留的金镐选区交互工具",
   "yefira.gui.server.start": "启动服务",
   "yefira.gui.server.stop": "停止服务",
   "yefira.gui.server.restart": "重启服务",
@@ -37,6 +34,7 @@
 
   "yefira.command.pos1.set": "§a[Yefira] 第一点坐标已设为 %s",
   "yefira.command.pos2.set": "§a[Yefira] 第二点坐标已设为 %s",
+  "yefira.command.box.set": "§a[Yefira] 选区已设定: %s 至 %s (尺寸: %dx%dx%d, 共 %d 方块)",
   "yefira.command.clear.success": "§e[Yefira] 选区已清空。",
   "yefira.command.refresh.success": "§a[Yefira] 已重新向客户端广播全量快照。",
   "yefira.command.refresh.no_selection": "§c[Yefira] 当前无活动选区，无法刷新。",
@@ -49,6 +47,13 @@
   "yefira.command.server.restarted": "§a[Yefira] WebSocket 服务已重启于 %s:%d",
   "yefira.command.server.status.running": "§a[Yefira] WebSocket 服务正在运行于 %s:%d，当前连接数: %d。",
   "yefira.command.server.status.stopped": "§7[Yefira] WebSocket 服务当前已停止。",
+  "yefira.command.config.info": "§b[Yefira] 当前配置:\n - 主机: %s\n - 端口: %d\n - 随世界加载自动启动: %s",
+  "yefira.command.config.host.set": "§a[Yefira] WebSocket 主机地址已设为: %s",
+  "yefira.command.config.port.set": "§a[Yefira] WebSocket 端口已设为: %d",
+  "yefira.command.config.port.invalid": "§c[Yefira] 端口号必须在 1024 到 65535 之间。",
+  "yefira.command.config.autostart.set": "§a[Yefira] 随世界加载自动启动已设为: %s",
+  "yefira.command.gui.opened": "§a[Yefira] 正在打开控制面板...",
+  "yefira.command.gui.unavailable": "§c[Yefira] 控制面板仅支持在客户端或单人游戏中打开，在专用服务器上请直接使用 /yefira 相关命令。",
   "yefira.command.dump.success": "§a[Yefira] 已将 %d 个朝向方块模型导出至 %s",
   "yefira.command.dump.failed": "§c[Yefira] 导出方块模型失败: %s"
 }

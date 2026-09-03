@@ -28,7 +28,6 @@ public class YefiraConfig {
     private String host = "0.0.0.0";
     private int port = 8765;
     private boolean autoStartOnWorldLoad = false;
-    private boolean enableLegacyPickaxeTool = false;
 
     public static YefiraConfig getInstance() {
         return instance;
@@ -58,13 +57,10 @@ public class YefiraConfig {
             if (obj.has("autoStartOnWorldLoad")) {
                 cfg.autoStartOnWorldLoad = obj.get("autoStartOnWorldLoad").getAsBoolean();
             }
-            if (obj.has("enableLegacyPickaxeTool")) {
-                cfg.enableLegacyPickaxeTool = obj.get("enableLegacyPickaxeTool").getAsBoolean();
-            }
 
             instance = cfg;
-            Yefira.LOGGER.info("Loaded Yefira config: host={}, port={}, autoStart={}, legacyPickaxe={}",
-                    instance.host, instance.port, instance.autoStartOnWorldLoad, instance.enableLegacyPickaxeTool);
+            Yefira.LOGGER.info("Loaded Yefira config: host={}, port={}, autoStart={}",
+                    instance.host, instance.port, instance.autoStartOnWorldLoad);
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to load Yefira config, falling back to defaults", e);
             instance = new YefiraConfig();
@@ -79,7 +75,6 @@ public class YefiraConfig {
             obj.addProperty("host", instance.host);
             obj.addProperty("port", instance.port);
             obj.addProperty("autoStartOnWorldLoad", instance.autoStartOnWorldLoad);
-            obj.addProperty("enableLegacyPickaxeTool", instance.enableLegacyPickaxeTool);
 
             if (configPath.getParent() != null && !Files.exists(configPath.getParent())) {
                 Files.createDirectories(configPath.getParent());
@@ -117,13 +112,5 @@ public class YefiraConfig {
 
     public void setAutoStartOnWorldLoad(boolean autoStartOnWorldLoad) {
         this.autoStartOnWorldLoad = autoStartOnWorldLoad;
-    }
-
-    public boolean isEnableLegacyPickaxeTool() {
-        return enableLegacyPickaxeTool;
-    }
-
-    public void setEnableLegacyPickaxeTool(boolean enableLegacyPickaxeTool) {
-        this.enableLegacyPickaxeTool = enableLegacyPickaxeTool;
     }
 }

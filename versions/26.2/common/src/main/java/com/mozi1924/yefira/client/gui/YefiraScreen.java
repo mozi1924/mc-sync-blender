@@ -26,7 +26,6 @@ public class YefiraScreen extends Screen {
     private EditBox hostEdit;
     private EditBox portEdit;
     private Checkbox autoStartCheckbox;
-    private Checkbox legacyPickaxeCheckbox;
     private Button startStopButton;
     private Button restartButton;
     private Button clearSelectionButton;
@@ -101,17 +100,6 @@ public class YefiraScreen extends Screen {
         this.autoStartCheckbox.active = !isServerMode;
         this.addRenderableWidget(this.autoStartCheckbox);
 
-        // Legacy Pickaxe Checkbox
-        this.legacyPickaxeCheckbox = Checkbox.builder(Component.translatable("yefira.gui.legacy_pickaxe"), this.font)
-                .pos(centerX - 100, startY + 115)
-                .selected(cfg.isEnableLegacyPickaxeTool())
-                .onValueChange((cb, val) -> {
-                    cfg.setEnableLegacyPickaxeTool(val);
-                    YefiraConfig.save();
-                })
-                .build();
-        this.addRenderableWidget(this.legacyPickaxeCheckbox);
-
         // Server Start / Stop Button
         WebSocketServerManager localServer = WebSocketServerManager.getInstance();
         Component startStopText = localServer.isRunning()
@@ -133,7 +121,7 @@ public class YefiraScreen extends Screen {
                 }
                 updateButtonLabels();
             }
-        }).bounds(centerX - 100, startY + 145, 95, 20).build();
+        }).bounds(centerX - 100, startY + 120, 95, 20).build();
         this.startStopButton.active = !isServerMode || op;
         this.addRenderableWidget(this.startStopButton);
 
@@ -149,7 +137,7 @@ public class YefiraScreen extends Screen {
                 localServer.restartServer(cfg.getHost(), cfg.getPort());
                 updateButtonLabels();
             }
-        }).bounds(centerX + 5, startY + 145, 95, 20).build();
+        }).bounds(centerX + 5, startY + 120, 95, 20).build();
         this.restartButton.active = !isServerMode || op;
         this.addRenderableWidget(this.restartButton);
 
@@ -163,7 +151,7 @@ public class YefiraScreen extends Screen {
             } else {
                 SelectionManager.getInstance().clearSelection();
             }
-        }).bounds(centerX - 100, startY + 175, 200, 20).build();
+        }).bounds(centerX - 100, startY + 148, 200, 20).build();
         this.clearSelectionButton.active = !isServerMode || op;
         this.addRenderableWidget(this.clearSelectionButton);
 

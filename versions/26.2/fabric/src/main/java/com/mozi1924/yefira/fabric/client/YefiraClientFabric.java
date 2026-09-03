@@ -20,8 +20,6 @@ public class YefiraClientFabric implements ClientModInitializer {
         YefiraClient.createKeyMappings();
 
         // Register keymappings
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyPos1);
-        KeyMappingHelper.registerKeyMapping(YefiraClient.keyPos2);
         KeyMappingHelper.registerKeyMapping(YefiraClient.keyGhostMode);
         KeyMappingHelper.registerKeyMapping(YefiraClient.keyOpenGui);
         KeyMappingHelper.registerKeyMapping(YefiraClient.keyFocus);
