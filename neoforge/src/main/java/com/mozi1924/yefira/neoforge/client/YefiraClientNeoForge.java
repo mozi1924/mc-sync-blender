@@ -16,7 +16,7 @@ import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
-@EventBusSubscriber(modid = Yefira.MOD_ID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = Yefira.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public class YefiraClientNeoForge {
 
     @SubscribeEvent
@@ -47,28 +47,32 @@ public class YefiraClientNeoForge {
         );
     }
 
-    @SubscribeEvent
-    public static void onClientTick(ClientTickEvent.Post event) {
-        YefiraClient.onClientTick(Minecraft.getInstance());
-    }
+    @EventBusSubscriber(modid = Yefira.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
+    public static class GameEvents {
 
-    @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-            SelectionBoxRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
-            GhostGizmoRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
+        @SubscribeEvent
+        public static void onClientTick(ClientTickEvent.Post event) {
+            YefiraClient.onClientTick(Minecraft.getInstance());
         }
-    }
 
-    @SubscribeEvent
-    public static void onPlayerLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
-        Minecraft client = Minecraft.getInstance();
-        client.execute(() -> YefiraClient.onClientJoinServer(client));
-    }
+        @SubscribeEvent
+        public static void onRenderLevelStage(RenderLevelStageEvent event) {
+            if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+                SelectionBoxRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
+                GhostGizmoRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
+            }
+        }
 
-    @SubscribeEvent
-    public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
-        Minecraft client = Minecraft.getInstance();
-        client.execute(() -> YefiraClient.onClientDisconnectServer(client));
+        @SubscribeEvent
+        public static void onPlayerLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
+            Minecraft client = Minecraft.getInstance();
+            client.execute(() -> YefiraClient.onClientJoinServer(client));
+        }
+
+        @SubscribeEvent
+        public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+            Minecraft client = Minecraft.getInstance();
+            client.execute(() -> YefiraClient.onClientDisconnectServer(client));
+        }
     }
 }
