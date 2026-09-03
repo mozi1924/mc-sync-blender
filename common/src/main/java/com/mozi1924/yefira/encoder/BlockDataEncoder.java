@@ -29,6 +29,11 @@ public class BlockDataEncoder {
     public static final byte PACKET_STREAM_BEGIN = 0x08;
     public static final byte PACKET_STREAM_END = 0x09;
 
+    // Stream status codes
+    public static final short STREAM_STATUS_SUCCESS = 0;
+    public static final short STREAM_STATUS_CANCELLED = 1;
+    public static final short STREAM_STATUS_ERROR = 2;
+
     // C2S Request Packet Types
     public static final byte PACKET_C2S_REQ_FULL_SYNC = (byte) 0x80;
     public static final byte PACKET_C2S_REQ_SECTION_SYNC = (byte) 0x81;
@@ -625,7 +630,13 @@ public class BlockDataEncoder {
         return buf.array();
     }
 
-    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, long streamId, java.util.function.Predicate<byte[]> sender) {
+    public static void streamNonEmptySectionSnapshots(
+            Level level,
+            SelectionBox selection,
+            long streamId,
+            java.util.function.BooleanSupplier isCancelled,
+            java.util.function.Predicate<byte[]> sender
+    ) {
         List<SectionPos> nonEmpty = getNonEmptySections(level, selection);
         byte[] beginPacket = encodeStreamBegin(streamId, nonEmpty.size(), 0);
         if (!sender.test(beginPacket)) {
@@ -634,6 +645,11 @@ public class BlockDataEncoder {
 
         int sent = 0;
         for (SectionPos sec : nonEmpty) {
+            if ((isCancelled != null && isCancelled.getAsBoolean()) || Thread.currentThread().isInterrupted()) {
+                byte[] cancelPacket = encodeStreamEnd(streamId, sent, STREAM_STATUS_CANCELLED);
+                sender.test(cancelPacket);
+                return;
+            }
             byte[] sectionSnapshot = encodeSectionSnapshot(level, selection, sec);
             if (!sender.test(sectionSnapshot)) {
                 return;
@@ -644,12 +660,16 @@ public class BlockDataEncoder {
             }
         }
 
-        byte[] endPacket = encodeStreamEnd(streamId, sent, 0);
+        byte[] endPacket = encodeStreamEnd(streamId, sent, STREAM_STATUS_SUCCESS);
         sender.test(endPacket);
     }
 
+    public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, long streamId, java.util.function.Predicate<byte[]> sender) {
+        streamNonEmptySectionSnapshots(level, selection, streamId, () -> false, sender);
+    }
+
     public static void streamNonEmptySectionSnapshots(Level level, SelectionBox selection, java.util.function.Consumer<byte[]> sender) {
-        streamNonEmptySectionSnapshots(level, selection, 0L, bytes -> {
+        streamNonEmptySectionSnapshots(level, selection, 0L, () -> false, bytes -> {
             sender.accept(bytes);
             return true;
         });

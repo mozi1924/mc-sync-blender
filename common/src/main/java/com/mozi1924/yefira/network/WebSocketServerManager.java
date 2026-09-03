@@ -49,6 +49,8 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
     private final Map<WebSocket, ClientConfig> clientConfigs = new ConcurrentHashMap<>();
     private final java.util.concurrent.ExecutorService streamingExecutor = java.util.concurrent.Executors.newCachedThreadPool();
+    private final java.util.concurrent.atomic.AtomicLong activeBroadcastStreamId = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>> activeBroadcastFuture = new java.util.concurrent.atomic.AtomicReference<>();
 
     public static WebSocketServerManager getInstance() {
         return INSTANCE;
@@ -376,14 +378,30 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         if (clients.isEmpty()) return;
         clearPendingDeltaChanges();
         BlockDataEncoder.clearSectionCRCCache();
-        Yefira.LOGGER.info("Broadcasting new selection snapshot to {} clients...", clients.size());
-        streamingExecutor.submit(() -> broadcastSnapshot(level, selection));
+
+        long newStreamId = globalSeqId.incrementAndGet();
+        activeBroadcastStreamId.set(newStreamId);
+
+        // Cancel previous streaming task if still running
+        java.util.concurrent.Future<?> prevTask = activeBroadcastFuture.getAndSet(null);
+        if (prevTask != null && !prevTask.isDone()) {
+            prevTask.cancel(true);
+            Yefira.LOGGER.info("Preempted previous streaming task for newer selection change.");
+        }
+
+        Yefira.LOGGER.info("Broadcasting new selection snapshot (Stream {}) to {} clients...", newStreamId, clients.size());
+        java.util.concurrent.Future<?> future = streamingExecutor.submit(() -> broadcastSnapshot(level, selection, newStreamId));
+        activeBroadcastFuture.set(future);
     }
 
     @Override
     public void onSelectionCleared() {
         clearPendingDeltaChanges();
         BlockDataEncoder.clearSectionCRCCache();
+        java.util.concurrent.Future<?> prevTask = activeBroadcastFuture.getAndSet(null);
+        if (prevTask != null && !prevTask.isDone()) {
+            prevTask.cancel(true);
+        }
         // 可发送选区清空标志包，目前直接忽略或发送空数据
     }
 
@@ -425,7 +443,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 sendSafe(conn, snapshotBytes);
             } else {
                 // 大选区/调试模式世界：流式分块按 Section 发送非空快照，避免单包超过 1MB/20MB 造成内存暴涨或网络超限
-                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, snapshotSeqId, bytes -> sendSafe(conn, bytes));
+                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, snapshotSeqId, () -> !conn.isOpen(), bytes -> sendSafe(conn, bytes));
             }
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to send snapshot to client {}", conn.getRemoteSocketAddress(), e);
@@ -433,9 +451,12 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     public void broadcastSnapshot(Level level, SelectionBox selection) {
+        broadcastSnapshot(level, selection, globalSeqId.incrementAndGet());
+    }
+
+    public void broadcastSnapshot(Level level, SelectionBox selection, long snapshotSeqId) {
         if (clients.isEmpty()) return;
         try {
-            long snapshotSeqId = globalSeqId.incrementAndGet();
             long volume = selection.getVolume();
 
             byte[] infoBytes = BlockDataEncoder.encodeSelectionInfo(selection);
@@ -452,15 +473,21 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                     sendSafe(client, snapshotBytes);
                 }
             } else {
-                BlockDataEncoder.streamNonEmptySectionSnapshots(level, selection, snapshotSeqId, bytes -> {
-                    boolean anySuccess = false;
-                    for (WebSocket client : List.copyOf(clients)) {
-                        if (sendSafe(client, bytes)) {
-                            anySuccess = true;
+                BlockDataEncoder.streamNonEmptySectionSnapshots(
+                        level,
+                        selection,
+                        snapshotSeqId,
+                        () -> activeBroadcastStreamId.get() != snapshotSeqId,
+                        bytes -> {
+                            boolean anySuccess = false;
+                            for (WebSocket client : List.copyOf(clients)) {
+                                if (sendSafe(client, bytes)) {
+                                    anySuccess = true;
+                                }
+                            }
+                            return anySuccess || clients.isEmpty();
                         }
-                    }
-                    return anySuccess || clients.isEmpty();
-                });
+                );
             }
         } catch (Exception e) {
             Yefira.LOGGER.error("Error broadcasting snapshot", e);
