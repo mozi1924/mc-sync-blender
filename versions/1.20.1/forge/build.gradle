@@ -34,7 +34,17 @@ configurations {
     implementation.extendsFrom shade
 }
 
+mixin {
+    add sourceSets.main, "yefira-refmap.json"
+    config "yefira.mixins.json"
+    config "yefira.client.mixins.json"
+}
+
 dependencies {
+    compileOnly('net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7')
+    annotationProcessor('org.spongepowered:mixin:0.8.5:processor')
+    annotationProcessor('io.github.llamalad7:mixinextras-common:0.5.3')
+
     shade "org.java-websocket:Java-WebSocket:1.5.6"
     additionalRuntimeClasspath "org.java-websocket:Java-WebSocket:1.5.6"
 }
