@@ -2,6 +2,7 @@ package com.mozi1924.yefira.client.ghost;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mozi1924.yefira.client.compat.RenderCompat;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Camera;
@@ -40,8 +41,8 @@ public class GhostGizmoRenderer {
                 hPos.getX() - camPos.x, hPos.getY() - camPos.y, hPos.getZ() - camPos.z,
                 hPos.getX() + 1.0 - camPos.x, hPos.getY() + 1.0 - camPos.y, hPos.getZ() + 1.0 - camPos.z
             );
-            LevelRenderer.renderLineBox(poseStack, lineBuffer, blockBox, 0.0f, 1.0f, 0.93f, 1.0f);
-            DebugRenderer.renderFilledBox(poseStack, bufferSource, blockBox, 0.0f, 1.0f, 0.93f, 0.2f);
+            RenderCompat.renderLineBox(poseStack, lineBuffer, blockBox, 0.0f, 1.0f, 0.93f, 1.0f);
+            RenderCompat.renderFilledBox(poseStack, bufferSource, blockBox, 0.0f, 1.0f, 0.93f, 0.2f);
         }
 
         // 2. Render Box Creation Preview when dragging to create
@@ -54,8 +55,8 @@ public class GhostGizmoRenderer {
                     bMin.getX() - camPos.x, bMin.getY() - camPos.y, bMin.getZ() - camPos.z,
                     bMax.getX() + 1.0 - camPos.x, bMax.getY() + 1.0 - camPos.y, bMax.getZ() + 1.0 - camPos.z
                 );
-                LevelRenderer.renderLineBox(poseStack, lineBuffer, createBox, 0.0f, 1.0f, 0.33f, 1.0f);
-                DebugRenderer.renderFilledBox(poseStack, bufferSource, createBox, 0.0f, 1.0f, 0.33f, 0.25f);
+                RenderCompat.renderLineBox(poseStack, lineBuffer, createBox, 0.0f, 1.0f, 0.33f, 1.0f);
+                RenderCompat.renderFilledBox(poseStack, bufferSource, createBox, 0.0f, 1.0f, 0.33f, 0.25f);
             }
             return;
         }
@@ -208,7 +209,6 @@ public class GhostGizmoRenderer {
             dy = 1.0f;
         }
 
-        lines.vertex(poseStack.last().pose(), (float) p1.x, (float) p1.y, (float) p1.z).color(r, g, b, a).normal(poseStack.last().normal(), dx, dy, dz).endVertex();
-        lines.vertex(poseStack.last().pose(), (float) p2.x, (float) p2.y, (float) p2.z).color(r, g, b, a).normal(poseStack.last().normal(), dx, dy, dz).endVertex();
+        RenderCompat.drawGizmoLine(poseStack, lines, p1, p2, r, g, b, a, dx, dy, dz);
     }
 }

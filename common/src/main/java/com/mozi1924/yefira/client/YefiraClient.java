@@ -2,6 +2,7 @@ package com.mozi1924.yefira.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mozi1924.yefira.Yefira;
+import com.mozi1924.yefira.client.compat.KeyMappingCompat;
 import com.mozi1924.yefira.client.ghost.GhostModeManager;
 import com.mozi1924.yefira.client.gui.YefiraScreen;
 import com.mozi1924.yefira.client.model.ClientBlockModelProvider;
@@ -39,49 +40,49 @@ public class YefiraClient {
     }
 
     public static void createKeyMappings() {
-        keyPos1 = new KeyMapping(
+        keyPos1 = KeyMappingCompat.createKeyMapping(
             "key.yefira.pos1",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_LEFT,
             YEFIRA_CATEGORY
         );
 
-        keyPos2 = new KeyMapping(
+        keyPos2 = KeyMappingCompat.createKeyMapping(
             "key.yefira.pos2",
             InputConstants.Type.MOUSE,
             GLFW.GLFW_MOUSE_BUTTON_RIGHT,
             YEFIRA_CATEGORY
         );
 
-        keyGhostMode = new KeyMapping(
+        keyGhostMode = KeyMappingCompat.createKeyMapping(
             "key.yefira.ghost_mode",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_G,
             YEFIRA_CATEGORY
         );
 
-        keyOpenGui = new KeyMapping(
+        keyOpenGui = KeyMappingCompat.createKeyMapping(
             "key.yefira.open_gui",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_O,
             YEFIRA_CATEGORY
         );
 
-        keyFocus = new KeyMapping(
+        keyFocus = KeyMappingCompat.createKeyMapping(
             "key.yefira.focus",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_F,
             YEFIRA_CATEGORY
         );
 
-        keyClear = new KeyMapping(
+        keyClear = KeyMappingCompat.createKeyMapping(
             "key.yefira.clear",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_X,
             YEFIRA_CATEGORY
         );
 
-        keyPresetBox = new KeyMapping(
+        keyPresetBox = KeyMappingCompat.createKeyMapping(
             "key.yefira.preset_box",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_C,

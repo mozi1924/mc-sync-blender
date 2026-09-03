@@ -1,5 +1,6 @@
 package com.mozi1924.yefira.client.gui;
 
+import com.mozi1924.yefira.client.compat.GuiCompat;
 import com.mozi1924.yefira.config.YefiraConfig;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
@@ -91,7 +92,7 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.portEdit);
 
         // AutoStart Checkbox
-        this.autoStartCheckbox = new ConfigCheckbox(
+        this.autoStartCheckbox = GuiCompat.createCheckbox(
             centerX - 100, startY + 90, 200, 20,
             Component.translatable("yefira.gui.autostart"),
             cfg.isAutoStartOnWorldLoad(),
@@ -104,7 +105,7 @@ public class YefiraScreen extends Screen {
         this.addRenderableWidget(this.autoStartCheckbox);
 
         // Legacy Pickaxe Checkbox
-        this.legacyPickaxeCheckbox = new ConfigCheckbox(
+        this.legacyPickaxeCheckbox = GuiCompat.createCheckbox(
             centerX - 100, startY + 115, 200, 20,
             Component.translatable("yefira.gui.legacy_pickaxe"),
             cfg.isEnableLegacyPickaxeTool(),
@@ -261,22 +262,5 @@ public class YefiraScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
-    }
-
-    private static class ConfigCheckbox extends Checkbox {
-        private final Consumer<Boolean> onToggle;
-
-        public ConfigCheckbox(int x, int y, int width, int height, Component message, boolean selected, Consumer<Boolean> onToggle) {
-            super(x, y, width, height, message, selected);
-            this.onToggle = onToggle;
-        }
-
-        @Override
-        public void onPress() {
-            super.onPress();
-            if (this.onToggle != null) {
-                this.onToggle.accept(this.selected());
-            }
-        }
     }
 }
